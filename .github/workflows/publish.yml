@@ -1,0 +1,92 @@
+name: Build, Test, and Publish
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Prevent multiple concurrent workflow runs on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to push version bump commit and tags
+      id-token: write # Optional: If using OIDC for authentication instead of token
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for version bumping and tagging
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: latest # Use the latest pnpm version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Browsers
+        run: pnpm exec playwright install --with-deps
+        # TODO: Add caching for Playwright browsers if needed
+        # uses: actions/cache@v3
+        # with:
+        #   path: ~/.cache/ms-playwright
+        #   key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+        #   restore-keys: |
+        #     ${{ runner.os }}-playwright-
+
+      - name: Run Lint
+        run: pnpm lint
+
+      - name: Run Tests
+        run: pnpm test
+
+      # --- Publish Steps (only run on push to main branch) ---
+      - name: Configure Git
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          pnpm version patch -m "chore(release): bump version to %s"
+
+      - name: Build project
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: pnpm build
+
+      - name: Setup Node.js for publish
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Publish to NPM
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push changes to GitHub
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git push
+          git push --tags
