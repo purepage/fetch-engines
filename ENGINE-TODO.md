@@ -1,6 +1,6 @@
 # Engine Enhancements TODO (Cloudflare/Anti-Bot Focus)
 
-This list outlines planned improvements specifically aimed at enhancing the `PlaywrightEngine`'s ability to handle websites protected by sophisticated anti-bot measures like Cloudflare, based on failures observed with sites like `essentialenergy.com.au`.
+This list outlines planned improvements specifically aimed at enhancing the `PlaywrightEngine`'s ability to handle websites protected by sophisticated anti-bot measures like Cloudflare, based on failures observed with sites like `openai.com.au`.
 
 ## Phase 1: Enhance PlaywrightEngine Stealth & Handling
 
