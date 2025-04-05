@@ -14,7 +14,7 @@ npm install @purepageio/fetch-engines
 yarn add @purepageio/fetch-engines
 ```
 
-If you plan to use the `PlaywrightEngine`, you also need to install Playwright's browser binaries:
+If you plan to use the `PlaywrightEngine` or `HybridEngine`, you also need to install Playwright's browser binaries:
 
 ```bash
 pnpm exec playwright install
@@ -25,7 +25,8 @@ npx playwright install
 ## Engines
 
 - **`FetchEngine`**: Uses the standard `fetch` API. Suitable for simple HTML pages or APIs returning HTML. Lightweight and fast.
-- **`PlaywrightEngine`**: Uses Playwright to control a headless browser (Chromium, Firefox, WebKit). Handles JavaScript rendering, complex interactions (if needed), and provides options for stealth and anti-bot detection measures. More resource-intensive but necessary for dynamic websites.
+- **`PlaywrightEngine`**: Uses Playwright to control a managed pool of headless browsers (Chromium by default via `playwright-extra`). Handles JavaScript rendering, complex interactions, and provides automatic stealth/anti-bot detection measures. More resource-intensive but necessary for dynamic websites.
+- **`HybridEngine`**: A smart combination. It first attempts to fetch content using the lightweight `FetchEngine`. If that fails for *any* reason (e.g., network error, non-HTML content, HTTP error like 403), it automatically falls back to using the `PlaywrightEngine`. This provides the speed of `FetchEngine` for simple sites while retaining the power of `PlaywrightEngine` for complex ones.
 
 ## Basic Usage
 
@@ -40,7 +41,7 @@ async function main() {
   try {
     const url = "https://example.com";
     const result = await engine.fetchHTML(url);
-    console.log(`Fetched ${result.url}`);
+    console.log(`Fetched ${result.url} (Status: ${result.statusCode})`);
     console.log(`Title: ${result.title}`);
     // console.log(`HTML: ${result.html.substring(0, 200)}...`);
   } catch (error) {
@@ -67,13 +68,48 @@ async function main() {
   try {
     const url = "https://quotes.toscrape.com/"; // A site that might benefit from JS rendering
     const result = await engine.fetchHTML(url);
-    console.log(`Fetched ${result.url}`);
+    console.log(`Fetched ${result.url} (Status: ${result.statusCode})`);
     console.log(`Title: ${result.title}`);
     // console.log(`HTML: ${result.html.substring(0, 200)}...`);
   } catch (error) {
     console.error("Playwright fetch failed:", error);
   } finally {
     // Important: Clean up browser resources when done
+    await engine.cleanup();
+  }
+}
+
+main();
+```
+
+### HybridEngine
+
+```typescript
+import { HybridEngine } from '@purepageio/fetch-engines';
+
+// Configure the underlying PlaywrightEngine (optional)
+const engine = new HybridEngine({
+  maxRetries: 2, // PlaywrightEngine retry config
+  maxBrowsers: 3, // PlaywrightEngine pool config
+  // FetchEngine part has no config
+});
+
+async function main() {
+  try {
+    // Try a simple site (likely uses FetchEngine)
+    const url1 = 'https://example.com';
+    const result1 = await engine.fetchHTML(url1);
+    console.log(`Fetched ${result1.url} (Status: ${result1.statusCode}) - Title: ${result1.title}`);
+
+    // Try a complex site (likely falls back to PlaywrightEngine)
+    const url2 = 'https://quotes.toscrape.com/';
+    const result2 = await engine.fetchHTML(url2);
+    console.log(`Fetched ${result2.url} (Status: ${result2.statusCode}) - Title: ${result2.title}`);
+
+  } catch (error) {
+    console.error("Hybrid fetch failed:", error);
+  } finally {
+    // Important: Clean up browser resources (for the Playwright part) when done
     await engine.cleanup();
   }
 }
@@ -91,50 +127,62 @@ The `FetchEngine` currently has **no configurable options** via its constructor.
 
 ### PlaywrightEngine
 
-The `PlaywrightEngine` offers more extensive configuration:
+The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detailed options below:
 
 **General Options:**
 
 - `concurrentPages` (`number`, default: `3`)
   - Maximum number of Playwright pages to process concurrently across all browser instances.
 - `maxRetries` (`number`, default: `3`)
-  - Maximum number of retry attempts for a failed fetch operation (excluding initial attempt).
+  - Maximum number of retry attempts for a failed Playwright fetch operation (excluding initial attempt).
 - `retryDelay` (`number`, default: `5000`)
-  - Delay in milliseconds between retry attempts.
+  - Delay in milliseconds between Playwright retry attempts.
 - `cacheTTL` (`number`, default: `900000` (15 minutes))
-  - Time-to-live for cached results in milliseconds. Set to `0` to disable the in-memory cache.
+  - Time-to-live for cached results in milliseconds. Set to `0` to disable the in-memory cache. Affects both HTTP fallback and Playwright results.
 - `useHttpFallback` (`boolean`, default: `true`)
   - If `true`, the engine first attempts a simple, fast HTTP GET request. If this fails or appears to receive a challenge/CAPTCHA page, it then proceeds with a full Playwright browser request.
 - `useHeadedModeFallback` (`boolean`, default: `false`)
-  - If `true` and a Playwright request fails (potentially due to bot detection), subsequent requests _to that specific domain_ will automatically use a headed (visible) browser instance, which can sometimes bypass stricter checks. This requires the pool to potentially manage both headless and headed instances.
+  - If `true` and a Playwright request fails (potentially due to bot detection), subsequent Playwright requests *to that specific domain* will automatically use a headed (visible) browser instance.
 - `defaultFastMode` (`boolean`, default: `true`)
-  - If `true`, requests initially run in "fast mode", blocking non-essential resources (images, fonts, stylesheets) and skipping human behavior simulation. This can significantly speed up fetches but may break some sites or increase detection risk. This can be overridden per-request via the `fetchHTML` options.
+  - If `true`, Playwright requests initially run in "fast mode", blocking non-essential resources and skipping human behavior simulation. Can be overridden per-request via `fetchHTML` options.
 - `simulateHumanBehavior` (`boolean`, default: `true`)
-  - If `true` and the request is _not_ in `fastMode`, the engine attempts basic human-like interactions (e.g., slight delays, mouse movements). _Note: This simulation is currently basic and may not defeat advanced bot detection._
+  - If `true` and the Playwright request is *not* in `fastMode`, the engine attempts basic human-like interactions. *Note: This simulation is currently basic.*
 
-**Browser Pool Options:**
-
-These options are passed down to configure the underlying `PlaywrightBrowserPool` that manages browser instances.
+**Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
 - `maxBrowsers` (`number`, default: `2`)
-  - Maximum number of concurrent browser instances (e.g., Chrome processes) the pool will manage.
+  - Maximum number of concurrent browser instances the pool will manage.
 - `maxPagesPerContext` (`number`, default: `6`)
-  - Maximum number of pages that can be opened within a single browser context (like an isolated browser profile) before the pool prefers using a different context or browser instance. Helps isolate sessions.
+  - Maximum number of pages per browser context before recycling.
 - `maxBrowserAge` (`number`, default: `1200000` (20 minutes))
-  - Maximum age in milliseconds a browser instance can live before the pool proactively closes and replaces it. Helps mitigate memory leaks or state issues.
+  - Maximum age in milliseconds a browser instance lives before recycling.
 - `healthCheckInterval` (`number`, default: `60000` (1 minute))
-  - How often (in milliseconds) the pool checks the health of its browser instances (e.g., checking connectivity, age).
+  - How often (in milliseconds) the pool checks browser health.
 - `useHeadedMode` (`boolean`, default: `false`)
-  - Forces the _entire_ browser pool to launch browsers in headed (visible) mode instead of the default headless mode. Primarily useful for debugging purposes.
+  - Forces the *entire* browser pool to launch browsers in headed (visible) mode.
 - `poolBlockedDomains` (`string[]`, default: `[]` - uses pool's internal defaults)
-  - List of domain _glob patterns_ (e.g., `*.google-analytics.com`, `*.doubleclick.net`) for requests that the browser should block. An empty array uses the pool's built-in default blocklist (recommended).
+  - List of domain *glob patterns* to block browser requests to.
 - `poolBlockedResourceTypes` (`string[]`, default: `[]` - uses pool's internal defaults)
-  - List of Playwright resource types (e.g., `image`, `stylesheet`, `font`, `media`, `websocket`) to block. Blocking unnecessary resources can speed up page loads. An empty array uses the pool's built-in default blocklist (recommended).
+  - List of Playwright resource types (e.g., `image`, `font`) to block.
 - `proxy` (`object | undefined`, default: `undefined`)
-  - Proxy configuration to be used by the browser instances.
-    - `server` (`string`): Proxy URL (e.g., `http://host:port`, `socks5://user:pass@host:port`).
-    - `username` (`string`, optional): Proxy username.
-    - `password` (`string`, optional): Proxy password.
+  - Proxy configuration for browser instances (`server`, `username?`, `password?`).
+
+### HybridEngine
+
+The `HybridEngine` constructor accepts a single optional argument: `playwrightConfig`. This object follows the **`PlaywrightEngineConfig`** structure described above.
+
+```typescript
+import { HybridEngine } from '@purepageio/fetch-engines';
+
+const engine = new HybridEngine({
+  // These options configure the PlaywrightEngine used for fallbacks
+  maxRetries: 1,
+  maxBrowsers: 1,
+  cacheTTL: 0 // Disable caching in the Playwright part
+});
+```
+
+The internal `FetchEngine` used by `HybridEngine` is *not* configurable.
 
 ## Return Value
 
