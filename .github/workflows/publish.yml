@@ -50,6 +50,9 @@ jobs:
         #   restore-keys: |
         #     ${{ runner.os }}-playwright-
 
+      - name: Format code
+        run: pnpm format
+
       - name: Run Lint
         run: pnpm lint
 

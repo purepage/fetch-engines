@@ -26,7 +26,7 @@ npx playwright install
 
 - **`FetchEngine`**: Uses the standard `fetch` API. Suitable for simple HTML pages or APIs returning HTML. Lightweight and fast.
 - **`PlaywrightEngine`**: Uses Playwright to control a managed pool of headless browsers (Chromium by default via `playwright-extra`). Handles JavaScript rendering, complex interactions, and provides automatic stealth/anti-bot detection measures. More resource-intensive but necessary for dynamic websites.
-- **`HybridEngine`**: A smart combination. It first attempts to fetch content using the lightweight `FetchEngine`. If that fails for *any* reason (e.g., network error, non-HTML content, HTTP error like 403), it automatically falls back to using the `PlaywrightEngine`. This provides the speed of `FetchEngine` for simple sites while retaining the power of `PlaywrightEngine` for complex ones.
+- **`HybridEngine`**: A smart combination. It first attempts to fetch content using the lightweight `FetchEngine`. If that fails for _any_ reason (e.g., network error, non-HTML content, HTTP error like 403), it automatically falls back to using the `PlaywrightEngine`. This provides the speed of `FetchEngine` for simple sites while retaining the power of `PlaywrightEngine` for complex ones.
 
 ## Basic Usage
 
@@ -85,7 +85,7 @@ main();
 ### HybridEngine
 
 ```typescript
-import { HybridEngine } from '@purepageio/fetch-engines';
+import { HybridEngine } from "@purepageio/fetch-engines";
 
 // Configure the underlying PlaywrightEngine (optional)
 const engine = new HybridEngine({
@@ -97,15 +97,14 @@ const engine = new HybridEngine({
 async function main() {
   try {
     // Try a simple site (likely uses FetchEngine)
-    const url1 = 'https://example.com';
+    const url1 = "https://example.com";
     const result1 = await engine.fetchHTML(url1);
     console.log(`Fetched ${result1.url} (Status: ${result1.statusCode}) - Title: ${result1.title}`);
 
     // Try a complex site (likely falls back to PlaywrightEngine)
-    const url2 = 'https://quotes.toscrape.com/';
+    const url2 = "https://quotes.toscrape.com/";
     const result2 = await engine.fetchHTML(url2);
     console.log(`Fetched ${result2.url} (Status: ${result2.statusCode}) - Title: ${result2.title}`);
-
   } catch (error) {
     console.error("Hybrid fetch failed:", error);
   } finally {
@@ -142,11 +141,11 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detail
 - `useHttpFallback` (`boolean`, default: `true`)
   - If `true`, the engine first attempts a simple, fast HTTP GET request. If this fails or appears to receive a challenge/CAPTCHA page, it then proceeds with a full Playwright browser request.
 - `useHeadedModeFallback` (`boolean`, default: `false`)
-  - If `true` and a Playwright request fails (potentially due to bot detection), subsequent Playwright requests *to that specific domain* will automatically use a headed (visible) browser instance.
+  - If `true` and a Playwright request fails (potentially due to bot detection), subsequent Playwright requests _to that specific domain_ will automatically use a headed (visible) browser instance.
 - `defaultFastMode` (`boolean`, default: `true`)
   - If `true`, Playwright requests initially run in "fast mode", blocking non-essential resources and skipping human behavior simulation. Can be overridden per-request via `fetchHTML` options.
 - `simulateHumanBehavior` (`boolean`, default: `true`)
-  - If `true` and the Playwright request is *not* in `fastMode`, the engine attempts basic human-like interactions. *Note: This simulation is currently basic.*
+  - If `true` and the Playwright request is _not_ in `fastMode`, the engine attempts basic human-like interactions. _Note: This simulation is currently basic._
 
 **Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
@@ -159,9 +158,9 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detail
 - `healthCheckInterval` (`number`, default: `60000` (1 minute))
   - How often (in milliseconds) the pool checks browser health.
 - `useHeadedMode` (`boolean`, default: `false`)
-  - Forces the *entire* browser pool to launch browsers in headed (visible) mode.
+  - Forces the _entire_ browser pool to launch browsers in headed (visible) mode.
 - `poolBlockedDomains` (`string[]`, default: `[]` - uses pool's internal defaults)
-  - List of domain *glob patterns* to block browser requests to.
+  - List of domain _glob patterns_ to block browser requests to.
 - `poolBlockedResourceTypes` (`string[]`, default: `[]` - uses pool's internal defaults)
   - List of Playwright resource types (e.g., `image`, `font`) to block.
 - `proxy` (`object | undefined`, default: `undefined`)
@@ -172,17 +171,17 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detail
 The `HybridEngine` constructor accepts a single optional argument: `playwrightConfig`. This object follows the **`PlaywrightEngineConfig`** structure described above.
 
 ```typescript
-import { HybridEngine } from '@purepageio/fetch-engines';
+import { HybridEngine } from "@purepageio/fetch-engines";
 
 const engine = new HybridEngine({
   // These options configure the PlaywrightEngine used for fallbacks
   maxRetries: 1,
   maxBrowsers: 1,
-  cacheTTL: 0 // Disable caching in the Playwright part
+  cacheTTL: 0, // Disable caching in the Playwright part
 });
 ```
 
-The internal `FetchEngine` used by `HybridEngine` is *not* configurable.
+The internal `FetchEngine` used by `HybridEngine` is _not_ configurable.
 
 ## Return Value
 

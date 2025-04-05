@@ -1,24 +1,17 @@
 // Use playwright-extra via require
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const playwrightExtra = require("playwright-extra");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 // Import types from original playwright
-import type {
-  Browser,
-  BrowserContext,
-  Page,
-  BrowserType,
-  Route,
-  LaunchOptions,
-} from "playwright";
+import type { Browser, BrowserContext, Page, BrowserType, Route, LaunchOptions } from "playwright";
 import type { BrowserMetrics } from "../types.js";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue"; // Restored
 // REMOVED import EventEmitter from "events"; // Import EventEmitter
 // Use require for CJS interop
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 // const Debug = require("debug");
 // import * as Debug from "debug"; // Changed back to import
 // import Debug from "debug"; // Try default import
@@ -111,7 +104,7 @@ export class PlaywrightBrowserPool {
       blockedResourceTypes?: string[];
       proxy?: { server: string; username?: string; password?: string };
       maxIdleTime?: number; // Added maxIdleTime
-    } = {},
+    } = {}
   ) {
     this.maxBrowsers = config.maxBrowsers ?? 2;
     this.maxPagesPerContext = config.maxPagesPerContext ?? 6;
@@ -284,10 +277,7 @@ export class PlaywrightBrowserPool {
 
       let bestInstance: PlaywrightBrowserInstance | null = null;
       for (const instance of this.pool) {
-        if (
-          instance.isHealthy &&
-          instance.pages.size < this.maxPagesPerContext
-        ) {
+        if (instance.isHealthy && instance.pages.size < this.maxPagesPerContext) {
           if (!bestInstance || instance.pages.size < bestInstance.pages.size) {
             bestInstance = instance;
           }
@@ -298,16 +288,12 @@ export class PlaywrightBrowserPool {
         try {
           bestInstance = await this.createBrowserInstance();
         } catch (error) {
-          throw new Error(
-            `Failed to create new browser instance for acquisition: ${(error as Error).message}`,
-          );
+          throw new Error(`Failed to create new browser instance for acquisition: ${(error as Error).message}`);
         }
       }
 
       if (!bestInstance) {
-        throw new Error(
-          "Failed to acquire Playwright page: No available browser instance.",
-        );
+        throw new Error("Failed to acquire Playwright page: No available browser instance.");
       }
 
       try {
@@ -337,9 +323,7 @@ export class PlaywrightBrowserPool {
         bestInstance.isHealthy = false; // Mark instance unhealthy
         bestInstance.metrics.isHealthy = false;
         this.healthCheck().catch((_err) => {}); // Trigger health check
-        throw new Error(
-          `Failed to create new page: ${(error as Error).message}`,
-        );
+        throw new Error(`Failed to create new page: ${(error as Error).message}`);
       }
     }) as Promise<Page>; // Assert return type to satisfy signature
   }
@@ -371,8 +355,7 @@ export class PlaywrightBrowserPool {
           if (
             !shouldRemove &&
             this.maxBrowserAge > 0 &&
-            now.getTime() - instance.metrics.createdAt.getTime() >
-              this.maxBrowserAge
+            now.getTime() - instance.metrics.createdAt.getTime() > this.maxBrowserAge
           ) {
             shouldRemove = true;
             reason = "max age reached";
@@ -382,8 +365,7 @@ export class PlaywrightBrowserPool {
             this.pool.size > 1 &&
             instance.pages.size === 0 &&
             this.maxIdleTime > 0 &&
-            now.getTime() - instance.metrics.lastUsed.getTime() >
-              this.maxIdleTime
+            now.getTime() - instance.metrics.lastUsed.getTime() > this.maxIdleTime
           ) {
             shouldRemove = true;
             reason = "idle timeout";
@@ -399,7 +381,7 @@ export class PlaywrightBrowserPool {
           }
         })().catch((_err) => {
           // Log errors during individual check? For now, ignore.
-        }),
+        })
       );
     }
 
@@ -417,7 +399,7 @@ export class PlaywrightBrowserPool {
    */
   private async closeAndRemoveInstance(
     instance: PlaywrightBrowserInstance,
-    _reason?: string, // Reason is unused, prefixed
+    _reason?: string // Reason is unused, prefixed
   ): Promise<void> {
     const removed = this.pool.delete(instance);
     if (!removed) return;
@@ -485,9 +467,7 @@ export class PlaywrightBrowserPool {
     this.acquireQueue.clear();
     await this.acquireQueue.onIdle();
 
-    const closePromises = [...this.pool].map((instance) =>
-      this.closeAndRemoveInstance(instance, "cleanup"),
-    );
+    const closePromises = [...this.pool].map((instance) => this.closeAndRemoveInstance(instance, "cleanup"));
     this.pool.clear();
     await Promise.allSettled(closePromises);
     this.isCleaningUp = false;

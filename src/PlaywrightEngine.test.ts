@@ -85,18 +85,10 @@ describe(
 
       // Use vi.spyOn for prototype methods
       spies = [
-        vi
-          .spyOn(PlaywrightBrowserPool.prototype, "initialize")
-          .mockResolvedValue(undefined),
-        vi
-          .spyOn(PlaywrightBrowserPool.prototype, "acquirePage")
-          .mockImplementation(mockAcquirePage),
-        vi
-          .spyOn(PlaywrightBrowserPool.prototype, "cleanup")
-          .mockImplementation(mockCleanupPool),
-        vi
-          .spyOn(PlaywrightBrowserPool.prototype, "getMetrics")
-          .mockImplementation(mockGetMetrics),
+        vi.spyOn(PlaywrightBrowserPool.prototype, "initialize").mockResolvedValue(undefined),
+        vi.spyOn(PlaywrightBrowserPool.prototype, "acquirePage").mockImplementation(mockAcquirePage),
+        vi.spyOn(PlaywrightBrowserPool.prototype, "cleanup").mockImplementation(mockCleanupPool),
+        vi.spyOn(PlaywrightBrowserPool.prototype, "getMetrics").mockImplementation(mockGetMetrics),
       ];
 
       mockAxiosGet = vi.fn();
@@ -106,14 +98,10 @@ describe(
       // Get the mocked constructor instance
       browserPoolMock = new PlaywrightBrowserPool();
       // Mock acquirePage for default success case
-      vi.mocked(browserPoolMock.acquirePage).mockResolvedValue(
-        createMockPage(),
-      );
+      vi.mocked(browserPoolMock.acquirePage).mockResolvedValue(createMockPage());
 
       // Ensure the engine constructor uses the mocked pool
-      vi.mocked(PlaywrightBrowserPool).mockImplementation(
-        () => browserPoolMock,
-      );
+      vi.mocked(PlaywrightBrowserPool).mockImplementation(() => browserPoolMock);
     });
 
     // Restore spies after each test
@@ -139,9 +127,7 @@ describe(
       const result = await engine.fetchHTML(url);
 
       // Check prototype spies were involved
-      expect(PlaywrightBrowserPool.prototype.initialize).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(PlaywrightBrowserPool.prototype.initialize).toHaveBeenCalledTimes(1);
       expect(mockAcquirePage).toHaveBeenCalledTimes(1); // acquirePage spy
       expect(mockPage.goto).toHaveBeenCalledWith(url, expect.anything());
       expect(mockPage.close).toHaveBeenCalledTimes(1);
@@ -158,8 +144,7 @@ describe(
     it("should use HTTP fallback if enabled and successful", async () => {
       engine = new PlaywrightEngine({ useHttpFallback: true }); // Enable fallback
       const url = "http://example.com/fallback-works";
-      const fallbackHtml =
-        "<html><head><title>Fallback Title</title></head><body>Fallback HTML</body></html>";
+      const fallbackHtml = "<html><head><title>Fallback Title</title></head><body>Fallback HTML</body></html>";
 
       // Setup successful axios fallback
       mockAxiosGet.mockResolvedValue({
@@ -242,7 +227,7 @@ describe(
       // Final error message should reflect the *last* error encountered
       // In this case, the error comes from the _fetchWithBrowser call (mockAcquirePage rejection)
       await expect(fetchPromise).rejects.toThrow(
-        `Failed to fetch ${url} after ${maxAttempts} attempts: ${failureError.message}`, // Check error message carefully
+        `Failed to fetch ${url} after ${maxAttempts} attempts: ${failureError.message}` // Check error message carefully
       );
       vi.useRealTimers();
 
@@ -258,9 +243,7 @@ describe(
       // --- Add initialization step ---
       const initUrl = "http://example.com/initpool";
       const mockInitPage = createMockPage();
-      mockAxiosGet.mockRejectedValueOnce(
-        new Error("Axios fallback failed for init"),
-      ); // Ensure browser path
+      mockAxiosGet.mockRejectedValueOnce(new Error("Axios fallback failed for init")); // Ensure browser path
       mockAcquirePage.mockResolvedValueOnce(mockInitPage); // Provide a page
       try {
         await engine.fetchHTML(initUrl);
@@ -280,10 +263,9 @@ describe(
 
     it("should handle errors during HTTP fallback", async () => {
       // Mock fetchHTMLWithHttpFallback to reject
-      vi.spyOn(
-        PlaywrightEngine.prototype as any,
-        "fetchHTMLWithHttpFallback",
-      ).mockRejectedValue(new Error("HTTP Fallback Failed"));
+      vi.spyOn(PlaywrightEngine.prototype as any, "fetchHTMLWithHttpFallback").mockRejectedValue(
+        new Error("HTTP Fallback Failed")
+      );
 
       engine = new PlaywrightEngine({ useHttpFallback: true });
       // We expect it to fail the fallback, then proceed to playwright (which is mocked to succeed)
@@ -294,34 +276,24 @@ describe(
 
     it("should handle pool acquirePage errors", async () => {
       // Mock acquirePage to reject
-      vi.mocked(PlaywrightBrowserPool.prototype.acquirePage).mockRejectedValue(
-        new Error("Pool Error"),
-      );
+      vi.mocked(PlaywrightBrowserPool.prototype.acquirePage).mockRejectedValue(new Error("Pool Error"));
       engine = new PlaywrightEngine({ useHttpFallback: false }); // Disable fallback
 
-      await expect(
-        engine.fetchHTML("http://example.com/pool-error"),
-      ).rejects.toThrow(
-        /Fetch failed after/, // Check for the final error message after retries
+      await expect(engine.fetchHTML("http://example.com/pool-error")).rejects.toThrow(
+        /Fetch failed after/ // Check for the final error message after retries
       );
-      expect(PlaywrightBrowserPool.prototype.acquirePage).toHaveBeenCalledTimes(
-        1 + 3,
-      ); // Initial + 3 retries
+      expect(PlaywrightBrowserPool.prototype.acquirePage).toHaveBeenCalledTimes(1 + 3); // Initial + 3 retries
     });
 
     it("should handle page.goto errors", async () => {
       // Mock page.goto to reject
       const mockPage = createMockPage();
       vi.mocked(browserPoolMock.acquirePage).mockResolvedValue(mockPage);
-      vi.mocked(mockPage.goto).mockRejectedValue(
-        new Error("Navigation Failed"),
-      );
+      vi.mocked(mockPage.goto).mockRejectedValue(new Error("Navigation Failed"));
 
       engine = new PlaywrightEngine({ useHttpFallback: false });
-      await expect(
-        engine.fetchHTML("http://example.com/goto-error"),
-      ).rejects.toThrow(
-        /Fetch failed after/, // Final error after retries
+      await expect(engine.fetchHTML("http://example.com/goto-error")).rejects.toThrow(
+        /Fetch failed after/ // Final error after retries
       );
       expect(mockPage.goto).toHaveBeenCalledTimes(1 + 3); // Initial + 3 retries
     });
@@ -338,10 +310,8 @@ describe(
         useHttpFallback: false,
       }); // 2 retries
 
-      await expect(
-        engine.fetchHTML("http://example.com/retry-fail"),
-      ).rejects.toThrow(
-        /Fetch failed after 2 retries: Playwright navigation failed: Consistent Fail/,
+      await expect(engine.fetchHTML("http://example.com/retry-fail")).rejects.toThrow(
+        /Fetch failed after 2 retries: Playwright navigation failed: Consistent Fail/
       );
 
       // acquirePage called once initially
@@ -357,9 +327,7 @@ describe(
       vi.mocked(mockPage.goto)
         .mockRejectedValueOnce(new Error("Fast Mode Fail"))
         .mockResolvedValue(createMockResponse()); // Succeed on second (thorough) try
-      vi.mocked(mockPage.content).mockResolvedValue(
-        "<html>Thorough Success</html>",
-      );
+      vi.mocked(mockPage.content).mockResolvedValue("<html>Thorough Success</html>");
       vi.mocked(mockPage.title).mockResolvedValue("Thorough Title");
 
       engine = new PlaywrightEngine({
@@ -370,9 +338,7 @@ describe(
       });
 
       // Mock simulateHumanBehavior before calling fetchHTML
-      const simulateSpy = vi
-        .spyOn(engine as any, "simulateHumanBehavior")
-        .mockResolvedValue(undefined);
+      const simulateSpy = vi.spyOn(engine as any, "simulateHumanBehavior").mockResolvedValue(undefined);
 
       const result = await engine.fetchHTML("http://example.com/fast-fail");
 
@@ -391,5 +357,5 @@ describe(
   {
     // Increase timeout for tests involving retries and delays
     timeout: 20000,
-  },
+  }
 );

@@ -42,11 +42,11 @@ async function runEngine(
 async function main() {
   console.log("Starting Fetch Engine examples...");
 
-  //   const fetchEngine = new FetchEngine();
-  //   await runEngine("FetchEngine", fetchEngine, urlsToFetch);
+  const fetchEngine = new FetchEngine();
+  await runEngine("FetchEngine", fetchEngine, urlsToFetch);
 
-  //   const playwrightEngine = new PlaywrightEngine(playwrightConfig);
-  //   await runEngine("PlaywrightEngine", playwrightEngine, urlsToFetch);
+  const playwrightEngine = new PlaywrightEngine(playwrightConfig);
+  await runEngine("PlaywrightEngine", playwrightEngine, urlsToFetch);
 
   const hybridEngine = new HybridEngine(playwrightConfig); // Instantiate HybridEngine
   await runEngine("HybridEngine", hybridEngine, urlsToFetch); // Run HybridEngine

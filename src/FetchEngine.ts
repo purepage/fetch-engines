@@ -36,8 +36,7 @@ export class FetchEngine implements IEngine {
     this.headers = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.5",
       "Upgrade-Insecure-Requests": "1",
       "Sec-Fetch-Dest": "document",
@@ -64,10 +63,7 @@ export class FetchEngine implements IEngine {
 
       if (!response.ok) {
         // Throw the custom error with status code
-        throw new FetchEngineHttpError(
-          `HTTP error! status: ${response.status}`,
-          response.status,
-        );
+        throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
       }
 
       const contentType = response.headers.get("content-type") || "";
@@ -86,9 +82,7 @@ export class FetchEngine implements IEngine {
       if (isSPA) {
         // Removed throwing error here, as the calling code should decide how to handle this.
         // Consider adding a flag to the result instead.
-        console.warn(
-          `SPA detected for ${url}, content might be incomplete without JavaScript rendering.`,
-        );
+        console.warn(`SPA detected for ${url}, content might be incomplete without JavaScript rendering.`);
         // Example: return { html, title, url: response.url, isSPA: true };
       }
 
@@ -136,9 +130,7 @@ export class FetchEngine implements IEngine {
     }
 
     // Check for SPA markers (Less reliable)
-    return spaMarkers.some(
-      (selector) => document.querySelector(selector) !== null,
-    );
+    return spaMarkers.some((selector) => document.querySelector(selector) !== null);
   }
 
   /**
