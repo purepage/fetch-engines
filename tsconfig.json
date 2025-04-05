@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    /* Base Options */
+    "esModuleInterop": true, // Enables compatibility with CommonJS modules
+    "skipLibCheck": true, // Skip type checking of declaration files
+    "target": "ES2022", // Updated target to align with NodeNext
+    "allowJs": true, // Allow JavaScript files to be compiled
+    "resolveJsonModule": true, // Include modules imported with .json extension
+    "moduleDetection": "force", // Treat files as modules, regardless of imports/exports
+    "isolatedModules": true, // Ensure files can be safely transpiled without relying on other imports
+
+    /* Strict Type Checking */
+    "strict": true, // Enable all strict type-checking options
+    "noUnusedLocals": true, // Report errors on unused local variables
+    "noUnusedParameters": true, // Report errors on unused parameters
+    "noFallthroughCasesInSwitch": true, // Report errors for fallthrough cases in switch statement
+
+    /* Module Resolution */
+    "module": "NodeNext", // Use native Node.js ESM
+    "moduleResolution": "NodeNext", // Use modern module resolution
+    "outDir": "./dist", // Redirect output structure to the directory
+    "rootDir": "./src", // Specify the root directory of input files
+    "baseUrl": "./", // Base directory to resolve non-relative module names
+
+    /* Source Map Options */
+    "sourceMap": true, // Generate corresponding '.map' file
+    "declaration": true, // Generate corresponding '.d.ts' file
+    "declarationMap": true, // Generate a sourcemap for each corresponding '.d.ts' file
+
+    /* Library Options */
+    "lib": ["ES2022", "DOM"], // Updated lib to align with target
+
+    /* Experimental Options */
+    // "experimentalDecorators": true,
+    // "emitDecoratorMetadata": true,
+
+    /* Advanced Options */
+    "forceConsistentCasingInFileNames": true // Disallow inconsistently-cased references to the same file
+  },
+  "include": ["src/**/*"], // Specifies the files TypeScript should check
+  "exclude": ["node_modules", "dist", "tests", "examples"] // Specifies files to skip type checking
+}
