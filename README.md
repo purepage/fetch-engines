@@ -2,7 +2,7 @@
 
 A collection of configurable engines for fetching HTML content using plain `fetch` or Playwright.
 
-This package provides robust and customizable ways to retrieve web page content, handling retries, caching, user agents, and optional browser automation via Playwright for complex JavaScript-driven sites.
+This package provides robust and customisable ways to retrieve web page content, handling retries, caching, user agents, and optional browser automation via Playwright for complex JavaScript-driven sites.
 
 ## Installation
 
@@ -119,7 +119,7 @@ main();
 
 ## Configuration
 
-Engines accept an optional configuration object in their constructor to customize behavior.
+Engines accept an optional configuration object in their constructor to customise behavior.
 
 ### FetchEngine
 
