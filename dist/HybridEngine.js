@@ -32,10 +32,7 @@ export class HybridEngine {
     }
     async cleanup() {
         // Cleanup both engines concurrently
-        await Promise.allSettled([
-            this.fetchEngine.cleanup(),
-            this.playwrightEngine.cleanup(),
-        ]);
+        await Promise.allSettled([this.fetchEngine.cleanup(), this.playwrightEngine.cleanup()]);
     }
     getMetrics() {
         // FetchEngine doesn't produce metrics, only PlaywrightEngine does

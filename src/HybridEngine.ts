@@ -1,10 +1,6 @@
 import { FetchEngine } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
-import type {
-  HTMLFetchResult,
-  BrowserMetrics,
-  PlaywrightEngineConfig,
-} from "./types.js";
+import type { HTMLFetchResult, BrowserMetrics, PlaywrightEngineConfig } from "./types.js";
 import { IEngine } from "./IEngine.js";
 
 /**
@@ -40,10 +36,7 @@ export class HybridEngine implements IEngine {
 
   async cleanup(): Promise<void> {
     // Cleanup both engines concurrently
-    await Promise.allSettled([
-      this.fetchEngine.cleanup(),
-      this.playwrightEngine.cleanup(),
-    ]);
+    await Promise.allSettled([this.fetchEngine.cleanup(), this.playwrightEngine.cleanup()]);
   }
 
   getMetrics(): BrowserMetrics[] {

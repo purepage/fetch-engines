@@ -1,14 +1,11 @@
 // Use playwright-extra via require
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const playwrightExtra = require("playwright-extra");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue"; // Restored
 // REMOVED import EventEmitter from "events"; // Import EventEmitter
 // Use require for CJS interop
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 // const Debug = require("debug");
 // import * as Debug from "debug"; // Changed back to import
 // import Debug from "debug"; // Try default import
@@ -233,8 +230,7 @@ export class PlaywrightBrowserPool {
             }
             let bestInstance = null;
             for (const instance of this.pool) {
-                if (instance.isHealthy &&
-                    instance.pages.size < this.maxPagesPerContext) {
+                if (instance.isHealthy && instance.pages.size < this.maxPagesPerContext) {
                     if (!bestInstance || instance.pages.size < bestInstance.pages.size) {
                         bestInstance = instance;
                     }
@@ -304,8 +300,7 @@ export class PlaywrightBrowserPool {
                 }
                 if (!shouldRemove &&
                     this.maxBrowserAge > 0 &&
-                    now.getTime() - instance.metrics.createdAt.getTime() >
-                        this.maxBrowserAge) {
+                    now.getTime() - instance.metrics.createdAt.getTime() > this.maxBrowserAge) {
                     shouldRemove = true;
                     reason = "max age reached";
                 }
@@ -313,8 +308,7 @@ export class PlaywrightBrowserPool {
                     this.pool.size > 1 &&
                     instance.pages.size === 0 &&
                     this.maxIdleTime > 0 &&
-                    now.getTime() - instance.metrics.lastUsed.getTime() >
-                        this.maxIdleTime) {
+                    now.getTime() - instance.metrics.lastUsed.getTime() > this.maxIdleTime) {
                     shouldRemove = true;
                     reason = "idle timeout";
                 }
@@ -343,7 +337,8 @@ export class PlaywrightBrowserPool {
     /**
      * Closes and removes a browser instance from the pool.
      */
-    async closeAndRemoveInstance(instance, _reason) {
+    async closeAndRemoveInstance(instance, _reason // Reason is unused, prefixed
+    ) {
         const removed = this.pool.delete(instance);
         if (!removed)
             return;
