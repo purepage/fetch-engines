@@ -7,12 +7,12 @@ This document outlines the functional and non-functional requirements for the `@
 - **FR1.1:** The package MUST provide programmatic interfaces (Engines) to fetch the HTML content of a web page given its URL.
 - **FR1.2:** Engines MUST return a structured result object (`FetchResult`) upon completion (successful or otherwise).
 - **FR1.3:** The `FetchResult` object MUST contain:
-    - `html`: The retrieved HTML content as a string.
-    - `title`: The extracted content of the `<title>` tag, or `null`.
-    - `url`: The final URL after any redirects.
-    - `isFromCache`: A boolean indicating if the result was served from cache.
-    - `statusCode`: The HTTP status code of the final response (if available).
-    - `error`: An error object if the fetch operation ultimately failed after all attempts.
+  - `html`: The retrieved HTML content as a string.
+  - `title`: The extracted content of the `<title>` tag, or `null`.
+  - `url`: The final URL after any redirects.
+  - `isFromCache`: A boolean indicating if the result was served from cache.
+  - `statusCode`: The HTTP status code of the final response (if available).
+  - `error`: An error object if the fetch operation ultimately failed after all attempts.
 
 ## 2. FetchEngine
 
@@ -25,17 +25,17 @@ This document outlines the functional and non-functional requirements for the `@
 - **FR3.1:** The package MUST provide a `PlaywrightEngine` that uses Playwright to control a headless browser for retrieving HTML.
 - **FR3.2:** The `PlaywrightEngine` MUST be capable of rendering JavaScript on the target page before extracting HTML.
 - **FR3.3:** The `PlaywrightEngine` MUST implement a configurable retry mechanism for failed fetch attempts.
-    - **FR3.3.1:** The number of retries MUST be configurable.
-    - **FR3.3.2:** The delay between retries MUST be configurable.
+  - **FR3.3.1:** The number of retries MUST be configurable.
+  - **FR3.3.2:** The delay between retries MUST be configurable.
 - **FR3.4:** The `PlaywrightEngine` MUST implement a configurable in-memory caching mechanism for fetch results.
-    - **FR3.4.1:** The cache Time-To-Live (TTL) MUST be configurable.
-    - **FR3.4.2:** Caching MUST be disableable.
+  - **FR3.4.1:** The cache Time-To-Live (TTL) MUST be configurable.
+  - **FR3.4.2:** Caching MUST be disableable.
 - **FR3.5:** The `PlaywrightEngine` MUST integrate `playwright-extra` and the `puppeteer-extra-plugin-stealth` plugin automatically to help bypass bot detection.
 - **FR3.6:** The `PlaywrightEngine` MUST manage an internal pool of Playwright browser instances.
-    - **FR3.6.1:** The maximum number of concurrent browser instances MUST be configurable.
-    - **FR3.6.2:** Browser instance recycling parameters (max pages per context, max browser age) MUST be configurable.
-    - **FR3.6.3:** Resource blocking (domains, resource types) within the browser pool MUST be configurable.
-    - **FR3.6.4:** Proxy usage for browser instances MUST be configurable.
+  - **FR3.6.1:** The maximum number of concurrent browser instances MUST be configurable.
+  - **FR3.6.2:** Browser instance recycling parameters (max pages per context, max browser age) MUST be configurable.
+  - **FR3.6.3:** Resource blocking (domains, resource types) within the browser pool MUST be configurable.
+  - **FR3.6.4:** Proxy usage for browser instances MUST be configurable.
 - **FR3.7:** The `PlaywrightEngine` MUST provide an optional "HTTP fallback" mode, attempting a simple GET request before launching a full browser session.
 - **FR3.8:** The `PlaywrightEngine` MUST provide an optional "headed mode fallback", automatically using a visible browser for subsequent attempts to a domain if an initial headless attempt fails.
 - **FR3.9:** The `PlaywrightEngine` MUST provide a `cleanup()` method to gracefully shut down all managed browser instances and release resources. This method MUST be explicitly called by the user when finished.
@@ -61,4 +61,4 @@ This document outlines the functional and non-functional requirements for the `@
 - **NFR6.2:** The package MUST be written in TypeScript and provide type definitions.
 - **NFR6.3:** The package MUST include documentation (e.g., a `README.md`) explaining installation, usage, configuration, and API.
 - **NFR6.4:** If `PlaywrightEngine` or `HybridEngine` are used, the user MUST be instructed to install Playwright browser binaries separately.
-- **NFR6.5:** The package MUST be licensed under a permissive open-source license (e.g., MIT). 
+- **NFR6.5:** The package MUST be licensed under a permissive open-source license (e.g., MIT).
