@@ -5,6 +5,7 @@ import PQueue from "p-queue";
 import type { Route, Page, /* BrowserContext, */ Response as PlaywrightResponse } from "playwright"; // Removed unused BrowserContext
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
+import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
 
 function delay(time: number): Promise<void> {
   // Added return type
@@ -28,11 +29,7 @@ export class PlaywrightEngine implements IEngine {
   private browserPool: PlaywrightBrowserPool | null = null;
   private readonly queue: PQueue;
   private readonly cache: Map<string, CacheEntry> = new Map();
-  private readonly config: Omit<
-    Required<PlaywrightEngineConfig>,
-    "useStealthMode" | "randomizeFingerprint" | "evasionLevel"
-  > &
-    PlaywrightEngineConfig;
+  private readonly config: Required<PlaywrightEngineConfig>;
 
   // Browser pooling safety flags
   private initializingBrowserPool: boolean = false;
@@ -40,10 +37,7 @@ export class PlaywrightEngine implements IEngine {
   private headedFallbackSites: Set<string> = new Set(); // Stores domains marked for headed mode
 
   // Default configuration - Ensure all required fields are present
-  private static readonly DEFAULT_CONFIG: Omit<
-    Required<PlaywrightEngineConfig>,
-    "useStealthMode" | "randomizeFingerprint" | "evasionLevel"
-  > = {
+  private static readonly DEFAULT_CONFIG: Required<PlaywrightEngineConfig> = {
     concurrentPages: 3,
     maxRetries: 3,
     retryDelay: 5000,
@@ -60,6 +54,7 @@ export class PlaywrightEngine implements IEngine {
     poolBlockedResourceTypes: [],
     proxy: undefined as any,
     useHeadedMode: false, // ADDED default
+    markdown: false, // Default markdown to false
   };
 
   /**
@@ -70,20 +65,7 @@ export class PlaywrightEngine implements IEngine {
    */
   constructor(config: PlaywrightEngineConfig = {}) {
     // Merge provided config with defaults
-    const mergedConfig = { ...PlaywrightEngine.DEFAULT_CONFIG, ...config };
-
-    // Remove the obsolete stealth keys if they were passed in config
-    delete (mergedConfig as any).useStealthMode;
-    delete (mergedConfig as any).randomizeFingerprint;
-    delete (mergedConfig as any).evasionLevel;
-
-    // Assign cleaned config - type should now match
-    this.config = mergedConfig as Omit<
-      Required<PlaywrightEngineConfig>,
-      "useStealthMode" | "randomizeFingerprint" | "evasionLevel"
-    > &
-      PlaywrightEngineConfig;
-
+    this.config = { ...PlaywrightEngine.DEFAULT_CONFIG, ...config };
     this.queue = new PQueue({ concurrency: this.config.concurrentPages });
   }
 
@@ -181,13 +163,26 @@ export class PlaywrightEngine implements IEngine {
         throw new FetchError("Received challenge page via HTTP fallback", "ERR_CHALLENGE_PAGE");
       }
 
+      // Apply markdown conversion here if the option is set
+      let finalContent = response.data;
+      if (this.config.markdown) {
+        // Check the engine config
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(response.data);
+        } catch (conversionError) {
+          console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
+          // Fallback to original HTML on conversion error
+        }
+      }
+
       return {
-        html: response.data,
+        html: finalContent, // Return converted or original content
         title: title,
         url: response.request?.res?.responseUrl || response.config.url || url,
-        isFromCache: false, // ADDED
-        statusCode: response.status, // ADDED
-        error: undefined, // ADDED
+        isFromCache: false,
+        statusCode: response.status,
+        error: undefined,
       };
     } catch (error: any) {
       // Wrap non-FetchErrors
@@ -287,121 +282,137 @@ export class PlaywrightEngine implements IEngine {
    * @returns A Promise resolving to an HTMLFetchResult object.
    * @throws {FetchError} If the fetch fails after all retries or encounters critical errors.
    */
-  async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
-    // Start the recursive fetch process with initial retry counts
-    return this._fetchRecursive(url, options, 0, 0);
+  async fetchHTML(url: string, options: FetchOptions & { markdown?: boolean } = {}): Promise<HTMLFetchResult> {
+    const fetchConfig = {
+      ...this.config,
+      markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
+      fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
+    };
+    // Type assertion needed here as fetchConfig is slightly broader than the recursive fn expects
+    return this._fetchRecursive(url, fetchConfig as any, 0, 0);
   }
 
   /**
    * Internal recursive method to handle fetching with retries.
    *
    * @param url URL to fetch
-   * @param options Original fetch options (e.g., fastMode override)
+   * @param currentConfig The merged configuration including markdown option
    * @param retryAttempt Current retry attempt number (starts at 0)
    * @param parentRetryCount Tracks retries related to pool initialization errors (starts at 0)
    * @returns Promise resolving to HTMLFetchResult
    */
   private async _fetchRecursive(
     url: string,
-    options: FetchOptions,
+    // Use Required<...> to ensure all properties are present for internal logic
+    currentConfig: Required<
+      FetchOptions & {
+        markdown: boolean;
+        retryDelay: number;
+        maxRetries: number;
+        useHttpFallback: boolean;
+        useHeadedModeFallback: boolean;
+        useHeadedMode: boolean;
+      }
+    >,
     retryAttempt: number,
     parentRetryCount: number
   ): Promise<HTMLFetchResult> {
-    const useFastMode = options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode;
+    const useFastMode = currentConfig.fastMode;
 
-    // Check cache first
     if (retryAttempt === 0 && parentRetryCount === 0) {
-      // Only check cache on the very first try
       const cachedResult = this.checkCache(url);
       if (cachedResult) {
+        if (
+          currentConfig.markdown &&
+          !cachedResult.html.startsWith("#") &&
+          !cachedResult.html.includes("\n\n---\n\n")
+        ) {
+          try {
+            const converter = new MarkdownConverter();
+            cachedResult.html = converter.convert(cachedResult.html);
+          } catch (e) {
+            console.error("Failed to convert cached result to markdown", e);
+          }
+        } else if (
+          !currentConfig.markdown &&
+          (cachedResult.html.startsWith("#") || cachedResult.html.includes("\n\n---\n\n"))
+        ) {
+          console.warn("Cached result is Markdown, but HTML was requested. Re-fetching.");
+          this.cache.delete(url);
+          return this._fetchRecursive(url, currentConfig, 0, 0);
+        }
         return cachedResult;
       }
     }
 
     try {
-      // Try HTTP fallback first if enabled and it's the first attempt
-      if (this.config.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
+      if (currentConfig.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
         try {
           const httpResult = await this.fetchHTMLWithHttpFallback(url);
           if (this.config.cacheTTL > 0) {
-            this.addToCache(url, httpResult as HTMLFetchResult);
+            this.addToCache(url, httpResult);
           }
           return httpResult;
         } catch (httpError: any) {
           if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
-            // Challenge page detected, proceed to Playwright within this try block
+            /* Continue */
           } else {
-            // Other HTTP error, log it maybe, but proceed to Playwright anyway
-            // console.warn(`HTTP fallback failed (non-challenge): ${httpError.message}`);
-            // DO NOT re-throw here, let Playwright attempt run
+            /* Log? Continue */
           }
         }
       }
 
-      // Determine if headed mode should be used for this attempt
       const useHeadedMode =
-        (this.config.useHeadedModeFallback && (retryAttempt >= 2 || this.shouldUseHeadedMode(url))) ||
-        this.config.useHeadedMode;
+        (currentConfig.useHeadedModeFallback && (retryAttempt >= 2 || this.shouldUseHeadedMode(url))) ||
+        currentConfig.useHeadedMode;
 
-      // Ensure pool is initialized in the correct mode (headed/headless)
       try {
         if (!this.browserPool || this.isUsingHeadedMode !== useHeadedMode) {
           await this.initializeBrowserPool(useHeadedMode);
         }
       } catch (initError) {
-        // If pool init fails, retry the entire fetchHTML call (limited times)
         if (parentRetryCount < 1) {
-          await delay(this.config.retryDelay);
-          // Retry the recursive call, incrementing parentRetryCount
-          return this._fetchRecursive(url, options, retryAttempt, parentRetryCount + 1);
+          await delay(currentConfig.retryDelay);
+          return this._fetchRecursive(url, currentConfig, retryAttempt, parentRetryCount + 1);
         }
         throw new FetchError(
-          `Browser pool initialization failed: ${(initError as Error).message}`,
+          `Pool init failed: ${(initError as Error).message}`,
           "ERR_POOL_INIT_FAILED",
           initError as Error
         );
       }
 
-      // If pool still isn't available after potential init, throw.
       if (!this.browserPool) {
-        throw new FetchError("Browser pool is not available.", "ERR_POOL_UNAVAILABLE");
+        throw new FetchError("Browser pool unavailable.", "ERR_POOL_UNAVAILABLE");
       }
 
-      // Execute the actual Playwright fetch within the queue
-      const result = await this.queue.add(() => this.fetchWithPlaywright(url, this.browserPool!, useFastMode));
+      // Pass markdown setting to Playwright fetch
+      const result = await this.queue.add(() =>
+        this.fetchWithPlaywright(url, this.browserPool!, useFastMode, currentConfig.markdown)
+      );
 
-      // Cache successful Playwright result if caching is enabled
       if (result && this.config.cacheTTL > 0) {
-        this.addToCache(url, result as HTMLFetchResult);
+        this.addToCache(url, result);
       }
-      // Need to ensure we return HTMLFetchResult or throw
       if (!result) {
-        throw new FetchError("Playwright fetch did not return a result from the queue.", "ERR_QUEUE_NO_RESULT");
+        throw new FetchError("Playwright fetch queued but no result.", "ERR_QUEUE_NO_RESULT");
       }
       return result;
     } catch (error: any) {
-      // --- CATCH BLOCK for the *entire* attempt (Fallback + Playwright) ---
-
-      // Retry Logic:
-      // 1. If in fast mode and this was the first *overall* attempt, retry in thorough mode immediately.
       if (useFastMode && retryAttempt === 0 && parentRetryCount === 0) {
-        return this._fetchRecursive(url, { ...options, fastMode: false }, 0, parentRetryCount);
+        return this._fetchRecursive(url, { ...currentConfig, fastMode: false }, 0, parentRetryCount);
+      }
+      if (retryAttempt < currentConfig.maxRetries) {
+        await delay(currentConfig.retryDelay);
+        return this._fetchRecursive(url, currentConfig, retryAttempt + 1, parentRetryCount);
       }
 
-      // 2. If retries are left, delay and retry with the *same* mode settings.
-      if (retryAttempt < this.config.maxRetries) {
-        await delay(this.config.retryDelay);
-        return this._fetchRecursive(url, options, retryAttempt + 1, parentRetryCount);
-      }
-
-      // 3. Max retries exhausted, NOW throw the final aggregated error
       const finalError =
         error instanceof FetchError
           ? error
           : new FetchError(`Fetch failed: ${error.message}`, "ERR_FETCH_FAILED", error);
-      // IMPORTANT: Use a clear message indicating retries are done.
       throw new FetchError(
-        `Fetch failed after ${this.config.maxRetries} retries: ${finalError.message}`,
+        `Fetch failed after ${currentConfig.maxRetries} retries: ${finalError.message}`,
         finalError.code,
         finalError.originalError || error
       );
@@ -415,7 +426,8 @@ export class PlaywrightEngine implements IEngine {
   private async fetchWithPlaywright(
     url: string,
     pool: PlaywrightBrowserPool,
-    fastMode: boolean
+    fastMode: boolean,
+    convertToMarkdown: boolean
   ): Promise<HTMLFetchResult> {
     let page: Page | null = null;
     try {
@@ -462,13 +474,25 @@ export class PlaywrightEngine implements IEngine {
       const html = await page.content();
       const title = await page.title();
 
+      // Apply markdown conversion here
+      let finalContent = html;
+      if (convertToMarkdown) {
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(html);
+        } catch (conversionError) {
+          console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
+          // Fallback to original HTML
+        }
+      }
+
       return {
-        html,
+        html: finalContent, // Return converted or original
         title,
-        url: page.url(), // Get final URL from page
-        isFromCache: false, // ADDED
-        statusCode: response.status(), // ADDED
-        error: undefined, // ADDED
+        url: page.url(),
+        isFromCache: false,
+        statusCode: response.status(),
+        error: undefined,
       };
     } finally {
       if (page) {

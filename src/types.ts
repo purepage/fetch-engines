@@ -150,6 +150,11 @@ export interface PlaywrightEngineConfig {
    * @default false
    */
   useHeadedMode?: boolean; // Added missing config option identified during README creation
+  /**
+   * If true, the fetched HTML content will be converted to Markdown.
+   * @default false
+   */
+  markdown?: boolean; // Add the new markdown option
 }
 
 /**

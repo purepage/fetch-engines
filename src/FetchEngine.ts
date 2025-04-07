@@ -1,6 +1,7 @@
 import type { HTMLFetchResult, BrowserMetrics } from "./types.js"; // Added .js extension
 import type { IEngine } from "./IEngine.js"; // Added .js extension
 import { JSDOM } from "jsdom";
+import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
 
 /**
  * Custom error class for HTTP errors from FetchEngine.
@@ -19,6 +20,12 @@ export class FetchEngineHttpError extends Error {
   }
 }
 
+// Define FetchEngine Options
+export interface FetchEngineOptions {
+  markdown?: boolean;
+  // We can add other fetch-specific options here later if needed
+}
+
 /**
  * FetchEngine - A lightweight engine for fetching HTML content using the standard `fetch` API.
  *
@@ -27,12 +34,15 @@ export class FetchEngineHttpError extends Error {
  */
 export class FetchEngine implements IEngine {
   private readonly headers: Record<string, string>;
+  private readonly options: FetchEngineOptions; // Store options
 
   /**
    * Creates an instance of FetchEngine.
-   * Note: This engine currently does not accept configuration options.
+   * @param options Configuration options for the FetchEngine.
    */
-  constructor() {
+  constructor(options: FetchEngineOptions = {}) {
+    // Accept options
+    this.options = options; // Store options
     this.headers = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -47,7 +57,7 @@ export class FetchEngine implements IEngine {
   }
 
   /**
-   * Fetches HTML content from the specified URL using the `fetch` API.
+   * Fetches HTML or converts to Markdown from the specified URL.
    *
    * @param url The URL to fetch.
    * @returns A Promise resolving to an HTMLFetchResult object.
@@ -55,81 +65,101 @@ export class FetchEngine implements IEngine {
    * @throws {Error} If the content type is not HTML or for other network errors.
    */
   async fetchHTML(url: string): Promise<HTMLFetchResult> {
+    let htmlContent: string;
+    let responseStatus: number | undefined;
+    let finalUrl: string;
+
     try {
       const response = await fetch(url, {
         headers: this.headers,
         redirect: "follow",
       });
 
+      responseStatus = response.status;
+      finalUrl = response.url; // Capture final URL after redirects
+
       if (!response.ok) {
-        // Throw the custom error with status code
         throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
       }
 
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("text/html")) {
-        throw new Error("Not an HTML page");
+        throw new Error(`Not an HTML page (Content-Type: ${contentType})`);
       }
 
-      const html = await response.text();
+      htmlContent = await response.text();
+    } catch (error: unknown) {
+      // Rethrow specific FetchEngineHttpError, otherwise wrap in a generic error
+      if (error instanceof FetchEngineHttpError) {
+        throw error;
+      } else if (error instanceof Error) {
+        throw new Error(`Fetch failed for ${url}: ${error.message}`);
+      } else {
+        throw new Error(`Fetch failed for ${url}: Unknown error`);
+      }
+    }
 
-      // Use JSDOM to parse HTML and extract title
-      const dom = new JSDOM(html);
+    // Process the HTML (Title extraction, Markdown conversion)
+    try {
+      const dom = new JSDOM(htmlContent);
       const title = dom.window.document.title || "";
+      const document = dom.window.document;
 
-      // Check for potential SPA markers
-      const isSPA = this.detectSPA(dom.window.document);
-      if (isSPA) {
-        // Removed throwing error here, as the calling code should decide how to handle this.
-        // Consider adding a flag to the result instead.
-        console.warn(`SPA detected for ${url}, content might be incomplete without JavaScript rendering.`);
-        // Example: return { html, title, url: response.url, isSPA: true };
+      // Perform Markdown conversion if requested
+      let finalContent = htmlContent;
+      if (this.options.markdown) {
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(htmlContent);
+          // Optional: If markdown is requested, maybe clear the title? Or keep it?
+          // title = ""; // Decide if title is relevant for Markdown output
+        } catch (conversionError) {
+          console.error(`Markdown conversion failed for ${url}:`, conversionError);
+          // Decide behavior: return original HTML or throw/return error indication?
+          // Returning original HTML for now
+          finalContent = htmlContent;
+        }
+      }
+
+      // Consider SPA detection - maybe add a flag to the result? Currently just warns.
+      if (!this.options.markdown && this.detectSPA(document)) {
+        console.warn(`SPA detected for ${url}, HTML content might be incomplete.`);
       }
 
       return {
-        html,
+        html: finalContent, // Return original HTML or Markdown
         title,
-        url: response.url,
-        isFromCache: false, // FetchEngine doesn't cache
-        statusCode: response.status,
-        error: undefined,
+        url: finalUrl,
+        isFromCache: false,
+        statusCode: responseStatus,
+        error: undefined, // No error at this stage if successful
       };
-    } catch (error: any) {
-      // console.error(`FetchEngine failed for ${url}:`, error); // Optional: Keep logging if desired
-      // Re-throw the original error to preserve its type (e.g., FetchEngineHttpError)
-      // Ensure the result conforms to HTMLFetchResult even on error (for consistency? No, spec says throw)
-      throw error;
+    } catch (processingError: unknown) {
+      console.error(`Error processing HTML for ${url}:`, processingError);
+      // If processing fails after successful fetch, return raw HTML with an error indicator? Or throw?
+      // Throwing for now, as the processing step is part of the expected operation.
+      const message = processingError instanceof Error ? processingError.message : "Unknown processing error";
+      throw new Error(`Failed to process content for ${url}: ${message}`);
     }
   }
 
   private detectSPA(document: Document): boolean {
-    // Check for common SPA frameworks and patterns
     const spaMarkers = [
-      // React
       "[data-reactroot]",
       "#root",
       "#app",
-      // Vue
       "[data-v-app]",
       "#app[data-v-]",
-      // Angular
       "[ng-version]",
       "[ng-app]",
-      // Common SPA patterns
-      'script[type="application/json+ld"]', // Less reliable marker
+      'script[type="application/json+ld"]',
       'meta[name="fragment"]',
     ];
-
-    // Check if the body is nearly empty but has JS (More reliable)
     const bodyContent = document.body?.textContent?.trim() || "";
     const hasScripts = document.scripts.length > 0;
-
     if (bodyContent.length < 150 && hasScripts) {
-      // Increased threshold slightly
       return true;
     }
-
-    // Check for SPA markers (Less reliable)
     return spaMarkers.some((selector) => document.querySelector(selector) !== null);
   }
 
@@ -139,8 +169,7 @@ export class FetchEngine implements IEngine {
    * @returns A Promise that resolves when cleanup is complete.
    */
   async cleanup(): Promise<void> {
-    // No resources to clean up for fetch engine
-    return Promise.resolve(); // Explicitly return resolved promise
+    return Promise.resolve();
   }
 
   /**
@@ -149,7 +178,6 @@ export class FetchEngine implements IEngine {
    * @returns An empty array.
    */
   getMetrics(): BrowserMetrics[] {
-    // Fetch engine doesn't maintain browser pool metrics
     return [];
   }
 }
