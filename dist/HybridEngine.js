@@ -7,35 +7,39 @@ import { PlaywrightEngine } from "./PlaywrightEngine.js";
 export class HybridEngine {
     fetchEngine;
     playwrightEngine;
-    constructor(playwrightConfig = {}) {
-        this.fetchEngine = new FetchEngine();
-        this.playwrightEngine = new PlaywrightEngine(playwrightConfig);
+    options;
+    constructor(options = {}) {
+        this.options = options;
+        this.fetchEngine = new FetchEngine({ markdown: this.options.markdown });
+        this.playwrightEngine = new PlaywrightEngine(this.options);
     }
-    async fetchHTML(url) {
+    async fetchHTML(url, requestOptions = {}) {
+        const useMarkdown = requestOptions.markdown === undefined ? this.options.markdown : requestOptions.markdown;
         try {
-            // Attempt 1: Use the fast FetchEngine
             const fetchResult = await this.fetchEngine.fetchHTML(url);
+            if (!useMarkdown && this.options.markdown) {
+                const likelyMarkdown = fetchResult.html.startsWith("#") || fetchResult.html.includes("\n\n---\n\n\n");
+                if (likelyMarkdown) {
+                    console.warn(`HybridEngine: FetchEngine returned Markdown, but HTML requested for ${url}. Falling back to Playwright.`);
+                    throw new Error("FetchEngine returned unwanted Markdown format.");
+                }
+            }
             return fetchResult;
         }
-        catch (_fetchError) {
-            // Prefixed unused error
-            // If FetchEngine fails (e.g., 403, network error, non-html), try Playwright
+        catch (fetchError) {
             try {
-                const playwrightResult = await this.playwrightEngine.fetchHTML(url);
+                const playwrightResult = await this.playwrightEngine.fetchHTML(url, { markdown: useMarkdown });
                 return playwrightResult;
             }
             catch (playwrightError) {
-                // If Playwright also fails, throw its error (potentially more informative)
                 throw playwrightError;
             }
         }
     }
     async cleanup() {
-        // Cleanup both engines concurrently
         await Promise.allSettled([this.fetchEngine.cleanup(), this.playwrightEngine.cleanup()]);
     }
     getMetrics() {
-        // FetchEngine doesn't produce metrics, only PlaywrightEngine does
         return this.playwrightEngine.getMetrics();
     }
 }

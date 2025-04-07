@@ -117,6 +117,9 @@ export class PlaywrightEngine implements IEngine {
    */
   private async fetchHTMLWithHttpFallback(url: string): Promise<HTMLFetchResult> {
     try {
+      // ---- REMOVED DEBUG LOG ----
+      // console.log(`[DEBUG] Calling axios.get for ${url}`);
+      // -----------------
       const response = await axios.get(url, {
         headers: {
           // Use more standard browser-like headers

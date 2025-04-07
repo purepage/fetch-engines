@@ -7,6 +7,9 @@ export declare class FetchEngineHttpError extends Error {
     readonly statusCode: number;
     constructor(message: string, statusCode: number);
 }
+export interface FetchEngineOptions {
+    markdown?: boolean;
+}
 /**
  * FetchEngine - A lightweight engine for fetching HTML content using the standard `fetch` API.
  *
@@ -15,13 +18,14 @@ export declare class FetchEngineHttpError extends Error {
  */
 export declare class FetchEngine implements IEngine {
     private readonly headers;
+    private readonly options;
     /**
      * Creates an instance of FetchEngine.
-     * Note: This engine currently does not accept configuration options.
+     * @param options Configuration options for the FetchEngine.
      */
-    constructor();
+    constructor(options?: FetchEngineOptions);
     /**
-     * Fetches HTML content from the specified URL using the `fetch` API.
+     * Fetches HTML or converts to Markdown from the specified URL.
      *
      * @param url The URL to fetch.
      * @returns A Promise resolving to an HTMLFetchResult object.

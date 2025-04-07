@@ -4,12 +4,7 @@ import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
 import { HybridEngine } from "../src/HybridEngine.js";
 import { FetchEngine, FetchEngineHttpError } from "../src/FetchEngine.js";
 import { PlaywrightEngine } from "../src/PlaywrightEngine.js";
-import type {
-  HTMLFetchResult,
-  PlaywrightEngineConfig,
-  BrowserMetrics,
-  FetchOptions,
-} from "../src/types.js";
+import type { HTMLFetchResult, PlaywrightEngineConfig, BrowserMetrics } from "../src/types.js";
 
 // Mock the engines
 vi.mock("../src/FetchEngine.js");
@@ -99,17 +94,13 @@ describe("HybridEngine", () => {
   it("FR4.3: should fall back to PlaywrightEngine if FetchEngine fails", async () => {
     const fetchError = new FetchEngineHttpError("Fetch failed", 403);
     mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
-    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(
-      mockPlaywrightResult,
-    );
+    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(mockPlaywrightResult);
 
     const result = await hybridEngine.fetchHTML(testUrl);
 
     expect(result).toBe(mockPlaywrightResult);
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      testUrl,
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl, expect.anything());
   });
 
   it("FR4.3: should throw PlaywrightEngine error if both engines fail", async () => {
@@ -118,14 +109,10 @@ describe("HybridEngine", () => {
     mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
     mockPlaywrightEngineInstance.fetchHTML.mockRejectedValue(playwrightError);
 
-    await expect(hybridEngine.fetchHTML(testUrl)).rejects.toThrow(
-      playwrightError,
-    );
+    await expect(hybridEngine.fetchHTML(testUrl)).rejects.toThrow(playwrightError);
 
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      testUrl,
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl, expect.anything());
   });
 
   it("FR4.4: should pass configuration to PlaywrightEngine", () => {
@@ -146,9 +133,23 @@ describe("HybridEngine", () => {
   });
 
   it("getMetrics should delegate to PlaywrightEngine", () => {
+    const specificMockMetrics: BrowserMetrics[] = [
+      {
+        id: "pw-test-specific",
+        activePages: 2,
+        pagesCreated: 10,
+        errors: 1,
+        isHealthy: false,
+        lastUsed: new Date(),
+        createdAt: new Date(),
+      },
+    ];
+    // Directly modify the return value of the existing mock function for this test
+    mockPlaywrightEngineInstance.getMetrics.mockReturnValue(specificMockMetrics);
+
     const result = hybridEngine.getMetrics();
 
-    expect(result).toBe(exampleMetrics);
+    expect(result).toEqual(specificMockMetrics);
     expect(mockPlaywrightEngineInstance.getMetrics).toHaveBeenCalledTimes(1);
     expect(mockFetchEngineInstance.getMetrics).not.toHaveBeenCalled();
   });

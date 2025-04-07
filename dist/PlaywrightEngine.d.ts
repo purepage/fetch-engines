@@ -54,12 +54,14 @@ export declare class PlaywrightEngine implements IEngine {
      * @returns A Promise resolving to an HTMLFetchResult object.
      * @throws {FetchError} If the fetch fails after all retries or encounters critical errors.
      */
-    fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
+    fetchHTML(url: string, options?: FetchOptions & {
+        markdown?: boolean;
+    }): Promise<HTMLFetchResult>;
     /**
      * Internal recursive method to handle fetching with retries.
      *
      * @param url URL to fetch
-     * @param options Original fetch options (e.g., fastMode override)
+     * @param currentConfig The merged configuration including markdown option
      * @param retryAttempt Current retry attempt number (starts at 0)
      * @param parentRetryCount Tracks retries related to pool initialization errors (starts at 0)
      * @returns Promise resolving to HTMLFetchResult

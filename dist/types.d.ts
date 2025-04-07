@@ -140,6 +140,11 @@ export interface PlaywrightEngineConfig {
      * @default false
      */
     useHeadedMode?: boolean;
+    /**
+     * If true, the fetched HTML content will be converted to Markdown.
+     * @default false
+     */
+    markdown?: boolean;
 }
 /**
  * Options that can be passed per-request to engine.fetchHTML().

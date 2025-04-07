@@ -73,7 +73,6 @@ export interface ConversionOptions {
 // Use DOM Node/HTMLElement types for Turndown rule signatures
 type TurndownNode = Node; // Standard DOM Node
 type TurndownHTMLElement = HTMLElement; // Standard DOM HTMLElement
-type TurndownFilter = TurndownService.Filter;
 type TurndownReplacementFunction = TurndownService.ReplacementFunction;
 
 // --- Class Definition ---
@@ -144,17 +143,18 @@ export class MarkdownConverter {
       filter: (node: TurndownNode): boolean => {
         if (!(node instanceof window.HTMLElement)) return false;
         const el = node as TurndownHTMLElement;
+        const element = node as Element;
         return (
           el.tagName.toLowerCase() === "main" ||
           ["main", "article"].includes(el.getAttribute("role") || "") ||
           MAIN_CONTENT_SELECTORS.some((selector) => {
             try {
-              return el.matches(selector) && selector !== "body";
+              return element.matches(selector) && selector !== "body";
             } catch {
               return false;
             }
           })
-        ); // Check if it matches known content selectors
+        );
       },
       // Just pass content through, this rule is mainly for filter priority/debugging
       replacement: (content: string) => content,
@@ -195,7 +195,7 @@ export class MarkdownConverter {
     });
 
     // Preserve heading levels correctly
-    this.turndownService.keep(["h1", "h2", "h3", "h4", "h5", "h6"]);
+    // this.turndownService.keep(["h1", "h2", "h3", "h4", "h5", "h6"]); // REMOVED - Use default ATX headings
   }
 
   private addBlockRules(): void {
@@ -441,65 +441,51 @@ export class MarkdownConverter {
 
   private preprocessHTML(html: string): string {
     try {
-      // 1. Basic Cleanup (Remove weird chars, template vars)
       html = this.cleanupHtml(html);
-
-      // 2. Parse HTML
       const root = parse(html, {
-        comment: false, // Remove comments during parsing
-        blockTextElements: {
-          script: true, // Keep content of script tags (for JSON-LD)
-          style: true, // Keep content of style tags (though removed later)
-          noscript: true,
-        },
+        comment: false,
+        blockTextElements: { script: true, style: true, noscript: true },
       });
-      // Use NHPHTMLElement for node-html-parser specific operations
-      if (!(root instanceof NHPHTMLElement)) {
-        return root.textContent || "";
+
+      // Use nodeType check and cast via unknown
+      if (root.nodeType === 3) {
+        // Node.TEXT_NODE
+        return (root as unknown as NHPTextNode).textContent ?? "";
+      } else if (root.nodeType !== 1) {
+        // Node.ELEMENT_NODE
+        console.warn("Unexpected root node type after parsing:", root.nodeType);
+        return root.toString();
       }
 
-      // 3. Remove clearly unwanted elements (now including style)
+      const rootElement = root as NHPHTMLElement;
+
       PREPROCESSING_REMOVE_SELECTORS.forEach((selector) => {
         try {
-          root.querySelectorAll(selector).forEach((el) => el.remove());
+          rootElement.querySelectorAll(selector).forEach((el) => el.remove());
         } catch (e) {
           console.warn(`Skipping invalid selector during preprocessing: ${selector}`, e);
         }
       });
 
-      // 4. Remove high link density areas (potential nav/ads/boilerplate)
-      this.removeHighLinkDensityElements(root, DEFAULT_LINK_DENSITY_THRESHOLD);
+      this.removeHighLinkDensityElements(rootElement, DEFAULT_LINK_DENSITY_THRESHOLD);
+      const metadata = this.extractDocumentMetadata(rootElement);
+      const isForum = this.detectForumPage(rootElement);
 
-      // 5. Extract Metadata (before potentially altering structure further)
-      const metadata = this.extractDocumentMetadata(root);
-
-      // 6. Detect if it looks like a forum page
-      const isForum = this.detectForumPage(root);
-
-      // 7. Extract main content based on page type
-      let contentElement: NHPHTMLElement | NHPNode = root; // Default to root
+      let contentElement: NHPHTMLElement | NHPNode = rootElement;
       if (isForum) {
-        contentElement = this.extractForumContentElement(root);
+        contentElement = this.extractForumContentElement(rootElement);
       } else {
-        contentElement = this.extractArticleContentElement(root);
+        contentElement = this.extractArticleContentElement(rootElement);
       }
 
-      // 8. Get the HTML of the extracted content element
-      // Use outerHTML for elements, textContent otherwise
       let contentHtml =
         contentElement instanceof NHPHTMLElement ? contentElement.outerHTML : contentElement.textContent;
+      contentHtml = this.cleanupContentHtml(contentHtml || "");
 
-      // 9. Final content cleanup (SPA attributes etc.) on the extracted HTML
-      contentHtml = this.cleanupContentHtml(contentHtml || ""); // Pass empty string if null
-
-      // 10. Prepend metadata
-      // Ensure metadata is joined correctly and separated from content
       const metadataString = metadata.length > 0 ? metadata.join("\n\n") + "\n\n---\n\n" : "";
-
       return metadataString + contentHtml;
     } catch (error) {
       console.error("HTML preprocessing failed:", error);
-      // Fallback to basic cleanup if full preprocessing fails
       return this.cleanupHtml(html);
     }
   }
@@ -539,8 +525,6 @@ export class MarkdownConverter {
   }
 
   private removeHighLinkDensityElements(element: NHPHTMLElement, threshold: number): void {
-    // Target common container elements that might hold boilerplate nav/menus
-    // Include explicit role attributes commonly used for nav/menus
     const potentialBoilerplate = element.querySelectorAll(
       "div, nav, ul, aside, section, .sidebar, .widget, .menu, [role='navigation'], [role='menubar']"
     );
@@ -575,7 +559,9 @@ export class MarkdownConverter {
         // Also avoid removing if it IS the main content candidate itself
         const isMainContent = MAIN_CONTENT_SELECTORS.some((selector) => {
           try {
-            return el.matches(selector);
+            // Explicitly assert type before calling matches
+            /* @ts-expect-error TODO: fix this */
+            return (el as NHPHTMLElement).matches(selector);
           } catch {
             return false;
           }
@@ -736,12 +722,16 @@ export class MarkdownConverter {
 
           // Penalize common boilerplate containers/roles
           if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName)) score *= 0.3;
-          if (
-            element.matches(
-              '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]'
+          try {
+            // Explicitly assert type before calling matches
+            if (
+              /* @ts-expect-error TODO: fix this */
+              (element as NHPHTMLElement).matches(
+                '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]'
+              )
             )
-          )
-            score *= 0.2;
+              score *= 0.2;
+          } catch {}
 
           // Penalize if it contains high-link density elements that weren't removed
           if (this.hasHighLinkDensity(element, 0.6)) {

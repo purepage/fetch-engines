@@ -7,8 +7,11 @@ import { IEngine } from "./IEngine.js";
 export declare class HybridEngine implements IEngine {
     private readonly fetchEngine;
     private readonly playwrightEngine;
-    constructor(playwrightConfig?: PlaywrightEngineConfig);
-    fetchHTML(url: string): Promise<HTMLFetchResult>;
+    private readonly options;
+    constructor(options?: PlaywrightEngineConfig);
+    fetchHTML(url: string, requestOptions?: {
+        markdown?: boolean;
+    }): Promise<HTMLFetchResult>;
     cleanup(): Promise<void>;
     getMetrics(): BrowserMetrics[];
 }

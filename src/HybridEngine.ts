@@ -1,4 +1,4 @@
-import { FetchEngine, FetchEngineOptions } from "./FetchEngine.js";
+import { FetchEngine } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { HTMLFetchResult, BrowserMetrics, PlaywrightEngineConfig } from "./types.js";
 import { IEngine } from "./IEngine.js";
