@@ -1,7 +1,7 @@
 # @purepageio/fetch-engines
 
 [![npm version](https://img.shields.io/npm/v/@purepageio/fetch-engines.svg)](https://www.npmjs.com/package/@purepageio/fetch-engines)
-[![Build Status](https://github.com/purepageio/fetch-engines/actions/workflows/build.yml/badge.svg)](https://github.com/purepageio/fetch-engines/actions/workflows/build.yml) <!-- Assuming build.yml is the workflow filename -->
+[![Build Status](https://github.com/purepageio/fetch-engines/actions/workflows/build.yml/badge.svg)](https://github.com/purepageio/fetch-engines/actions/workflows/publish.yml) <!-- Assuming build.yml is the workflow filename -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Fetching web content can be complex. You need to handle static HTML, dynamic JavaScript-driven sites, network errors, retries, caching, and potential bot detection measures. Managing browser automation tools like Playwright adds another layer of complexity with resource pooling and stealth configurations.
