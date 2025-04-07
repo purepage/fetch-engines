@@ -62,45 +62,40 @@ export class PlaywrightEngine {
      * Initialize the browser pool with improved error handling and mode switching.
      */
     async initializeBrowserPool(useHeadedMode = false) {
-        // Check if pool exists and is in the correct mode
         if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
-            return; // Already initialized in the correct mode
+            return;
         }
-        // Prevent concurrent initialization attempts
         if (this.initializingBrowserPool) {
             while (this.initializingBrowserPool) {
                 await delay(100);
             }
-            // Re-check if the pool is now in the correct state after waiting
             if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
                 return;
             }
-            // If still not correct, proceed with initialization (the other process might have failed)
         }
         this.initializingBrowserPool = true;
         try {
-            // If pool exists but is in the wrong mode, clean it up first
             if (this.browserPool && this.isUsingHeadedMode !== useHeadedMode) {
                 await this.browserPool.cleanup();
                 this.browserPool = null;
             }
-            this.isUsingHeadedMode = useHeadedMode; // Set the mode *before* creating the pool
+            this.isUsingHeadedMode = useHeadedMode;
             this.browserPool = new PlaywrightBrowserPool({
                 maxBrowsers: this.config.maxBrowsers,
                 maxPagesPerContext: this.config.maxPagesPerContext,
                 maxBrowserAge: this.config.maxBrowserAge,
                 healthCheckInterval: this.config.healthCheckInterval,
                 useHeadedMode: useHeadedMode,
-                // Pass through blocking config
-                blockedDomains: this.config.poolBlockedDomains, // Pass from engine config
-                blockedResourceTypes: this.config.poolBlockedResourceTypes, // Pass from engine config
+                blockedDomains: this.config.poolBlockedDomains,
+                blockedResourceTypes: this.config.poolBlockedResourceTypes,
+                proxy: this.config.proxy,
             });
             await this.browserPool.initialize();
         }
         catch (error) {
-            this.browserPool = null; // Ensure pool is null on failure
-            this.isUsingHeadedMode = false; // Reset mode state on failure
-            throw error; // Re-throw error
+            this.browserPool = null;
+            this.isUsingHeadedMode = false;
+            throw error;
         }
         finally {
             this.initializingBrowserPool = false;
@@ -267,9 +262,7 @@ export class PlaywrightEngine {
      * @returns Promise resolving to HTMLFetchResult
      */
     async _fetchRecursive(url, options, retryAttempt, parentRetryCount) {
-        const useFastMode = options.fastMode === undefined
-            ? this.config.defaultFastMode
-            : options.fastMode;
+        const useFastMode = options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode;
         // Check cache first
         if (retryAttempt === 0 && parentRetryCount === 0) {
             // Only check cache on the very first try
@@ -280,9 +273,7 @@ export class PlaywrightEngine {
         }
         try {
             // Try HTTP fallback first if enabled and it's the first attempt
-            if (this.config.useHttpFallback &&
-                retryAttempt === 0 &&
-                parentRetryCount === 0) {
+            if (this.config.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
                 try {
                     const httpResult = await this.fetchHTMLWithHttpFallback(url);
                     if (this.config.cacheTTL > 0) {
@@ -291,8 +282,7 @@ export class PlaywrightEngine {
                     return httpResult;
                 }
                 catch (httpError) {
-                    if (httpError instanceof FetchError &&
-                        httpError.code === "ERR_CHALLENGE_PAGE") {
+                    if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
                         // Challenge page detected, proceed to Playwright within this try block
                     }
                     else {
@@ -303,8 +293,7 @@ export class PlaywrightEngine {
                 }
             }
             // Determine if headed mode should be used for this attempt
-            const useHeadedMode = (this.config.useHeadedModeFallback &&
-                (retryAttempt >= 2 || this.shouldUseHeadedMode(url))) ||
+            const useHeadedMode = (this.config.useHeadedModeFallback && (retryAttempt >= 2 || this.shouldUseHeadedMode(url))) ||
                 this.config.useHeadedMode;
             // Ensure pool is initialized in the correct mode (headed/headless)
             try {
@@ -376,8 +365,6 @@ export class PlaywrightEngine {
             catch (navigationError) {
                 throw new FetchError(`Playwright navigation failed: ${navigationError.message}`, "ERR_NAVIGATION", navigationError);
             }
-            // Optional: Add a small delay or check for specific elements if needed after load
-            // await delay(500);
             if (!response) {
                 throw new FetchError("Playwright navigation did not return a response.", "ERR_NO_RESPONSE");
             }
@@ -410,12 +397,7 @@ export class PlaywrightEngine {
     }
     async applyBlockingRules(page, fastMode) {
         const blockedResources = fastMode
-            ? this.config.poolBlockedResourceTypes.concat([
-                "image",
-                "font",
-                "stylesheet",
-                "media",
-            ])
+            ? this.config.poolBlockedResourceTypes.concat(["image", "font", "stylesheet", "media"])
             : this.config.poolBlockedResourceTypes;
         const blockedDomains = this.config.poolBlockedDomains;
         if (blockedResources.length > 0 || blockedDomains.length > 0) {

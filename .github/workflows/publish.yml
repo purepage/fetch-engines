@@ -82,11 +82,11 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org/"
 
-      - name: Publish to NPM
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: pnpm publish --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # - name: Publish to NPM
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: pnpm publish --no-git-checks
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Push changes to GitHub
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
