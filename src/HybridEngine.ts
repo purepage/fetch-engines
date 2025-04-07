@@ -2,7 +2,6 @@ import { FetchEngine } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
 import type { HTMLFetchResult, PlaywrightEngineConfig, FetchOptions, BrowserMetrics } from "./types.js";
-import { FetchError } from "./errors.js";
 
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.

@@ -94,25 +94,6 @@ export class FetchEngine {
             throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
         }
     }
-    detectSPA(document) {
-        const spaMarkers = [
-            "[data-reactroot]",
-            "#root",
-            "#app",
-            "[data-v-app]",
-            "#app[data-v-]",
-            "[ng-version]",
-            "[ng-app]",
-            'script[type="application/json+ld"]',
-            'meta[name="fragment"]',
-        ];
-        const bodyContent = document.body?.textContent?.trim() || "";
-        const hasScripts = document.scripts.length > 0;
-        if (bodyContent.length < 150 && hasScripts) {
-            return true;
-        }
-        return spaMarkers.some((selector) => document.querySelector(selector) !== null);
-    }
     /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.

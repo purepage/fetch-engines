@@ -354,8 +354,8 @@ export class MarkdownConverter {
     // Standalone Images (not in figures)
     this.turndownService.addRule("image", {
       filter: (node: TurndownNode): boolean => {
-        // Node.ELEMENT_NODE is 1
-        return node.nodeType === 1 && node.nodeName === "IMG" && !!node.getAttribute("src");
+        // Node.ELEMENT_NODE is 1, it's an IMG, and has src
+        return node.nodeType === 1 && node.nodeName === "IMG" && !!(node as TurndownHTMLElement).getAttribute("src");
       },
       replacement: (_content: string, node: TurndownNode) => {
         const element = node as TurndownHTMLElement;

@@ -66,7 +66,7 @@ const engine = new PlaywrightEngine({ markdown: false }); // Default: fetches HT
 
 async function main() {
   try {
-    const url = "https://quotes.toscrape.com/"; 
+    const url = "https://quotes.toscrape.com/";
     // Fetch as HTML (using engine default)
     const htmlResult = await engine.fetchHTML(url);
     console.log(`Fetched ${htmlResult.url} (ContentType: ${htmlResult.contentType}) - Title: ${htmlResult.title}`);
@@ -103,14 +103,13 @@ async function main() {
 
     // Request Markdown (per-request) - FetchEngine configured for HTML, so it returns HTML.
     const result2 = await engine.fetchHTML(url1, { markdown: true });
-    console.log(`\nFetched ${result2.url} (ContentType: ${result2.contentType}) - Title: ${result2.title}`); 
+    console.log(`\nFetched ${result2.url} (ContentType: ${result2.contentType}) - Title: ${result2.title}`);
     console.log(`Content (HTML, as FetchEngine ignored override):\n${result2.content.substring(0, 300)}...`);
 
     // Request Markdown (per-request) - FetchEngine likely fails (or returns HTML), falls back to Playwright which gets the override.
     const result3 = await engine.fetchHTML(url2, { markdown: true });
     console.log(`\nFetched ${result3.url} (ContentType: ${result3.contentType}) - Title: ${result3.title}`);
     console.log(`Content (Markdown, via Playwright fallback):\n${result3.content.substring(0, 300)}...`);
-
   } catch (error) {
     console.error("Hybrid fetch failed:", error);
   } finally {

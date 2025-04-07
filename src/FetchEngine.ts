@@ -1,6 +1,6 @@
 import type { HTMLFetchResult, BrowserMetrics, FetchEngineOptions } from "./types.js"; // Added .js extension
 import type { IEngine } from "./IEngine.js"; // Added .js extension
-import { JSDOM } from "jsdom";
+
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
 import { FetchError } from "./errors.js"; // Only import FetchError
 
@@ -109,26 +109,6 @@ export class FetchEngine implements IEngine {
       const message = error instanceof Error ? error.message : "Unknown fetch error";
       throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
     }
-  }
-
-  private detectSPA(document: Document): boolean {
-    const spaMarkers = [
-      "[data-reactroot]",
-      "#root",
-      "#app",
-      "[data-v-app]",
-      "#app[data-v-]",
-      "[ng-version]",
-      "[ng-app]",
-      'script[type="application/json+ld"]',
-      'meta[name="fragment"]',
-    ];
-    const bodyContent = document.body?.textContent?.trim() || "";
-    const hasScripts = document.scripts.length > 0;
-    if (bodyContent.length < 150 && hasScripts) {
-      return true;
-    }
-    return spaMarkers.some((selector) => document.querySelector(selector) !== null);
   }
 
   /**

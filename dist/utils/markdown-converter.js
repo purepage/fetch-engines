@@ -302,7 +302,7 @@ export class MarkdownConverter {
         // Standalone Images (not in figures)
         this.turndownService.addRule("image", {
             filter: (node) => {
-                // Node.ELEMENT_NODE is 1
+                // Node.ELEMENT_NODE is 1, it's an IMG, and has src
                 return node.nodeType === 1 && node.nodeName === "IMG" && !!node.getAttribute("src");
             },
             replacement: (_content, node) => {

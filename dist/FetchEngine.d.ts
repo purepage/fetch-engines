@@ -31,7 +31,6 @@ export declare class FetchEngine implements IEngine {
      * @throws {Error} If the content type is not HTML or for other network errors.
      */
     fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult>;
-    private detectSPA;
     /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.
