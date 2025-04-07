@@ -1,15 +1,21 @@
-import type { HTMLFetchResult, BrowserMetrics, PlaywrightEngineConfig } from "./types.js";
-import { IEngine } from "./IEngine.js";
+import type { IEngine } from "./IEngine.js";
+import type { HTMLFetchResult, PlaywrightEngineConfig, FetchOptions, BrowserMetrics } from "./types.js";
 /**
- * HybridEngine - Attempts fetching with FetchEngine first for speed,
- * then falls back to PlaywrightEngine for complex sites or specific errors.
+ * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
 export declare class HybridEngine implements IEngine {
     private readonly fetchEngine;
     private readonly playwrightEngine;
-    constructor(playwrightConfig?: PlaywrightEngineConfig);
-    fetchHTML(url: string): Promise<HTMLFetchResult>;
-    cleanup(): Promise<void>;
+    private readonly config;
+    constructor(config?: PlaywrightEngineConfig);
+    fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
+    /**
+     * Delegates getMetrics to the PlaywrightEngine.
+     */
     getMetrics(): BrowserMetrics[];
+    /**
+     * Calls cleanup on both underlying engines.
+     */
+    cleanup(): Promise<void>;
 }
 //# sourceMappingURL=HybridEngine.d.ts.map

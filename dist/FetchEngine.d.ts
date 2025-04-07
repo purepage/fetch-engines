@@ -1,9 +1,10 @@
-import type { HTMLFetchResult, BrowserMetrics } from "./types.js";
+import type { HTMLFetchResult, BrowserMetrics, FetchEngineOptions } from "./types.js";
 import type { IEngine } from "./IEngine.js";
+import { FetchError } from "./errors.js";
 /**
  * Custom error class for HTTP errors from FetchEngine.
  */
-export declare class FetchEngineHttpError extends Error {
+export declare class FetchEngineHttpError extends FetchError {
     readonly statusCode: number;
     constructor(message: string, statusCode: number);
 }
@@ -14,22 +15,22 @@ export declare class FetchEngineHttpError extends Error {
  * It does not support advanced configurations like retries, caching, or proxies directly.
  */
 export declare class FetchEngine implements IEngine {
-    private readonly headers;
+    private readonly options;
+    private static readonly DEFAULT_OPTIONS;
     /**
      * Creates an instance of FetchEngine.
-     * Note: This engine currently does not accept configuration options.
+     * @param options Configuration options for the FetchEngine.
      */
-    constructor();
+    constructor(options?: FetchEngineOptions);
     /**
-     * Fetches HTML content from the specified URL using the `fetch` API.
+     * Fetches HTML or converts to Markdown from the specified URL.
      *
      * @param url The URL to fetch.
      * @returns A Promise resolving to an HTMLFetchResult object.
      * @throws {FetchEngineHttpError} If the HTTP response status is not ok (e.g., 404, 500).
      * @throws {Error} If the content type is not HTML or for other network errors.
      */
-    fetchHTML(url: string): Promise<HTMLFetchResult>;
-    private detectSPA;
+    fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult>;
     /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.

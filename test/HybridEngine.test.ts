@@ -4,12 +4,7 @@ import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
 import { HybridEngine } from "../src/HybridEngine.js";
 import { FetchEngine, FetchEngineHttpError } from "../src/FetchEngine.js";
 import { PlaywrightEngine } from "../src/PlaywrightEngine.js";
-import type {
-  HTMLFetchResult,
-  PlaywrightEngineConfig,
-  BrowserMetrics,
-  FetchOptions,
-} from "../src/types.js";
+import type { HTMLFetchResult, PlaywrightEngineConfig, BrowserMetrics } from "../src/types.js";
 
 // Mock the engines
 vi.mock("../src/FetchEngine.js");
@@ -24,16 +19,36 @@ describe("HybridEngine", () => {
   let mockPlaywrightEngineInstance: Mocked<PlaywrightEngine>;
 
   const testUrl = "http://example.com";
-  const mockFetchResult: HTMLFetchResult = {
-    html: "<html><title>Fetch</title><body>Fetched</body></html>",
+  const mockFetchResultHtml: HTMLFetchResult = {
+    content: "<html><title>Fetch</title><body>Fetched</body></html>",
+    contentType: "html",
     title: "Fetch",
     url: testUrl,
     isFromCache: false,
     statusCode: 200,
     error: undefined,
   };
-  const mockPlaywrightResult: HTMLFetchResult = {
-    html: "<html><title>Playwright</title><body>Rendered by Playwright</body></html>",
+  const mockFetchResultMd: HTMLFetchResult = {
+    content: "# Fetch Title",
+    contentType: "markdown",
+    title: "Fetch",
+    url: testUrl,
+    isFromCache: false,
+    statusCode: 200,
+    error: undefined,
+  };
+  const mockPlaywrightResultHtml: HTMLFetchResult = {
+    content: "<html><title>Playwright</title><body>Rendered by Playwright</body></html>",
+    contentType: "html",
+    title: "Playwright",
+    url: testUrl,
+    isFromCache: false,
+    statusCode: 200,
+    error: undefined,
+  };
+  const mockPlaywrightResultMd: HTMLFetchResult = {
+    content: "# Playwright Title",
+    contentType: "markdown",
     title: "Playwright",
     url: testUrl,
     isFromCache: false,
@@ -86,46 +101,73 @@ describe("HybridEngine", () => {
     expect(MockPlaywrightEngine).toHaveBeenCalledTimes(1);
   });
 
-  it("FR4.2: should return result from FetchEngine if successful", async () => {
-    mockFetchEngineInstance.fetchHTML.mockResolvedValue(mockFetchResult);
-
+  it("FR4.2: should return HTML result from FetchEngine if successful (default markdown)", async () => {
+    mockFetchEngineInstance.fetchHTML.mockResolvedValue(mockFetchResultHtml);
     const result = await hybridEngine.fetchHTML(testUrl);
-
-    expect(result).toBe(mockFetchResult);
+    expect(result).toBe(mockFetchResultHtml);
+    expect(result.contentType).toBe("html");
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
     expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
   });
 
-  it("FR4.3: should fall back to PlaywrightEngine if FetchEngine fails", async () => {
-    const fetchError = new FetchEngineHttpError("Fetch failed", 403);
-    mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
-    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(
-      mockPlaywrightResult,
-    );
+  it("should return Markdown result from FetchEngine if successful (engine configured for markdown)", async () => {
+    // Re-instantiate HybridEngine with markdown: true for this test
+    hybridEngine = new HybridEngine({ markdown: true });
+    // Ensure the *mock* FetchEngine instance (created by the mocked constructor) returns Markdown
+    mockFetchEngineInstance.fetchHTML.mockResolvedValue(mockFetchResultMd);
 
     const result = await hybridEngine.fetchHTML(testUrl);
-
-    expect(result).toBe(mockPlaywrightResult);
+    expect(result).toBe(mockFetchResultMd);
+    expect(result.contentType).toBe("markdown");
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
+    expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+  });
+
+  it("FR4.3: should fall back to PlaywrightEngine (HTML) if FetchEngine fails (default markdown)", async () => {
+    const fetchError = new FetchEngineHttpError("Fetch failed", 403);
+    mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
+    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(mockPlaywrightResultHtml);
+
+    const result = await hybridEngine.fetchHTML(testUrl);
+    expect(result).toBe(mockPlaywrightResultHtml);
+    expect(result.contentType).toBe("html");
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl, expect.anything());
+  });
+
+  it("FR4.3: should fall back to PlaywrightEngine (Markdown) if FetchEngine fails (engine configured for markdown)", async () => {
+    hybridEngine = new HybridEngine({ markdown: true });
+    const fetchError = new FetchEngineHttpError("Fetch failed", 403);
+    mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
+    // Ensure the mocked Playwright engine returns Markdown in the fallback
+    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(mockPlaywrightResultMd);
+
+    const result = await hybridEngine.fetchHTML(testUrl);
+    expect(result).toBe(mockPlaywrightResultMd);
+    expect(result.contentType).toBe("markdown");
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
+    // Check that Playwright was called with options including markdown: true
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
       testUrl,
+      expect.objectContaining({ markdown: true })
     );
   });
 
-  it("FR4.3: should throw PlaywrightEngine error if both engines fail", async () => {
-    const fetchError = new Error("Fetch network error");
-    const playwrightError = new Error("Playwright navigation failed");
-    mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
-    mockPlaywrightEngineInstance.fetchHTML.mockRejectedValue(playwrightError);
+  it("should use per-request markdown option ONLY on Playwright fallback", async () => {
+    // Engine defaults to markdown: false
+    mockFetchEngineInstance.fetchHTML.mockResolvedValue(mockFetchResultHtml);
+    // Mock Playwright to return Markdown IF it gets called
+    mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(mockPlaywrightResultMd);
 
-    await expect(hybridEngine.fetchHTML(testUrl)).rejects.toThrow(
-      playwrightError,
-    );
+    // Request markdown: true
+    const result = await hybridEngine.fetchHTML(testUrl, { markdown: true });
 
+    // Expect FetchEngine to be called (and succeed) returning HTML because it uses constructor config
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      testUrl,
-    );
+    expect(result).toBe(mockFetchResultHtml);
+    expect(result.contentType).toBe("html");
+    // Playwright should NOT have been called
+    expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
   });
 
   it("FR4.4: should pass configuration to PlaywrightEngine", () => {
@@ -146,9 +188,23 @@ describe("HybridEngine", () => {
   });
 
   it("getMetrics should delegate to PlaywrightEngine", () => {
+    const specificMockMetrics: BrowserMetrics[] = [
+      {
+        id: "pw-test-specific",
+        activePages: 2,
+        pagesCreated: 10,
+        errors: 1,
+        isHealthy: false,
+        lastUsed: new Date(),
+        createdAt: new Date(),
+      },
+    ];
+    // Directly modify the return value of the existing mock function for this test
+    mockPlaywrightEngineInstance.getMetrics.mockReturnValue(specificMockMetrics);
+
     const result = hybridEngine.getMetrics();
 
-    expect(result).toBe(exampleMetrics);
+    expect(result).toEqual(specificMockMetrics);
     expect(mockPlaywrightEngineInstance.getMetrics).toHaveBeenCalledTimes(1);
     expect(mockFetchEngineInstance.getMetrics).not.toHaveBeenCalled();
   });

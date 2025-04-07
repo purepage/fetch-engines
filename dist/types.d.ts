@@ -1,20 +1,22 @@
 import type { Browser as PlaywrightBrowser, BrowserContext } from "playwright";
 /**
- * Result object returned by engine's fetchHTML method.
+ * Defines the structure for the result of fetching HTML content.
  */
 export interface HTMLFetchResult {
-    /** The full HTML content of the fetched page. */
-    html: string;
-    /** The extracted content of the <title> tag, or an empty string if not found. */
-    title: string;
+    /** The fetched HTML content OR the converted Markdown content. */
+    content: string;
+    /** Indicates the type of content in the 'content' field. */
+    contentType: "html" | "markdown";
+    /** The extracted title of the page, if available. */
+    title: string | null;
     /** The final URL after any redirects. */
     url: string;
-    /** Indicates if the result was served from the engine's cache. */
+    /** Indicates if the result came from the cache. */
     isFromCache: boolean;
-    /** The HTTP status code of the final response, if available. */
-    statusCode?: number;
-    /** Error object if the fetch failed after all retries. */
-    error?: Error;
+    /** The HTTP status code of the final response. */
+    statusCode: number | undefined;
+    /** Any error encountered during the fetch process. */
+    error: Error | undefined;
 }
 /**
  * Metrics related to browser pool performance and status.
@@ -140,12 +142,26 @@ export interface PlaywrightEngineConfig {
      * @default false
      */
     useHeadedMode?: boolean;
+    /**
+     * If true, the fetched HTML content will be converted to Markdown.
+     * @default false
+     */
+    markdown?: boolean;
 }
 /**
  * Options that can be passed per-request to engine.fetchHTML().
  */
 export interface FetchOptions {
-    /** Overrides the engine's defaultFastMode for this specific request. */
+    /** Overrides the engine's defaultFastMode for this specific request. (Playwright/Hybrid only) */
     fastMode?: boolean;
+    /** Overrides the engine's markdown setting for this specific request. (Playwright/Hybrid only) */
+    markdown?: boolean;
+}
+/**
+ * Configuration options specifically for the FetchEngine.
+ */
+export interface FetchEngineOptions {
+    /** If true, convert the fetched HTML to Markdown. Default: false */
+    markdown?: boolean;
 }
 //# sourceMappingURL=types.d.ts.map

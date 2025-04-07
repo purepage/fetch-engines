@@ -1,21 +1,19 @@
-import type { HTMLFetchResult, BrowserMetrics } from "./types.js"; // Added .js extension
+import type { HTMLFetchResult, BrowserMetrics, FetchEngineOptions } from "./types.js"; // Added .js extension
 import type { IEngine } from "./IEngine.js"; // Added .js extension
-import { JSDOM } from "jsdom";
+
+import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { FetchError } from "./errors.js"; // Only import FetchError
 
 /**
  * Custom error class for HTTP errors from FetchEngine.
  */
-export class FetchEngineHttpError extends Error {
-  public readonly statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
+export class FetchEngineHttpError extends FetchError {
+  constructor(
+    message: string,
+    public readonly statusCode: number
+  ) {
+    super(message, "ERR_HTTP_ERROR", undefined, statusCode);
     this.name = "FetchEngineHttpError";
-    this.statusCode = statusCode;
-    // Maintain proper stack trace (requires target ES2015+ in tsconfig)
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, FetchEngineHttpError);
-    }
   }
 }
 
@@ -26,111 +24,91 @@ export class FetchEngineHttpError extends Error {
  * It does not support advanced configurations like retries, caching, or proxies directly.
  */
 export class FetchEngine implements IEngine {
-  private readonly headers: Record<string, string>;
+  private readonly options: Required<FetchEngineOptions>;
+
+  private static readonly DEFAULT_OPTIONS: Required<FetchEngineOptions> = {
+    markdown: false,
+  };
 
   /**
    * Creates an instance of FetchEngine.
-   * Note: This engine currently does not accept configuration options.
+   * @param options Configuration options for the FetchEngine.
    */
-  constructor() {
-    this.headers = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.5",
-      "Upgrade-Insecure-Requests": "1",
-      "Sec-Fetch-Dest": "document",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "none",
-      "Sec-Fetch-User": "?1",
-    };
+  constructor(options: FetchEngineOptions = {}) {
+    this.options = { ...FetchEngine.DEFAULT_OPTIONS, ...options };
   }
 
   /**
-   * Fetches HTML content from the specified URL using the `fetch` API.
+   * Fetches HTML or converts to Markdown from the specified URL.
    *
    * @param url The URL to fetch.
    * @returns A Promise resolving to an HTMLFetchResult object.
    * @throws {FetchEngineHttpError} If the HTTP response status is not ok (e.g., 404, 500).
    * @throws {Error} If the content type is not HTML or for other network errors.
    */
-  async fetchHTML(url: string): Promise<HTMLFetchResult> {
+  async fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult> {
+    const effectiveOptions = { ...this.options, ...options }; // Combine constructor and call options
+    let response: Response;
     try {
-      const response = await fetch(url, {
-        headers: this.headers,
+      response = await fetch(url, {
         redirect: "follow",
+        headers: {
+          // Standard browser-like headers
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       });
 
       if (!response.ok) {
-        // Throw the custom error with status code
         throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
       }
 
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("text/html")) {
-        throw new Error("Not an HTML page");
+      const contentTypeHeader = response.headers.get("content-type");
+      if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
+        throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
       }
 
       const html = await response.text();
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : null;
 
-      // Use JSDOM to parse HTML and extract title
-      const dom = new JSDOM(html);
-      const title = dom.window.document.title || "";
+      let finalContent = html;
+      let finalContentType: "html" | "markdown" = "html";
 
-      // Check for potential SPA markers
-      const isSPA = this.detectSPA(dom.window.document);
-      if (isSPA) {
-        // Removed throwing error here, as the calling code should decide how to handle this.
-        // Consider adding a flag to the result instead.
-        console.warn(`SPA detected for ${url}, content might be incomplete without JavaScript rendering.`);
-        // Example: return { html, title, url: response.url, isSPA: true };
+      if (effectiveOptions.markdown) {
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(html);
+          finalContentType = "markdown";
+        } catch (conversionError: any) {
+          console.error(`Markdown conversion failed for ${url} (FetchEngine):`, conversionError);
+          // Fallback to original HTML on conversion error
+        }
       }
 
       return {
-        html,
-        title,
-        url: response.url,
-        isFromCache: false, // FetchEngine doesn't cache
+        content: finalContent,
+        contentType: finalContentType,
+        title: title,
+        url: response.url, // Use the final URL after redirects
+        isFromCache: false,
         statusCode: response.status,
         error: undefined,
       };
     } catch (error: any) {
-      // console.error(`FetchEngine failed for ${url}:`, error); // Optional: Keep logging if desired
-      // Re-throw the original error to preserve its type (e.g., FetchEngineHttpError)
-      // Ensure the result conforms to HTMLFetchResult even on error (for consistency? No, spec says throw)
-      throw error;
+      // Re-throw specific known errors directly
+      if (
+        error instanceof FetchEngineHttpError ||
+        (error instanceof FetchError && error.code === "ERR_NON_HTML_CONTENT")
+      ) {
+        throw error;
+      }
+      // Wrap other/unexpected errors
+      const message = error instanceof Error ? error.message : "Unknown fetch error";
+      throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
     }
-  }
-
-  private detectSPA(document: Document): boolean {
-    // Check for common SPA frameworks and patterns
-    const spaMarkers = [
-      // React
-      "[data-reactroot]",
-      "#root",
-      "#app",
-      // Vue
-      "[data-v-app]",
-      "#app[data-v-]",
-      // Angular
-      "[ng-version]",
-      "[ng-app]",
-      // Common SPA patterns
-      'script[type="application/json+ld"]', // Less reliable marker
-      'meta[name="fragment"]',
-    ];
-
-    // Check if the body is nearly empty but has JS (More reliable)
-    const bodyContent = document.body?.textContent?.trim() || "";
-    const hasScripts = document.scripts.length > 0;
-
-    if (bodyContent.length < 150 && hasScripts) {
-      // Increased threshold slightly
-      return true;
-    }
-
-    // Check for SPA markers (Less reliable)
-    return spaMarkers.some((selector) => document.querySelector(selector) !== null);
   }
 
   /**
@@ -139,8 +117,7 @@ export class FetchEngine implements IEngine {
    * @returns A Promise that resolves when cleanup is complete.
    */
   async cleanup(): Promise<void> {
-    // No resources to clean up for fetch engine
-    return Promise.resolve(); // Explicitly return resolved promise
+    return Promise.resolve();
   }
 
   /**
@@ -149,7 +126,6 @@ export class FetchEngine implements IEngine {
    * @returns An empty array.
    */
   getMetrics(): BrowserMetrics[] {
-    // Fetch engine doesn't maintain browser pool metrics
     return [];
   }
 }
