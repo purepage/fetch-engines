@@ -117,9 +117,6 @@ export class PlaywrightEngine implements IEngine {
    */
   private async fetchHTMLWithHttpFallback(url: string): Promise<HTMLFetchResult> {
     try {
-      // ---- REMOVED DEBUG LOG ----
-      // console.log(`[DEBUG] Calling axios.get for ${url}`);
-      // -----------------
       const response = await axios.get(url, {
         headers: {
           // Use more standard browser-like headers
@@ -166,13 +163,17 @@ export class PlaywrightEngine implements IEngine {
         throw new FetchError("Received challenge page via HTTP fallback", "ERR_CHALLENGE_PAGE");
       }
 
-      // Apply markdown conversion here if the option is set
-      let finalContent = response.data;
+      const originalHtml = response.data;
+      let finalContent = originalHtml;
+      let finalContentType: "html" | "markdown" = "html";
+
+      // Apply markdown conversion here if the *engine config* option is set
+      // NOTE: This currently uses engine config, not per-request. Could be refined.
       if (this.config.markdown) {
-        // Check the engine config
         try {
           const converter = new MarkdownConverter();
-          finalContent = converter.convert(response.data);
+          finalContent = converter.convert(originalHtml);
+          finalContentType = "markdown";
         } catch (conversionError) {
           console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
           // Fallback to original HTML on conversion error
@@ -180,8 +181,9 @@ export class PlaywrightEngine implements IEngine {
       }
 
       return {
-        html: finalContent, // Return converted or original content
-        title: title,
+        content: finalContent,
+        contentType: finalContentType,
+        title: title, // title is extracted from original HTML
         url: response.request?.res?.responseUrl || response.config.url || url,
         isFromCache: false,
         statusCode: response.status,
@@ -197,12 +199,14 @@ export class PlaywrightEngine implements IEngine {
   }
 
   private checkCache(url: string): HTMLFetchResult | null {
+    // NOTE: Cache stores the full HTMLFetchResult, including contentType.
+    // If HTML is cached, and later Markdown is requested, the cached HTML result will be returned.
     const cached = this.cache.get(url);
     if (cached && Date.now() - cached.timestamp < this.config.cacheTTL) {
       return cached.result;
     }
     if (cached) {
-      this.cache.delete(url); // Explicitly delete expired entry
+      this.cache.delete(url);
     }
     return null;
   }
@@ -327,18 +331,18 @@ export class PlaywrightEngine implements IEngine {
       if (cachedResult) {
         if (
           currentConfig.markdown &&
-          !cachedResult.html.startsWith("#") &&
-          !cachedResult.html.includes("\n\n---\n\n")
+          !cachedResult.content.startsWith("#") &&
+          !cachedResult.content.includes("\n\n---\n\n")
         ) {
           try {
             const converter = new MarkdownConverter();
-            cachedResult.html = converter.convert(cachedResult.html);
+            cachedResult.content = converter.convert(cachedResult.content);
           } catch (e) {
             console.error("Failed to convert cached result to markdown", e);
           }
         } else if (
           !currentConfig.markdown &&
-          (cachedResult.html.startsWith("#") || cachedResult.html.includes("\n\n---\n\n"))
+          (cachedResult.content.startsWith("#") || cachedResult.content.includes("\n\n---\n\n"))
         ) {
           console.warn("Cached result is Markdown, but HTML was requested. Re-fetching.");
           this.cache.delete(url);
@@ -476,25 +480,30 @@ export class PlaywrightEngine implements IEngine {
 
       const html = await page.content();
       const title = await page.title();
+      const finalUrl = page.url();
+      const status = response?.status();
 
-      // Apply markdown conversion here
       let finalContent = html;
+      let finalContentType: "html" | "markdown" = "html";
+
       if (convertToMarkdown) {
         try {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(html);
-        } catch (conversionError) {
+          finalContentType = "markdown";
+        } catch (conversionError: any) {
           console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
           // Fallback to original HTML
         }
       }
 
       return {
-        html: finalContent, // Return converted or original
-        title,
-        url: page.url(),
+        content: finalContent,
+        contentType: finalContentType,
+        title: title || null,
+        url: finalUrl,
         isFromCache: false,
-        statusCode: response.status(),
+        statusCode: status,
         error: undefined,
       };
     } finally {

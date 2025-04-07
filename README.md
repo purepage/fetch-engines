@@ -35,25 +35,25 @@ npx playwright install
 ```typescript
 import { FetchEngine } from "@purepageio/fetch-engines";
 
-const engine = new FetchEngine({ markdown: false });
+const engine = new FetchEngine(); // Default: fetches HTML
 
 async function main() {
   try {
     const url = "https://example.com";
     const result = await engine.fetchHTML(url);
-    console.log(`Fetched ${result.url} (Status: ${result.statusCode})`);
+    console.log(`Fetched ${result.url} (ContentType: ${result.contentType})`);
     console.log(`Title: ${result.title}`);
-    console.log(`Result (HTML): ${result.html.substring(0, 100)}...`);
+    console.log(`Content (HTML): ${result.content.substring(0, 100)}...`);
 
-    // Example with Markdown
+    // Example fetching Markdown directly via constructor option
     const markdownEngine = new FetchEngine({ markdown: true });
     const mdResult = await markdownEngine.fetchHTML(url);
-    console.log(`\nResult (Markdown):\n${mdResult.html.substring(0, 300)}...`);
+    console.log(`\nFetched ${mdResult.url} (ContentType: ${mdResult.contentType})`);
+    console.log(`Content (Markdown):\n${mdResult.content.substring(0, 300)}...`);
   } catch (error) {
     console.error("Fetch failed:", error);
   }
 }
-
 main();
 ```
 
@@ -62,34 +62,26 @@ main();
 ```typescript
 import { PlaywrightEngine } from "@purepageio/fetch-engines";
 
-// Configure engine options (optional)
-const engine = new PlaywrightEngine({
-  maxRetries: 2, // Number of retry attempts
-  useHttpFallback: true, // Try simple HTTP fetch first
-  cacheTTL: 5 * 60 * 1000, // Cache results for 5 minutes (in milliseconds)
-  markdown: false, // Explicitly false (default)
-});
+const engine = new PlaywrightEngine({ markdown: false }); // Default: fetches HTML
 
 async function main() {
   try {
-    const url = "https://quotes.toscrape.com/"; // A site that might benefit from JS rendering
-    // Fetch as HTML
+    const url = "https://quotes.toscrape.com/"; 
+    // Fetch as HTML (using engine default)
     const htmlResult = await engine.fetchHTML(url);
-    console.log(`Fetched ${htmlResult.url} (HTML) - Title: ${htmlResult.title}`);
-    // console.log(`HTML: ${htmlResult.html.substring(0, 200)}...`);
+    console.log(`Fetched ${htmlResult.url} (ContentType: ${htmlResult.contentType}) - Title: ${htmlResult.title}`);
+    // console.log(`Content (HTML): ${htmlResult.content.substring(0, 200)}...`);
 
-    // Fetch same URL as Markdown (per-request override)
+    // Fetch same URL as Markdown (using per-request override)
     const mdResult = await engine.fetchHTML(url, { markdown: true });
-    console.log(`\nFetched ${mdResult.url} (Markdown) - Title: ${mdResult.title}`);
-    console.log(`Markdown:\n${mdResult.html.substring(0, 300)}...`);
+    console.log(`\nFetched ${mdResult.url} (ContentType: ${mdResult.contentType}) - Title: ${mdResult.title}`);
+    console.log(`Content (Markdown):\n${mdResult.content.substring(0, 300)}...`);
   } catch (error) {
     console.error("Playwright fetch failed:", error);
   } finally {
-    // Important: Clean up browser resources when done
     await engine.cleanup();
   }
 }
-
 main();
 ```
 
@@ -98,46 +90,33 @@ main();
 ```typescript
 import { HybridEngine } from "@purepageio/fetch-engines";
 
-// Configure the underlying engines
-const engine = new HybridEngine({
-  // PlaywrightEngine specific config
-  maxRetries: 2,
-  maxBrowsers: 3,
-  // Shared config
-  markdown: false, // Apply to both FetchEngine and PlaywrightEngine by default
-});
+const engine = new HybridEngine({ markdown: false }); // Default: fetches HTML for both internal engines
 
 async function main() {
   try {
-    // Try a simple site (likely uses FetchEngine, returns HTML)
-    const url1 = "https://example.com";
-    const result1 = await engine.fetchHTML(url1); // Gets HTML by default
-    console.log(`Fetched ${result1.url} (HTML) - Title: ${result1.title}`);
+    const url1 = "https://example.com"; // Simple site
+    const url2 = "https://quotes.toscrape.com/"; // Complex site
 
-    // Try a complex site (likely uses Playwright, returns HTML)
-    const url2 = "https://quotes.toscrape.com/";
-    const result2 = await engine.fetchHTML(url2); // Gets HTML by default
-    console.log(`Fetched ${result2.url} (HTML) - Title: ${result2.title}`);
+    // Request HTML (default) - FetchEngine likely succeeds
+    const result1 = await engine.fetchHTML(url1);
+    console.log(`Fetched ${result1.url} (ContentType: ${result1.contentType}) - Title: ${result1.title}`);
 
-    // Fetch simple site as Markdown (FetchEngine configured with markdown=false, but overridden)
-    // NOTE: HybridEngine passes override ONLY to Playwright. FetchEngine uses constructor config.
-    // So, this will likely FAIL for FetchEngine (returning HTML) and then fallback to Playwright to get Markdown.
-    const result3 = await engine.fetchHTML(url1, { markdown: true });
-    console.log(`\nFetched ${result3.url} (Markdown via Fallback?) - Title: ${result3.title}`);
-    console.log(`Markdown:\n${result3.html.substring(0, 300)}...`);
+    // Request Markdown (per-request) - FetchEngine configured for HTML, so it returns HTML.
+    const result2 = await engine.fetchHTML(url1, { markdown: true });
+    console.log(`\nFetched ${result2.url} (ContentType: ${result2.contentType}) - Title: ${result2.title}`); 
+    console.log(`Content (HTML, as FetchEngine ignored override):\n${result2.content.substring(0, 300)}...`);
 
-    // Fetch complex site as Markdown (Playwright gets override)
-    const result4 = await engine.fetchHTML(url2, { markdown: true });
-    console.log(`\nFetched ${result4.url} (Markdown via Playwright) - Title: ${result4.title}`);
-    console.log(`Markdown:\n${result4.html.substring(0, 300)}...`);
+    // Request Markdown (per-request) - FetchEngine likely fails (or returns HTML), falls back to Playwright which gets the override.
+    const result3 = await engine.fetchHTML(url2, { markdown: true });
+    console.log(`\nFetched ${result3.url} (ContentType: ${result3.contentType}) - Title: ${result3.title}`);
+    console.log(`Content (Markdown, via Playwright fallback):\n${result3.content.substring(0, 300)}...`);
+
   } catch (error) {
     console.error("Hybrid fetch failed:", error);
   } finally {
-    // Important: Clean up browser resources (for the Playwright part) when done
     await engine.cleanup();
   }
 }
-
 main();
 ```
 
@@ -150,7 +129,7 @@ Engines accept an optional configuration object in their constructor to customis
 The `FetchEngine` accepts a `FetchEngineOptions` object:
 
 - `markdown` (`boolean`, default: `false`)
-  - If `true`, the fetched HTML content will be converted to Markdown before being returned in the `html` property of the result.
+  - If `true`, the fetched HTML content will be converted to Markdown. The result object's `content` property will contain Markdown, and `contentType` will be `'markdown'`.
 
 ```typescript
 const mdFetchEngine = new FetchEngine({ markdown: true });
@@ -171,7 +150,7 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detail
 - `defaultFastMode` (`boolean`, default: `true`)
 - `simulateHumanBehavior` (`boolean`, default: `true`)
 - `markdown` (`boolean`, default: `false`)
-  - If `true`, the fetched HTML content (from either the HTTP fallback or the Playwright process) will be converted to Markdown before being returned in the `html` property of the result.
+  - If `true`, the fetched content (from HTTP fallback or Playwright) is converted to Markdown. The result's `content` will be Markdown, and `contentType` will be `'markdown'`. Can be overridden per-request.
 
 **Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
@@ -189,7 +168,7 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object. See the detail
 The `HybridEngine` constructor accepts a single optional argument which follows the **`PlaywrightEngineConfig`** structure described above. These options configure both the underlying engines where applicable:
 
 - Options like `maxRetries`, `cacheTTL`, `proxy`, `useHeadedMode`, etc., are primarily passed to the internal `PlaywrightEngine`.
-- The `markdown` option (`boolean`, default: `false`) is passed to **both** the internal `FetchEngine` and `PlaywrightEngine` during their construction. This sets the default conversion behavior for the `HybridEngine`.
+- The `markdown` option (`boolean`, default: `false`) is passed to **both** the internal `FetchEngine` and `PlaywrightEngine` during their construction. This sets the default conversion behavior for the `HybridEngine`. Per-request overrides are only passed to the `PlaywrightEngine` if a fallback occurs.
 
 ```typescript
 import { HybridEngine } from "@purepageio/fetch-engines";
@@ -206,32 +185,33 @@ const engineMd = new HybridEngine({
 
 ## Return Value
 
-All `fetchHTML()` methods return a Promise that resolves to an `HTMLFetchResult` object with the following properties:
+All `fetchHTML()` methods return a Promise that resolves to an `HTMLFetchResult` object:
 
-- `html` (`string`): The full HTML content of the fetched page **or the converted Markdown content** if the `markdown` option was effectively `true` for the fetch operation.
-- `title` (`string | null`): The extracted `<title>` tag content, or `null` if no title is found. (Note: Title might be less relevant or empty for Markdown results).
-- `url` (`string`): The final URL after any redirects.
-- `isFromCache` (`boolean`): `true` if the result was served from the engine's cache, `false` otherwise. (Note: Caching behavior with mixed HTML/Markdown requests should be considered - see PlaywrightEngine details).
-- `statusCode` (`number | undefined`): The HTTP status code of the final response.
-- `error` (`FetchError | Error | undefined`): If an error occurred during the _final_ fetch attempt (after retries), this property will contain the error object.
+- `content` (`string`): The fetched content, either original HTML or converted Markdown.
+- `contentType` (`'html' | 'markdown'`): Indicates the format of the `content` string.
+- `title` (`string | null`): Extracted page title (from original HTML).
+- `url` (`string`): Final URL after redirects.
+- `isFromCache` (`boolean`): True if the result came from cache.
+- `statusCode` (`number | undefined`): HTTP status code.
+- `error` (`Error | undefined`): Error object if the fetch failed.
 
 ## API Reference
 
 ### `engine.fetchHTML(url, options?)`
 
-- `url` (`string`): The URL of the page to fetch.
-- `options` (`object`, optional): Per-request options to override engine defaults.
-  - For `PlaywrightEngine` and `HybridEngine`, you can override `markdown` (`boolean`) to enable or disable Markdown conversion for this specific request, overriding the constructor setting.
-  - For `PlaywrightEngine`, you can override `fastMode` (`boolean`) to force or disable fast mode for this specific request.
+- `url` (`string`): URL to fetch.
+- `options?` (`FetchOptions`): Optional per-request overrides.
+  - `markdown?: boolean`: (Playwright/Hybrid only) Request Markdown conversion. For Hybrid, only applies on fallback to Playwright.
+  - `fastMode?: boolean`: (Playwright/Hybrid only) Override fast mode.
 - **Returns:** `Promise<HTMLFetchResult>`
 
-Fetches the HTML content for the given URL using the engine's configured strategy (plain fetch or Playwright).
+Fetches content, returning HTML or Markdown based on configuration/options in `result.content` with `result.contentType` indicating the format.
 
-### `engine.cleanup()` (PlaywrightEngine only)
+### `engine.cleanup()` (PlaywrightEngine & HybridEngine)
 
 - **Returns:** `Promise<void>`
 
-Gracefully shuts down all browser instances managed by the `PlaywrightEngine`'s browser pool. **It is crucial to call `await engine.cleanup()` when you are finished using a `PlaywrightEngine` instance** to release system resources.
+Gracefully shuts down all browser instances managed by the `PlaywrightEngine`'s browser pool (used by both `PlaywrightEngine` and `HybridEngine`). **It is crucial to call `await engine.cleanup()` when you are finished using these engines** to release system resources.
 
 ## Stealth / Anti-Detection (`PlaywrightEngine`)
 

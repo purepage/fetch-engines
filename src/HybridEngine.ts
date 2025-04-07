@@ -1,53 +1,69 @@
 import { FetchEngine } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
-import type { HTMLFetchResult, BrowserMetrics, PlaywrightEngineConfig } from "./types.js";
-import { IEngine } from "./IEngine.js";
+import type { IEngine } from "./IEngine.js";
+import type { HTMLFetchResult, PlaywrightEngineConfig, FetchOptions, BrowserMetrics } from "./types.js";
+import { FetchError } from "./errors.js";
 
 /**
- * HybridEngine - Attempts fetching with FetchEngine first for speed,
- * then falls back to PlaywrightEngine for complex sites or specific errors.
+ * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
 export class HybridEngine implements IEngine {
   private readonly fetchEngine: FetchEngine;
   private readonly playwrightEngine: PlaywrightEngine;
-  private readonly options: PlaywrightEngineConfig;
+  private readonly config: PlaywrightEngineConfig; // Store config for potential per-request PW overrides
 
-  constructor(options: PlaywrightEngineConfig = {}) {
-    this.options = options;
-    this.fetchEngine = new FetchEngine({ markdown: this.options.markdown });
-    this.playwrightEngine = new PlaywrightEngine(this.options);
+  constructor(config: PlaywrightEngineConfig = {}) {
+    // Pass relevant config parts to each engine
+    // FetchEngine only takes markdown option from the shared config
+    this.fetchEngine = new FetchEngine({ markdown: config.markdown });
+    this.playwrightEngine = new PlaywrightEngine(config);
+    this.config = config; // Store for merging later
   }
 
-  async fetchHTML(url: string, requestOptions: { markdown?: boolean } = {}): Promise<HTMLFetchResult> {
-    const useMarkdown = requestOptions.markdown === undefined ? this.options.markdown : requestOptions.markdown;
-
+  async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
+    // FetchEngine uses its constructor config; it doesn't accept per-request options here.
     try {
       const fetchResult = await this.fetchEngine.fetchHTML(url);
-      if (!useMarkdown && this.options.markdown) {
-        const likelyMarkdown = fetchResult.html.startsWith("#") || fetchResult.html.includes("\n\n---\n\n\n");
-        if (likelyMarkdown) {
-          console.warn(
-            `HybridEngine: FetchEngine returned Markdown, but HTML requested for ${url}. Falling back to Playwright.`
-          );
-          throw new Error("FetchEngine returned unwanted Markdown format.");
-        }
-      }
+      // If fetch succeeded, return its result directly (it handles its own markdown config)
+      // No need to check contentType here, FetchEngine handles it based on its constructor.
       return fetchResult;
     } catch (fetchError: any) {
+      console.warn(`FetchEngine failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
+
+      // Merge constructor config with per-request options for Playwright fallback
+      const playwrightOptions: FetchOptions = {
+        ...this.config, // Start with base config given to HybridEngine
+        ...options, // Override with per-request options
+      };
+
       try {
-        const playwrightResult = await this.playwrightEngine.fetchHTML(url, { markdown: useMarkdown });
+        // Pass merged options to PlaywrightEngine
+        const playwrightResult = await this.playwrightEngine.fetchHTML(url, playwrightOptions);
         return playwrightResult;
-      } catch (playwrightError) {
+      } catch (playwrightError: any) {
+        // Catch potential Playwright error
+        console.error(`PlaywrightEngine fallback failed for ${url}: ${playwrightError.message}`);
+        // Optionally, wrap or prioritize which error to throw
+        // Throwing the Playwright error as it's the last one encountered
         throw playwrightError;
       }
     }
   }
 
-  async cleanup(): Promise<void> {
-    await Promise.allSettled([this.fetchEngine.cleanup(), this.playwrightEngine.cleanup()]);
-  }
-
+  /**
+   * Delegates getMetrics to the PlaywrightEngine.
+   */
   getMetrics(): BrowserMetrics[] {
     return this.playwrightEngine.getMetrics();
+  }
+
+  /**
+   * Calls cleanup on both underlying engines.
+   */
+  async cleanup(): Promise<void> {
+    await Promise.allSettled([
+      this.fetchEngine.cleanup(), // Although a no-op, call for consistency
+      this.playwrightEngine.cleanup(),
+    ]);
   }
 }

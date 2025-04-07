@@ -1,18 +1,14 @@
-import { JSDOM } from "jsdom";
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { FetchError } from "./errors.js"; // Only import FetchError
 /**
  * Custom error class for HTTP errors from FetchEngine.
  */
-export class FetchEngineHttpError extends Error {
+export class FetchEngineHttpError extends FetchError {
     statusCode;
     constructor(message, statusCode) {
-        super(message);
-        this.name = "FetchEngineHttpError";
+        super(message, "ERR_HTTP_ERROR", undefined, statusCode);
         this.statusCode = statusCode;
-        // Maintain proper stack trace (requires target ES2015+ in tsconfig)
-        if (Error.captureStackTrace) {
-            Error.captureStackTrace(this, FetchEngineHttpError);
-        }
+        this.name = "FetchEngineHttpError";
     }
 }
 /**
@@ -22,25 +18,16 @@ export class FetchEngineHttpError extends Error {
  * It does not support advanced configurations like retries, caching, or proxies directly.
  */
 export class FetchEngine {
-    headers;
-    options; // Store options
+    options;
+    static DEFAULT_OPTIONS = {
+        markdown: false,
+    };
     /**
      * Creates an instance of FetchEngine.
      * @param options Configuration options for the FetchEngine.
      */
     constructor(options = {}) {
-        // Accept options
-        this.options = options; // Store options
-        this.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-        };
+        this.options = { ...FetchEngine.DEFAULT_OPTIONS, ...options };
     }
     /**
      * Fetches HTML or converts to Markdown from the specified URL.
@@ -50,78 +37,61 @@ export class FetchEngine {
      * @throws {FetchEngineHttpError} If the HTTP response status is not ok (e.g., 404, 500).
      * @throws {Error} If the content type is not HTML or for other network errors.
      */
-    async fetchHTML(url) {
-        let htmlContent;
-        let responseStatus;
-        let finalUrl;
+    async fetchHTML(url, options) {
+        const effectiveOptions = { ...this.options, ...options }; // Combine constructor and call options
+        let response;
         try {
-            const response = await fetch(url, {
-                headers: this.headers,
+            response = await fetch(url, {
                 redirect: "follow",
+                headers: {
+                    // Standard browser-like headers
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
             });
-            responseStatus = response.status;
-            finalUrl = response.url; // Capture final URL after redirects
             if (!response.ok) {
                 throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
             }
-            const contentType = response.headers.get("content-type") || "";
-            if (!contentType.includes("text/html")) {
-                throw new Error(`Not an HTML page (Content-Type: ${contentType})`);
+            const contentTypeHeader = response.headers.get("content-type");
+            if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
+                throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
             }
-            htmlContent = await response.text();
-        }
-        catch (error) {
-            // Rethrow specific FetchEngineHttpError, otherwise wrap in a generic error
-            if (error instanceof FetchEngineHttpError) {
-                throw error;
-            }
-            else if (error instanceof Error) {
-                throw new Error(`Fetch failed for ${url}: ${error.message}`);
-            }
-            else {
-                throw new Error(`Fetch failed for ${url}: Unknown error`);
-            }
-        }
-        // Process the HTML (Title extraction, Markdown conversion)
-        try {
-            const dom = new JSDOM(htmlContent);
-            const title = dom.window.document.title || "";
-            const document = dom.window.document;
-            // Perform Markdown conversion if requested
-            let finalContent = htmlContent;
-            if (this.options.markdown) {
+            const html = await response.text();
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : null;
+            let finalContent = html;
+            let finalContentType = "html";
+            if (effectiveOptions.markdown) {
                 try {
                     const converter = new MarkdownConverter();
-                    finalContent = converter.convert(htmlContent);
-                    // Optional: If markdown is requested, maybe clear the title? Or keep it?
-                    // title = ""; // Decide if title is relevant for Markdown output
+                    finalContent = converter.convert(html);
+                    finalContentType = "markdown";
                 }
                 catch (conversionError) {
-                    console.error(`Markdown conversion failed for ${url}:`, conversionError);
-                    // Decide behavior: return original HTML or throw/return error indication?
-                    // Returning original HTML for now
-                    finalContent = htmlContent;
+                    console.error(`Markdown conversion failed for ${url} (FetchEngine):`, conversionError);
+                    // Fallback to original HTML on conversion error
                 }
             }
-            // Consider SPA detection - maybe add a flag to the result? Currently just warns.
-            if (!this.options.markdown && this.detectSPA(document)) {
-                console.warn(`SPA detected for ${url}, HTML content might be incomplete.`);
-            }
             return {
-                html: finalContent, // Return original HTML or Markdown
-                title,
-                url: finalUrl,
+                content: finalContent,
+                contentType: finalContentType,
+                title: title,
+                url: response.url, // Use the final URL after redirects
                 isFromCache: false,
-                statusCode: responseStatus,
-                error: undefined, // No error at this stage if successful
+                statusCode: response.status,
+                error: undefined,
             };
         }
-        catch (processingError) {
-            console.error(`Error processing HTML for ${url}:`, processingError);
-            // If processing fails after successful fetch, return raw HTML with an error indicator? Or throw?
-            // Throwing for now, as the processing step is part of the expected operation.
-            const message = processingError instanceof Error ? processingError.message : "Unknown processing error";
-            throw new Error(`Failed to process content for ${url}: ${message}`);
+        catch (error) {
+            // Re-throw specific known errors directly
+            if (error instanceof FetchEngineHttpError ||
+                (error instanceof FetchError && error.code === "ERR_NON_HTML_CONTENT")) {
+                throw error;
+            }
+            // Wrap other/unexpected errors
+            const message = error instanceof Error ? error.message : "Unknown fetch error";
+            throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
         }
     }
     detectSPA(document) {

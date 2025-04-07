@@ -13,6 +13,7 @@ const playwrightConfig = {
   maxRetries: 1, // Lower retries for example brevity
   useHttpFallback: true,
   poolBlockedResourceTypes: ["image", "font"], // Example config
+  markdown: true,
 };
 
 // --- Helper Function ---
@@ -25,14 +26,17 @@ async function runEngine(
   for (const url of urls) {
     console.log(`[${engineName}] Fetching: ${url}`);
     try {
+      // Pass markdown: true directly in the call for this example
+      // Note: For FetchEngine, this won't override constructor config.
+      // For HybridEngine, it only applies if fallback to Playwright occurs.
       const result = await engineInstance.fetchHTML(url);
       console.log(`[${engineName}] SUCCESS: ${result.url} - Title: ${result.title}`);
+      console.log(`[${engineName}] Content Type: ${result.contentType}`);
+      console.log(`[${engineName}] Content (Markdown):\n${result.content.substring(0, 500)}...`);
     } catch (error: any) {
-      // Log the full error object for inspection
       console.error(`[${engineName}] FAILED: ${url} - Full Error:`, error);
     }
   }
-  // Ensure cleanup is called, especially for PlaywrightEngine
   console.log(`[${engineName}] Cleaning up...`);
   await engineInstance.cleanup();
   console.log(`[${engineName}] Cleanup complete.`);
@@ -42,14 +46,17 @@ async function runEngine(
 async function main() {
   console.log("Starting Fetch Engine examples...");
 
-  const fetchEngine = new FetchEngine();
+  // FetchEngine example (will ignore per-request markdown option)
+  const fetchEngine = new FetchEngine({ markdown: true }); // Configured for HTML
   await runEngine("FetchEngine", fetchEngine, urlsToFetch);
 
-  const playwrightEngine = new PlaywrightEngine(playwrightConfig);
+  // PlaywrightEngine example (will use per-request markdown option)
+  const playwrightEngine = new PlaywrightEngine({ markdown: true }); // Configured for HTML
   await runEngine("PlaywrightEngine", playwrightEngine, urlsToFetch);
 
-  const hybridEngine = new HybridEngine(playwrightConfig); // Instantiate HybridEngine
-  await runEngine("HybridEngine", hybridEngine, urlsToFetch); // Run HybridEngine
+  // HybridEngine example (will use per-request markdown option ONLY on fallback)
+  const hybridEngine = new HybridEngine({ markdown: true }); // Configured for HTML
+  await runEngine("HybridEngine", hybridEngine, urlsToFetch);
 
   console.log("\n--- All Engines Complete ---");
 }

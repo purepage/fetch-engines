@@ -88,9 +88,10 @@ export class MarkdownConverter {
       strongDelimiter: "**",
       emDelimiter: "*",
       hr: "---",
-      // Use Turndown's expected types for the callback
+      // Use nodeType check instead of window.HTMLElement
       keepReplacement: ((_content: string, node: TurndownNode) => {
-        if (node instanceof window.HTMLElement) {
+        // Node.ELEMENT_NODE is 1
+        if (node.nodeType === 1) {
           const htmlElement = node as TurndownHTMLElement;
           if (htmlElement.getAttribute("role") === "presentation" || htmlElement.classList?.contains("preserve")) {
             return htmlElement.outerHTML;
@@ -141,7 +142,8 @@ export class MarkdownConverter {
   private addContentExtractionRules(): void {
     this.turndownService.addRule("main-content-marker", {
       filter: (node: TurndownNode): boolean => {
-        if (!(node instanceof window.HTMLElement)) return false;
+        // Node.ELEMENT_NODE is 1
+        if (node.nodeType !== 1) return false;
         const el = node as TurndownHTMLElement;
         const element = node as Element;
         return (
@@ -203,7 +205,8 @@ export class MarkdownConverter {
     this.turndownService.addRule("list", {
       filter: ["ul", "ol"],
       replacement: (content: string, node: TurndownNode) => {
-        if (!(node instanceof window.HTMLElement)) return content;
+        // Node.ELEMENT_NODE is 1
+        if (node.nodeType !== 1) return content;
         // Check if the parent is a list item (nested list)
         const parent = node.parentNode;
         const indent = parent && parent.nodeName.toLowerCase() === "li" ? "  " : "";
@@ -267,10 +270,10 @@ export class MarkdownConverter {
   private addInlineRules(): void {
     // Links - Ensure proper formatting and title preservation
     this.turndownService.addRule("link", {
-      filter: (node: TurndownNode): boolean =>
-        node.nodeName === "A" &&
-        !!(node instanceof window.HTMLElement) &&
-        !!(node as TurndownHTMLElement).getAttribute("href"),
+      filter: (node: TurndownNode, _options: TurndownService.Options): boolean => {
+        // Check nodeType and nodeName first, then cast for getAttribute
+        return node.nodeType === 1 && node.nodeName === "A" && !!(node as TurndownHTMLElement).getAttribute("href");
+      },
       replacement: (content: string, node: TurndownNode) => {
         const element = node as TurndownHTMLElement;
         const href = element.getAttribute("href") || "";
@@ -290,7 +293,7 @@ export class MarkdownConverter {
           // Keep original href if decoding fails
         }
 
-        return title ? `[${text}](${decodedHref} "${title}")` : `[${text}](${decodedHref})`;
+        return title ? `[${text}](${decodedHref} \"${title}\")` : `[${text}](${decodedHref})`;
       },
     });
 
@@ -350,7 +353,10 @@ export class MarkdownConverter {
 
     // Standalone Images (not in figures)
     this.turndownService.addRule("image", {
-      filter: (node: TurndownNode) => node.nodeName === "IMG" && node.parentNode?.nodeName !== "FIGURE",
+      filter: (node: TurndownNode): boolean => {
+        // Node.ELEMENT_NODE is 1
+        return node.nodeType === 1 && node.nodeName === "IMG" && !!node.getAttribute("src");
+      },
       replacement: (_content: string, node: TurndownNode) => {
         const element = node as TurndownHTMLElement;
         const src = element.getAttribute("src") || "";
@@ -364,7 +370,8 @@ export class MarkdownConverter {
     // Code Blocks - Enhanced detection
     this.turndownService.addRule("code-block", {
       filter: (node: TurndownNode): boolean => {
-        if (!(node instanceof window.HTMLElement)) return false;
+        // Node.ELEMENT_NODE is 1
+        if (node.nodeType !== 1) return false;
         const element = node as TurndownHTMLElement;
 
         // Must be a <pre> tag

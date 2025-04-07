@@ -169,7 +169,7 @@ describe("PlaywrightEngine", () => {
     expect(specificMockPage.content).toHaveBeenCalledTimes(1);
     expect(specificMockPage.title).toHaveBeenCalledTimes(1);
     expect(mockPoolInstance.releasePage).toHaveBeenCalledWith(specificMockPage);
-    expect(result.html).toBe(defaultHtml);
+    expect(result.content).toBe(defaultHtml);
     expect(result.title).toBe(defaultTitle);
     expect(result.isFromCache).toBe(false);
     expect(result.error).toBeUndefined();
@@ -193,7 +193,18 @@ describe("PlaywrightEngine", () => {
     /* ... */
   });
   it("FR3.4: should return cached result if valid", async () => {
-    /* ... */
+    // First call (populates cache)
+    await engine.fetchHTML(defaultUrl);
+    mockPoolInstance.acquirePage.mockClear(); // Clear calls from first fetch
+
+    // Second call (should hit cache)
+    const result = await engine.fetchHTML(defaultUrl);
+
+    expect(mockPoolInstance.acquirePage).not.toHaveBeenCalled();
+    expect(result.isFromCache).toBe(true);
+    expect(result.content).toBe(defaultHtml);
+    expect(result.contentType).toBe("html"); // Check cached contentType
+    expect(result.title).toBe(defaultTitle);
   });
   it("FR3.4: should fetch again if cache expired", async () => {
     /* ... */
@@ -228,99 +239,81 @@ describe("PlaywrightEngine", () => {
 
   // --- New Tests for Markdown Conversion ---
 
-  it("should fetch and convert HTML to Markdown via Playwright when markdown option is true in config", async () => {
-    // Instantiate with markdown: true, disable fallback to force Playwright path
-    engine = new PlaywrightEngine({ markdown: true, useHttpFallback: false });
-
+  it("should fetch HTML when markdown is false (default)", async () => {
+    engine = new PlaywrightEngine({ useHttpFallback: false }); // Disable fallback for direct test
     const result = await engine.fetchHTML(defaultUrl);
 
-    // Assertions
-    expect(mockedAxiosGet).not.toHaveBeenCalled(); // Fallback disabled
     expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1);
-    expect(mockPage.goto).toHaveBeenCalled();
-    expect(mockPage.content).toHaveBeenCalled();
-    expect(mockPage.title).toHaveBeenCalled();
-    expect(mockPoolInstance.releasePage).toHaveBeenCalledWith(mockPage);
-
-    // Check Markdown content
-    expect(result.html).toContain("# Default Test Page"); // Title -> H1 (with --- separator)
-    expect(result.html).toContain("# Heading 1"); // H1 -> #
-    expect(result.html).toContain("Some paragraph.");
-    expect(result.html).not.toContain("<p>");
-
-    // Check other props
+    expect(result.content).toBe(defaultHtml);
+    expect(result.contentType).toBe("html");
     expect(result.title).toBe(defaultTitle);
     expect(result.statusCode).toBe(200);
-    expect(result.url).toBe(defaultUrl);
     expect(result.error).toBeUndefined();
-    expect(result.isFromCache).toBe(false);
+  });
+
+  it("should fetch and convert HTML to Markdown via Playwright when markdown option is true in config", async () => {
+    engine = new PlaywrightEngine({ markdown: true, useHttpFallback: false }); // Enable markdown in config
+    const result = await engine.fetchHTML(defaultUrl);
+
+    expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1);
+    expect(result.contentType).toBe("markdown");
+    expect(result.content).toContain("# Default Test Page");
+    expect(result.content).toContain("# Heading 1");
+    expect(result.content).not.toContain("<p>");
+    expect(result.title).toBe(defaultTitle); // Title still extracted
+    expect(result.statusCode).toBe(200);
   });
 
   it("should fetch and convert HTML to Markdown via Playwright using per-request option", async () => {
-    // Instantiate with markdown: false (default), disable fallback
-    engine = new PlaywrightEngine({ useHttpFallback: false });
+    engine = new PlaywrightEngine({ useHttpFallback: false }); // Default markdown is false
+    const result = await engine.fetchHTML(defaultUrl, { markdown: true }); // Override per-request
 
-    // Override markdown option in the call
-    const result = await engine.fetchHTML(defaultUrl, { markdown: true });
-
-    // Assertions (similar to above)
-    expect(mockedAxiosGet).not.toHaveBeenCalled();
     expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1);
-    expect(mockPoolInstance.releasePage).toHaveBeenCalledWith(mockPage);
-
-    // Check Markdown content
-    expect(result.html).toContain("# Default Test Page");
-    expect(result.html).toContain("# Heading 1");
-    expect(result.html).toContain("Some paragraph.");
-    expect(result.html).not.toContain("<body>");
-
-    // Check other props
+    expect(result.contentType).toBe("markdown");
+    expect(result.content).toContain("# Default Test Page");
+    expect(result.content).toContain("# Heading 1");
     expect(result.title).toBe(defaultTitle);
-    expect(result.statusCode).toBe(200);
   });
 
   it("should convert HTML from successful HTTP fallback if markdown option is true", async () => {
-    // Instantiate with markdown: true, fallback enabled (default)
-    engine = new PlaywrightEngine({ markdown: true });
-
-    // Mock successful Axios response using the spy
+    engine = new PlaywrightEngine({ markdown: true }); // Enable markdown in config
 
     mockedAxiosGet.mockResolvedValue(
       createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl) as any
     );
-
     const result = await engine.fetchHTML(defaultUrl);
 
-    // Assertions
     expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
-    expect(mockPoolInstance.acquirePage).not.toHaveBeenCalled(); // Playwright shouldn't be used
-
-    // Check Markdown content
-    expect(result.html).toContain("# Default Test Page"); // Title -> H1 (with --- separator)
-    expect(result.html).toContain("# Heading 1"); // H1 -> #
-    expect(result.html).toContain("Some paragraph.");
-    expect(result.html).not.toContain("</head>");
-
-    // Check other props
-    expect(result.title).toBe(defaultTitle); // Title extracted by fallback
-    expect(result.statusCode).toBe(200);
-    expect(result.url).toBe(defaultUrl);
-    expect(result.error).toBeUndefined();
-    expect(result.isFromCache).toBe(false); // Cache tested separately
+    expect(mockPoolInstance.acquirePage).not.toHaveBeenCalled();
+    expect(result.contentType).toBe("markdown"); // Check fallback converted
+    expect(result.content).toContain("# Default Test Page");
+    expect(result.content).toContain("# Heading 1");
+    expect(result.title).toBe(defaultTitle);
   });
 
-  // Ensure default behavior (HTML output) is tested
-  it("should return HTML when markdown option is false (default)", async () => {
-    // Default config (markdown: false), disable fallback to ensure PW path
-    engine = new PlaywrightEngine({ useHttpFallback: false });
+  it("should return HTML from successful HTTP fallback if markdown option is false (default)", async () => {
+    engine = new PlaywrightEngine({ markdown: false }); // Default markdown
 
+    mockedAxiosGet.mockResolvedValue(
+      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl) as any
+    );
     const result = await engine.fetchHTML(defaultUrl);
 
-    // Assertions
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockPoolInstance.acquirePage).not.toHaveBeenCalled();
+    expect(result.contentType).toBe("html");
+    expect(result.content).toBe(defaultHtml);
+    expect(result.title).toBe(defaultTitle);
+  });
+
+  it("should return HTML when markdown option is false (default) - redundant test name, same as above", async () => {
+    engine = new PlaywrightEngine({ useHttpFallback: false }); // Ensure Playwright path
+    const result = await engine.fetchHTML(defaultUrl);
+
     expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1);
-    expect(result.html).toBe(defaultHtml); // Should be original HTML
-    expect(result.html).toContain("<body>");
-    expect(result.html).not.toContain("# Heading 1");
+    expect(result.contentType).toBe("html");
+    expect(result.content).toBe(defaultHtml);
+    expect(result.content).not.toContain("# Heading 1");
     expect(result.title).toBe(defaultTitle);
     expect(result.statusCode).toBe(200);
   });

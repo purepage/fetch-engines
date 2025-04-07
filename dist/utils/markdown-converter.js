@@ -65,9 +65,10 @@ export class MarkdownConverter {
             strongDelimiter: "**",
             emDelimiter: "*",
             hr: "---",
-            // Use Turndown's expected types for the callback
+            // Use nodeType check instead of window.HTMLElement
             keepReplacement: ((_content, node) => {
-                if (node instanceof window.HTMLElement) {
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType === 1) {
                     const htmlElement = node;
                     if (htmlElement.getAttribute("role") === "presentation" || htmlElement.classList?.contains("preserve")) {
                         return htmlElement.outerHTML;
@@ -108,7 +109,8 @@ export class MarkdownConverter {
     addContentExtractionRules() {
         this.turndownService.addRule("main-content-marker", {
             filter: (node) => {
-                if (!(node instanceof window.HTMLElement))
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType !== 1)
                     return false;
                 const el = node;
                 const element = node;
@@ -158,14 +160,15 @@ export class MarkdownConverter {
             replacement: (content) => `\n\n${content}\n\n`, // Add separation
         });
         // Preserve heading levels correctly
-        this.turndownService.keep(["h1", "h2", "h3", "h4", "h5", "h6"]);
+        // this.turndownService.keep(["h1", "h2", "h3", "h4", "h5", "h6"]); // REMOVED - Use default ATX headings
     }
     addBlockRules() {
         // Lists (ensure proper nesting indentation)
         this.turndownService.addRule("list", {
             filter: ["ul", "ol"],
             replacement: (content, node) => {
-                if (!(node instanceof window.HTMLElement))
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType !== 1)
                     return content;
                 // Check if the parent is a list item (nested list)
                 const parent = node.parentNode;
@@ -224,9 +227,10 @@ export class MarkdownConverter {
     addInlineRules() {
         // Links - Ensure proper formatting and title preservation
         this.turndownService.addRule("link", {
-            filter: (node) => node.nodeName === "A" &&
-                !!(node instanceof window.HTMLElement) &&
-                !!node.getAttribute("href"),
+            filter: (node, _options) => {
+                // Check nodeType and nodeName first, then cast for getAttribute
+                return node.nodeType === 1 && node.nodeName === "A" && !!node.getAttribute("href");
+            },
             replacement: (content, node) => {
                 const element = node;
                 const href = element.getAttribute("href") || "";
@@ -245,7 +249,7 @@ export class MarkdownConverter {
                     console.warn(`Failed to decode URI, keeping original: ${href}`, e);
                     // Keep original href if decoding fails
                 }
-                return title ? `[${text}](${decodedHref} "${title}")` : `[${text}](${decodedHref})`;
+                return title ? `[${text}](${decodedHref} \"${title}\")` : `[${text}](${decodedHref})`;
             },
         });
         // Images - Handle figures and captions
@@ -297,7 +301,10 @@ export class MarkdownConverter {
         });
         // Standalone Images (not in figures)
         this.turndownService.addRule("image", {
-            filter: (node) => node.nodeName === "IMG" && node.parentNode?.nodeName !== "FIGURE",
+            filter: (node) => {
+                // Node.ELEMENT_NODE is 1
+                return node.nodeType === 1 && node.nodeName === "IMG" && !!node.getAttribute("src");
+            },
             replacement: (_content, node) => {
                 const element = node;
                 const src = element.getAttribute("src") || "";
@@ -310,7 +317,8 @@ export class MarkdownConverter {
         // Code Blocks - Enhanced detection
         this.turndownService.addRule("code-block", {
             filter: (node) => {
-                if (!(node instanceof window.HTMLElement))
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType !== 1)
                     return false;
                 const element = node;
                 // Must be a <pre> tag
