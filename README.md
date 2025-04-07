@@ -10,15 +10,15 @@ Fetching web content can be complex. You need to handle static HTML, dynamic Jav
 
 **Why use `@purepageio/fetch-engines`?**
 
-*   **Unified API:** Get content from simple or complex sites using the same `fetchHTML(url, options?)` method.
-*   **Flexible Strategies:** Choose the right tool for the job:
-    *   `FetchEngine`: Lightweight and fast for static HTML, using the standard `fetch` API.
-    *   `PlaywrightEngine`: Powerful browser automation for JavaScript-heavy sites, handling rendering and interactions.
-    *   `HybridEngine`: The best of both worlds – tries `FetchEngine` first for speed, automatically falls back to `PlaywrightEngine` for reliability on complex pages.
-*   **Robust & Resilient:** Built-in caching, configurable retries, and standardized error handling make your fetching logic more dependable.
-*   **Simplified Automation:** `PlaywrightEngine` manages browser instances and contexts automatically through efficient pooling and includes integrated stealth measures to bypass common anti-bot systems.
-*   **Content Transformation:** Optionally convert fetched HTML directly to clean Markdown content.
-*   **TypeScript Ready:** Fully typed for a better development experience.
+- **Unified API:** Get content from simple or complex sites using the same `fetchHTML(url, options?)` method.
+- **Flexible Strategies:** Choose the right tool for the job:
+  - `FetchEngine`: Lightweight and fast for static HTML, using the standard `fetch` API.
+  - `PlaywrightEngine`: Powerful browser automation for JavaScript-heavy sites, handling rendering and interactions.
+  - `HybridEngine`: The best of both worlds – tries `FetchEngine` first for speed, automatically falls back to `PlaywrightEngine` for reliability on complex pages.
+- **Robust & Resilient:** Built-in caching, configurable retries, and standardized error handling make your fetching logic more dependable.
+- **Simplified Automation:** `PlaywrightEngine` manages browser instances and contexts automatically through efficient pooling and includes integrated stealth measures to bypass common anti-bot systems.
+- **Content Transformation:** Optionally convert fetched HTML directly to clean Markdown content.
+- **TypeScript Ready:** Fully typed for a better development experience.
 
 This package provides a high-level abstraction, letting you focus on using the web content rather than the intricacies of fetching it.
 
@@ -38,16 +38,16 @@ This package provides a high-level abstraction, letting you focus on using the w
 
 ## Features
 
-*   **Multiple Fetching Strategies:** Choose between `FetchEngine` (lightweight `fetch`), `PlaywrightEngine` (robust JS rendering via Playwright), or `HybridEngine` (smart fallback).
-*   **Unified API:** Simple `fetchHTML(url, options?)` interface across all engines.
-*   **Configurable Retries:** Automatic retries on failure with customizable attempts and delays.
-*   **Built-in Caching:** In-memory caching with configurable TTL to reduce redundant fetches.
-*   **Playwright Stealth:** Automatic integration of `playwright-extra` and stealth plugins to bypass common bot detection.
-*   **Managed Browser Pooling:** Efficient resource management for `PlaywrightEngine` with configurable browser/context limits and lifecycles.
-*   **Smart Fallbacks:** `HybridEngine` uses `FetchEngine` first, falling back to `PlaywrightEngine` only when needed. `PlaywrightEngine` can optionally use a fast HTTP fetch before launching a full browser.
-*   **Content Conversion:** Optionally convert fetched HTML directly to Markdown.
-*   **Standardized Errors:** Custom `FetchError` classes provide context on failures.
-*   **TypeScript Ready:** Fully typed codebase for enhanced developer experience.
+- **Multiple Fetching Strategies:** Choose between `FetchEngine` (lightweight `fetch`), `PlaywrightEngine` (robust JS rendering via Playwright), or `HybridEngine` (smart fallback).
+- **Unified API:** Simple `fetchHTML(url, options?)` interface across all engines.
+- **Configurable Retries:** Automatic retries on failure with customizable attempts and delays.
+- **Built-in Caching:** In-memory caching with configurable TTL to reduce redundant fetches.
+- **Playwright Stealth:** Automatic integration of `playwright-extra` and stealth plugins to bypass common bot detection.
+- **Managed Browser Pooling:** Efficient resource management for `PlaywrightEngine` with configurable browser/context limits and lifecycles.
+- **Smart Fallbacks:** `HybridEngine` uses `FetchEngine` first, falling back to `PlaywrightEngine` only when needed. `PlaywrightEngine` can optionally use a fast HTTP fetch before launching a full browser.
+- **Content Conversion:** Optionally convert fetched HTML directly to Markdown.
+- **Standardized Errors:** Custom `FetchError` classes provide context on failures.
+- **TypeScript Ready:** Fully typed codebase for enhanced developer experience.
 
 ## Installation
 
@@ -113,7 +113,7 @@ const engine = new PlaywrightEngine({ markdown: false });
 async function main() {
   try {
     const url = "https://quotes.toscrape.com/";
-    
+
     // Example: Fetching as Markdown using per-request override
     console.log(`Fetching ${url} as Markdown...`);
     const mdResult = await engine.fetchHTML(url, { markdown: true });
@@ -123,7 +123,6 @@ async function main() {
     // You could also fetch as HTML by default:
     // const htmlResult = await engine.fetchHTML(url);
     // console.log(`\nFetched ${htmlResult.url} (ContentType: ${htmlResult.contentType}) - Title: ${htmlResult.title}`);
-
   } catch (error) {
     console.error("Playwright fetch failed:", error);
   } finally {
@@ -139,7 +138,7 @@ main();
 import { HybridEngine } from "@purepageio/fetch-engines";
 
 // Engine configured to fetch HTML by default for both internal engines
-const engine = new HybridEngine({ markdown: false }); 
+const engine = new HybridEngine({ markdown: false });
 
 async function main() {
   try {
@@ -149,7 +148,7 @@ async function main() {
     // --- Scenario 1: FetchEngine Succeeds ---
     console.log(`\nFetching simple site (${url1}) requesting Markdown...`);
     // FetchEngine uses its constructor config (markdown: false), ignoring the per-request option.
-    const result1 = await engine.fetchHTML(url1, { markdown: true }); 
+    const result1 = await engine.fetchHTML(url1, { markdown: true });
     console.log(`Fetched ${result1.url} (ContentType: ${result1.contentType}) - Title: ${result1.title}`);
     console.log(`Content is ${result1.contentType} because FetchEngine succeeded and used its own config.`);
     console.log(`${result1.content.substring(0, 300)}...`);
@@ -161,7 +160,6 @@ async function main() {
     console.log(`Fetched ${result2.url} (ContentType: ${result2.contentType}) - Title: ${result2.title}`);
     console.log(`Content is ${result2.contentType} because Playwright fallback used the per-request option.`);
     console.log(`${result2.content.substring(0, 300)}...`);
-
   } catch (error) {
     console.error("Hybrid fetch failed:", error);
   } finally {
@@ -179,8 +177,8 @@ Engines accept an optional configuration object in their constructor to customis
 
 The `FetchEngine` accepts a `FetchEngineOptions` object with the following properties:
 
-| Option     | Type      | Default | Description                                                                                                  |
-|------------|-----------|---------|--------------------------------------------------------------------------------------------------------------|
+| Option     | Type      | Default | Description                                                                                            |
+| ---------- | --------- | ------- | ------------------------------------------------------------------------------------------------------ |
 | `markdown` | `boolean` | `false` | If `true`, converts fetched HTML to Markdown. `contentType` in the result will be set to `'markdown'`. |
 
 ```typescript
@@ -194,31 +192,30 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object with the follow
 
 **General Options:**
 
-| Option                  | Type                  | Default     | Description                                                                                                                               |
-|-------------------------|-----------------------|-------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `markdown`              | `boolean`             | `false`     | If `true`, converts content (from Playwright or fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request. |
-| `useHttpFallback`       | `boolean`             | `true`      | If `true`, attempts a fast HTTP fetch before using Playwright.                                                                              |
-| `useHeadedModeFallback` | `boolean`             | `false`     | If `true`, automatically retries specific failed domains in headed (visible) mode.                                                       |
-| `defaultFastMode`       | `boolean`             | `true`      | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request.                              |
-| `simulateHumanBehavior` | `boolean`             | `true`      | If `true` (and not `fastMode`), attempts basic human-like interactions.                                                                     |
-| `concurrentPages`       | `number`              | `3`         | Max number of pages to process concurrently within the engine queue.                                                                       |
-| `maxRetries`            | `number`              | `3`         | Max retry attempts for a failed fetch (excluding initial try).                                                                          |
-| `retryDelay`            | `number`              | `5000`      | Delay (ms) between retries.                                                                                                               |
-| `cacheTTL`              | `number`              | `900000`    | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                           |
+| Option                  | Type      | Default  | Description                                                                                                                               |
+| ----------------------- | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `markdown`              | `boolean` | `false`  | If `true`, converts content (from Playwright or fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request. |
+| `useHttpFallback`       | `boolean` | `true`   | If `true`, attempts a fast HTTP fetch before using Playwright.                                                                            |
+| `useHeadedModeFallback` | `boolean` | `false`  | If `true`, automatically retries specific failed domains in headed (visible) mode.                                                        |
+| `defaultFastMode`       | `boolean` | `true`   | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request.                            |
+| `simulateHumanBehavior` | `boolean` | `true`   | If `true` (and not `fastMode`), attempts basic human-like interactions.                                                                   |
+| `concurrentPages`       | `number`  | `3`      | Max number of pages to process concurrently within the engine queue.                                                                      |
+| `maxRetries`            | `number`  | `3`      | Max retry attempts for a failed fetch (excluding initial try).                                                                            |
+| `retryDelay`            | `number`  | `5000`   | Delay (ms) between retries.                                                                                                               |
+| `cacheTTL`              | `number`  | `900000` | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                          |
 
 **Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
-| Option                   | Type                           | Default     | Description                                                               |
-|--------------------------|--------------------------------|-------------|---------------------------------------------------------------------------|
-| `maxBrowsers`            | `number`                       | `2`         | Max concurrent browser instances managed by the pool.                     |
-| `maxPagesPerContext`     | `number`                       | `6`         | Max pages per browser context before recycling.                           |
-| `maxBrowserAge`          | `number`                       | `1200000`   | Max age (ms) a browser instance lives before recycling. (20 mins default) |
-| `healthCheckInterval`    | `number`                       | `60000`     | How often (ms) the pool checks browser health. (1 min default)            |
-| `useHeadedMode`          | `boolean`                      | `false`     | Forces the *entire pool* to launch browsers in headed (visible) mode.     |
-| `poolBlockedDomains`     | `string[]`                     | `[]`        | List of domain glob patterns to block requests to.                        |
-| `poolBlockedResourceTypes` | `string[]`                     | `[]`        | List of Playwright resource types (e.g., 'image', 'font') to block.     |
-| `proxy`                  | `{ server: string, ... }?` | `undefined` | Proxy configuration object (see `PlaywrightEngineConfig` type).           |
-
+| Option                     | Type                       | Default     | Description                                                               |
+| -------------------------- | -------------------------- | ----------- | ------------------------------------------------------------------------- |
+| `maxBrowsers`              | `number`                   | `2`         | Max concurrent browser instances managed by the pool.                     |
+| `maxPagesPerContext`       | `number`                   | `6`         | Max pages per browser context before recycling.                           |
+| `maxBrowserAge`            | `number`                   | `1200000`   | Max age (ms) a browser instance lives before recycling. (20 mins default) |
+| `healthCheckInterval`      | `number`                   | `60000`     | How often (ms) the pool checks browser health. (1 min default)            |
+| `useHeadedMode`            | `boolean`                  | `false`     | Forces the _entire pool_ to launch browsers in headed (visible) mode.     |
+| `poolBlockedDomains`       | `string[]`                 | `[]`        | List of domain glob patterns to block requests to.                        |
+| `poolBlockedResourceTypes` | `string[]`                 | `[]`        | List of Playwright resource types (e.g., 'image', 'font') to block.       |
+| `proxy`                    | `{ server: string, ... }?` | `undefined` | Proxy configuration object (see `PlaywrightEngineConfig` type).           |
 
 ### HybridEngine
 
@@ -322,7 +319,7 @@ async function fetchWithHandling(url: string) {
           break;
         // Add other specific codes as needed
         default:
-          console.error(`  FetchError (${error.code || 'UNKNOWN'}): ${error.message}`);
+          console.error(`  FetchError (${error.code || "UNKNOWN"}): ${error.message}`);
           break;
       }
       if (error.originalError) {
