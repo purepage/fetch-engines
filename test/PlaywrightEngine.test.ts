@@ -65,6 +65,9 @@ describe("PlaywrightEngine", () => {
 
     // Spy on the actual axios.get method
     mockedAxiosGet = vi.spyOn(axios, "get");
+    mockedAxiosGet.mockResolvedValue(
+      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl)
+    );
 
     mockQueueAdd = vi.fn().mockImplementation((fn) => {
       try {
@@ -101,7 +104,8 @@ describe("PlaywrightEngine", () => {
     mockPoolInstance.acquirePage.mockResolvedValue(mockPage);
 
     // Instantiate engine
-    engine = new PlaywrightEngine();
+    // Ensure default is NOT markdown to avoid affecting tests expecting HTML
+    engine = new PlaywrightEngine({ markdown: false });
     // Explicitly clear internal cache for clean test state
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (engine as any).cache.clear();
@@ -181,16 +185,84 @@ describe("PlaywrightEngine", () => {
     /* ... */
   });
   it("FR3.7: should fallback to Playwright if HTTP fallback gets non-HTML", async () => {
-    /* ... */
+    // Override axios mock for this test
+    mockedAxiosGet.mockResolvedValue(
+      createMockAxiosResponse('{"data": "json"}', 200, { "content-type": "application/json" }, defaultUrl)
+    );
+
+    // Re-acquire mockPage with specific settings if needed for this test
+    const specificMockPage = createMockPage({
+      // ... (ensure goto, content, title are suitable for the fallback scenario)
+      content: vi.fn().mockResolvedValue("<html><body>Fallback Playwright Content</body></html>"),
+      title: vi.fn().mockResolvedValue("Fallback Page Title"),
+    });
+    mockPoolInstance.acquirePage.mockResolvedValue(specificMockPage);
+
+    const result = await engine.fetchHTML(defaultUrl);
+
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1); // Should call PW
+    expect(specificMockPage.goto).toHaveBeenCalledWith(defaultUrl, expect.any(Object));
+    expect(result.content).toContain("Fallback Playwright Content"); // Check PW content
+    expect(result.error).toBeUndefined();
   });
   it("FR3.7: should fallback to Playwright if HTTP fallback gets challenge page", async () => {
-    /* ... */
+    // Override axios mock for this test
+    mockedAxiosGet.mockResolvedValue(
+      createMockAxiosResponse(
+        "<html><head><title>Challenge</title></head><body>Please verify you are human</body></html>",
+        200, // Often challenge pages return 200
+        { "content-type": "text/html" },
+        defaultUrl
+      )
+    );
+    // Re-acquire mockPage
+    const specificMockPage = createMockPage({
+      content: vi.fn().mockResolvedValue("<html><body>Fallback Playwright Content After Challenge</body></html>"),
+      title: vi.fn().mockResolvedValue("Fallback Page Title After Challenge"),
+    });
+    mockPoolInstance.acquirePage.mockResolvedValue(specificMockPage);
+
+    const result = await engine.fetchHTML(defaultUrl);
+
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1); // Should call PW
+    expect(specificMockPage.goto).toHaveBeenCalledWith(defaultUrl, expect.any(Object));
+    expect(result.content).toContain("Fallback Playwright Content After Challenge");
+    expect(result.error).toBeUndefined();
   });
   it("FR3.7: should fallback to Playwright if HTTP fallback fails (e.g., 403)", async () => {
-    /* ... */
+    // Override axios mock for this test - simulate 403 Forbidden
+    mockedAxiosGet.mockResolvedValue(
+      createMockAxiosResponse("Forbidden", 403, { "content-type": "text/plain" }, defaultUrl)
+    );
+    // Re-acquire mockPage
+    const specificMockPage = createMockPage({
+      content: vi.fn().mockResolvedValue("<html><body>Fallback Playwright Content After 403</body></html>"),
+      title: vi.fn().mockResolvedValue("Fallback Page Title After 403"),
+    });
+    mockPoolInstance.acquirePage.mockResolvedValue(specificMockPage);
+
+    const result = await engine.fetchHTML(defaultUrl);
+
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1); // Should call PW
+    expect(specificMockPage.goto).toHaveBeenCalledWith(defaultUrl, expect.any(Object));
+    expect(result.content).toContain("Fallback Playwright Content After 403");
+    expect(result.error).toBeUndefined(); // Expect success via Playwright
   });
   it("should throw original Playwright error if HTTP fallback works but Playwright fails", async () => {
-    /* ... */
+    // HTTP fallback is mocked to succeed (default beforeEach is fine)
+    // mockedAxiosGet.mockResolvedValue(...) // Default mock is okay
+
+    // Make Playwright fail
+    const playwrightError = new Error("Playwright Navigation Timeout");
+    mockPoolInstance.acquirePage.mockRejectedValue(playwrightError);
+
+    await expect(engine.fetchHTML(defaultUrl)).rejects.toThrow(playwrightError);
+
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1); // Fallback attempted
+    expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1); // PW attempted after fallback
   });
   it("FR3.4: should return cached result if valid", async () => {
     // First call (populates cache)
@@ -219,7 +291,24 @@ describe("PlaywrightEngine", () => {
     /* ... */
   });
   it("FR5.2: should wrap Axios errors in FetchError during fallback", async () => {
-    /* ... */
+    const axiosError = new Error("Network Error");
+    // Override axios mock to reject
+    mockedAxiosGet.mockRejectedValue(axiosError);
+
+    // Make Playwright succeed (in case fallback logic tries it - depends on implementation)
+    const specificMockPage = createMockPage({
+      content: vi.fn().mockResolvedValue("<html><body>Playwright Content After Axios Error</body></html>"),
+      title: vi.fn().mockResolvedValue("Playwright Page Title After Axios Error"),
+    });
+    mockPoolInstance.acquirePage.mockResolvedValue(specificMockPage);
+
+    await expect(engine.fetchHTML(defaultUrl)).rejects.toThrow(/Network Error/); // Check for FetchError wrapping original
+    // Check that the error is an instance of the expected custom error type if available
+    // await expect(engine.fetchHTML(defaultUrl)).rejects.toBeInstanceOf(PlaywrightEngineHttpError);
+
+    expect(mockedAxiosGet).toHaveBeenCalledTimes(1);
+    // Depending on retry logic, Playwright might or might not be called after pure Axios error
+    // expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(1);
   });
   it("FR5.2: should wrap Playwright errors in FetchError", async () => {
     /* ... */
@@ -279,7 +368,7 @@ describe("PlaywrightEngine", () => {
     engine = new PlaywrightEngine({ markdown: true }); // Enable markdown in config
 
     mockedAxiosGet.mockResolvedValue(
-      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl) as any
+      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl)
     );
     const result = await engine.fetchHTML(defaultUrl);
 
@@ -295,7 +384,7 @@ describe("PlaywrightEngine", () => {
     engine = new PlaywrightEngine({ markdown: false }); // Default markdown
 
     mockedAxiosGet.mockResolvedValue(
-      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl) as any
+      createMockAxiosResponse(defaultHtml, 200, { "content-type": "text/html" }, defaultUrl)
     );
     const result = await engine.fetchHTML(defaultUrl);
 

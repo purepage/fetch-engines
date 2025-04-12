@@ -54,7 +54,7 @@ export class PlaywrightEngine implements IEngine {
     poolBlockedResourceTypes: [],
     proxy: undefined as any,
     useHeadedMode: false, // ADDED default
-    markdown: false, // Default markdown to false
+    markdown: true, // Default markdown to false
   };
 
   /**

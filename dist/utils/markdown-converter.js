@@ -256,7 +256,8 @@ export class MarkdownConverter {
         this.turndownService.addRule("figure", {
             filter: "figure",
             replacement: (content, node) => {
-                if (!(node instanceof window.HTMLElement))
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType !== 1)
                     return content;
                 const element = node;
                 // Use DOM methods on the casted element
@@ -332,8 +333,9 @@ export class MarkdownConverter {
                 return hasCodeChild || hasCodeClass || hasLangAttribute;
             },
             replacement: (content, node) => {
-                if (!(node instanceof window.HTMLElement))
-                    return content.trim(); // Should be HTMLElement based on filter
+                // Node.ELEMENT_NODE is 1
+                if (node.nodeType !== 1)
+                    return content.trim(); // Should be ELEMENT_NODE based on filter
                 const element = node;
                 // Detect language
                 let language = "";

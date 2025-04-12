@@ -41,7 +41,7 @@ export class PlaywrightEngine {
         poolBlockedResourceTypes: [],
         proxy: undefined,
         useHeadedMode: false, // ADDED default
-        markdown: false, // Default markdown to false
+        markdown: true, // Default markdown to false
     };
     /**
      * Creates an instance of PlaywrightEngine.
