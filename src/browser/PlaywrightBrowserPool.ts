@@ -1,54 +1,39 @@
-// Use dynamic import for playwright-extra and stealth plugin
-import type { Browser, BrowserContext, Page, BrowserType, Route, LaunchOptions } from "playwright";
+// Import chromium directly from playwright
+import { chromium as playwrightChromium } from "playwright";
+import type { Browser, BrowserContext, Page, Route, LaunchOptions } from "playwright";
 import type { BrowserMetrics } from "../types.js";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
-import PQueue from "p-queue"; // Restored
-// REMOVED import EventEmitter from "events"; // Import EventEmitter
-// Use require for CJS interop
+import PQueue from "p-queue";
 
-// const Debug = require("debug");
-// import * as Debug from "debug"; // Changed back to import
-// import Debug from "debug"; // Try default import
+// Import addExtra from playwright-extra
+import { addExtra } from "playwright-extra";
 
-// Declare variables to hold the imported modules
-let playwrightExtra: any;
-let StealthPluginInstance: any; // Renamed to clarify it holds the instance
-let chromium: BrowserType;
+// Use 'any' for the wrapped chromium type to handle the added .use() method
+let chromiumWithExtras: any;
+let StealthPluginInstance: any; // Still need the stealth plugin instance
 
-// Asynchronous function to load dependencies
+// Asynchronous function to load dependencies (now mainly for stealth plugin)
 async function loadDependencies() {
-  if (!playwrightExtra) {
-    // Dynamically import playwright-extra
-    const playwrightExtraModule = await import("playwright-extra");
-    // Assign the module (or its default if structure requires)
-    playwrightExtra = playwrightExtraModule.default || playwrightExtraModule;
-
-    // Access chromium, assuming it's directly on the effective export
-    chromium = playwrightExtra.chromium;
-    if (!chromium) {
-      throw new Error("Could not find chromium export in playwright-extra module.");
-    }
-    // Ensure it's treated as BrowserType
-    chromium = chromium as BrowserType;
+  if (!chromiumWithExtras) {
+    // Wrap the imported playwrightChromium using addExtra
+    chromiumWithExtras = addExtra(playwrightChromium);
 
     // Dynamically import the stealth plugin module
     const StealthPluginModule = await import("puppeteer-extra-plugin-stealth");
-    // Access the factory function (likely default export)
-    const stealthPluginFactory = StealthPluginModule.default || StealthPluginModule;
+    // Check if the default export exists and is a function, otherwise use the module itself
+    const stealthPluginFactory =
+      typeof StealthPluginModule.default === "function" ? StealthPluginModule.default : StealthPluginModule;
 
-    // Check if the factory is indeed a function before calling it
+    // Ensure we have a callable factory
     if (typeof stealthPluginFactory !== "function") {
-      throw new Error(
-        "puppeteer-extra-plugin-stealth default export is not a function or module structure is unexpected."
-      );
+      throw new Error("puppeteer-extra-plugin-stealth export is not a function or module structure is unexpected.");
     }
-    // Call the factory function to get the plugin instance
+    // Get the plugin instance
     StealthPluginInstance = stealthPluginFactory();
 
-    // Apply the plugin instance
-    // Use 'any' cast for the .use() method as it's added by playwright-extra
-    (chromium as any).use(StealthPluginInstance);
+    // Apply the plugin instance to the wrapped chromium object
+    chromiumWithExtras.use(StealthPluginInstance);
   }
 }
 
@@ -56,11 +41,11 @@ async function loadDependencies() {
 interface PlaywrightBrowserInstance {
   id: string;
   browser: Browser;
-  context: BrowserContext; // Store the context
-  pages: Set<Page>; // Track pages per context/browser
-  metrics: BrowserMetrics; // Use the exported type
+  context: BrowserContext;
+  pages: Set<Page>;
+  metrics: BrowserMetrics;
   isHealthy: boolean;
-  disconnectedHandler: () => void; // Store handler for removal
+  disconnectedHandler: () => void;
 }
 
 /**
@@ -69,24 +54,21 @@ interface PlaywrightBrowserInstance {
 export class PlaywrightBrowserPool {
   private pool: Set<PlaywrightBrowserInstance> = new Set();
   private readonly maxBrowsers: number;
-  private readonly maxPagesPerContext: number; // Renamed from maxPagesPerBrowser for clarity
-  private readonly maxBrowserAge: number; // Max age in ms
-  private readonly healthCheckInterval: number; // Interval in ms
+  private readonly maxPagesPerContext: number;
+  private readonly maxBrowserAge: number;
+  private readonly healthCheckInterval: number;
   private healthCheckTimer: NodeJS.Timeout | null = null;
-  private readonly maxIdleTime: number = 5 * 60 * 1000; // 5 minutes idle timeout
-  private isCleaningUp: boolean = false; // Flag to prevent operations during cleanup
-  private readonly useHeadedMode: boolean; // Store mode for reference
-  // Store blocking lists as instance properties
+  private readonly maxIdleTime: number;
+  private isCleaningUp: boolean = false;
+  private readonly useHeadedMode: boolean;
   private readonly blockedDomains: string[];
   private readonly blockedResourceTypes: string[];
-  // Add proxyConfig property
   private readonly proxyConfig?: {
     server: string;
     username?: string;
     password?: string;
   };
 
-  // Define defaults statically
   private static readonly DEFAULT_BLOCKED_DOMAINS: string[] = [
     "doubleclick.net",
     "google-analytics.com",
@@ -110,18 +92,10 @@ export class PlaywrightBrowserPool {
     "pubmatic.com",
     "taboola.com",
     "outbrain.com",
-    // Add more domains as needed
   ];
-  private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES = [
-    "image", // Keep image blocked by default
-    "font",
-    "media",
-    "websocket",
-    // Removed stylesheet - essential for layout
-    // Removed script - essential for functionality
-  ];
+  private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES = ["image", "font", "media", "websocket"];
 
-  private readonly acquireQueue: PQueue = new PQueue({ concurrency: 1 }); // Queue for acquiring pages
+  private readonly acquireQueue: PQueue = new PQueue({ concurrency: 1 });
 
   constructor(
     config: {
@@ -133,7 +107,7 @@ export class PlaywrightBrowserPool {
       blockedDomains?: string[];
       blockedResourceTypes?: string[];
       proxy?: { server: string; username?: string; password?: string };
-      maxIdleTime?: number; // Added maxIdleTime
+      maxIdleTime?: number;
     } = {}
   ) {
     this.maxBrowsers = config.maxBrowsers ?? 2;
@@ -142,7 +116,6 @@ export class PlaywrightBrowserPool {
     this.healthCheckInterval = config.healthCheckInterval ?? 60 * 1000;
     this.useHeadedMode = config.useHeadedMode ?? false;
     this.maxIdleTime = config.maxIdleTime ?? 5 * 60 * 1000;
-    // Use provided lists or defaults
     this.blockedDomains =
       config.blockedDomains && config.blockedDomains.length > 0
         ? config.blockedDomains
@@ -151,23 +124,16 @@ export class PlaywrightBrowserPool {
       config.blockedResourceTypes && config.blockedResourceTypes.length > 0
         ? config.blockedResourceTypes
         : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
-    // Store proxy config (will be undefined if not provided)
     this.proxyConfig = config.proxy;
   }
 
-  /**
-   * Initializes the pool and starts health checks.
-   */
   public async initialize(): Promise<void> {
     await loadDependencies(); // Load dependencies first
     if (this.isCleaningUp) return;
     await this.ensureMinimumInstances();
-    this.scheduleHealthCheck(); // Now defined
+    this.scheduleHealthCheck();
   }
 
-  /**
-   * Schedules the next health check.
-   */
   private scheduleHealthCheck(): void {
     if (this.isCleaningUp) return;
     if (this.healthCheckTimer) {
@@ -182,28 +148,20 @@ export class PlaywrightBrowserPool {
     }
   }
 
-  /**
-   * Ensures the pool has the configured maximum number of browser instances.
-   */
   private async ensureMinimumInstances(): Promise<void> {
     if (this.isCleaningUp) return;
-    // Use a loop that checks size correctly
     while (this.pool.size < this.maxBrowsers) {
       try {
         await this.createBrowserInstance();
       } catch (error) {
-        // Log error creating instance?
-        break; // Stop if instance creation fails
+        break;
       }
     }
   }
 
-  /**
-   * Creates a new Playwright Browser instance and adds it to the pool.
-   */
   private async createBrowserInstance(): Promise<PlaywrightBrowserInstance> {
     await loadDependencies(); // Ensure dependencies are loaded
-    const id = uuidv4(); // Correct usage
+    const id = uuidv4();
     const launchOptions: LaunchOptions = {
       headless: !this.useHeadedMode,
       args: [
@@ -220,21 +178,19 @@ export class PlaywrightBrowserPool {
       proxy: this.proxyConfig,
     };
 
-    const browser = await chromium.launch(launchOptions);
+    // Use the wrapped chromiumWithExtras object to launch
+    const browser = await chromiumWithExtras.launch(launchOptions);
+
     const context = await browser.newContext({
       userAgent: new UserAgent().toString(),
       viewport: {
         width: 1280 + Math.floor(Math.random() * 120),
         height: 720 + Math.floor(Math.random() * 80),
-      }, // Slightly randomized viewport
+      },
       javaScriptEnabled: true,
-      // bypassCSP: true, // Use with caution, can break sites
-      ignoreHTTPSErrors: true, // Useful for some sites, but less secure
-      // locale: 'en-US', // Set locale if needed
-      // timezoneId: 'America/New_York', // Set timezone if needed
+      ignoreHTTPSErrors: true,
     });
 
-    // Apply blocking rules to the context
     await context.route("**/*", async (route: Route) => {
       const request = route.request();
       const url = request.url();
@@ -245,12 +201,12 @@ export class PlaywrightBrowserPool {
           this.blockedDomains.some((domain) => hostname.includes(domain)) ||
           this.blockedResourceTypes.includes(resourceType)
         ) {
-          await route.abort();
+          await route.abort("aborted");
         } else {
           await route.continue();
         }
       } catch (_e) {
-        await route.continue(); // Continue on URL parse errors
+        await route.continue();
       }
     });
 
@@ -272,29 +228,23 @@ export class PlaywrightBrowserPool {
       pages: new Set(),
       metrics,
       isHealthy: true,
-      disconnectedHandler: () => {}, // Initialize with placeholder
+      disconnectedHandler: () => {},
     };
 
-    // Define and attach the disconnect handler
     instance.disconnectedHandler = () => {
       if (instance.isHealthy) {
-        // Prevent multiple calls
         instance.isHealthy = false;
         instance.metrics.isHealthy = false;
-        this.healthCheck().catch((_err) => {}); // Trigger health check immediately
+        this.healthCheck().catch((_err) => {});
       }
     };
     browser.on("disconnected", instance.disconnectedHandler);
 
-    this.pool.add(instance); // Use Set.add
+    this.pool.add(instance);
     return instance;
   }
 
-  /**
-   * Acquires a Page from a healthy browser instance in the pool.
-   */
   public acquirePage(): Promise<Page> {
-    // Use the acquisition queue
     return this.acquireQueue.add(async () => {
       if (this.isCleaningUp) {
         throw new Error("Pool is shutting down.");
@@ -318,7 +268,19 @@ export class PlaywrightBrowserPool {
       }
 
       if (!bestInstance) {
-        throw new Error("Failed to acquire Playwright page: No available browser instance.");
+        await this.ensureMinimumInstances(); // Try adding an instance if none suitable
+        for (const instance of this.pool) {
+          // Check again
+          if (instance.isHealthy && instance.pages.size < this.maxPagesPerContext) {
+            if (!bestInstance || instance.pages.size < bestInstance.pages.size) {
+              bestInstance = instance;
+            }
+          }
+        }
+        if (!bestInstance) {
+          // Still no instance?
+          throw new Error("Failed to acquire Playwright page: No available or creatable browser instance.");
+        }
       }
 
       try {
@@ -328,7 +290,6 @@ export class PlaywrightBrowserPool {
         bestInstance.metrics.activePages = bestInstance.pages.size;
         bestInstance.metrics.lastUsed = new Date();
 
-        // Add handlers within try block
         page.on("close", () => {
           bestInstance.pages.delete(page);
           bestInstance.metrics.activePages = bestInstance.pages.size;
@@ -336,26 +297,23 @@ export class PlaywrightBrowserPool {
         });
         page.on("crash", () => {
           bestInstance.metrics.errors++;
-          bestInstance.pages.delete(page); // Remove crashed page
-          bestInstance.isHealthy = false; // Mark instance as unhealthy on crash
+          bestInstance.pages.delete(page);
+          bestInstance.isHealthy = false;
           bestInstance.metrics.isHealthy = false;
-          this.healthCheck().catch((_err) => {}); // Trigger health check
+          this.healthCheck().catch((_err) => {});
         });
 
         return page;
       } catch (error) {
         bestInstance.metrics.errors++;
-        bestInstance.isHealthy = false; // Mark instance unhealthy
+        bestInstance.isHealthy = false;
         bestInstance.metrics.isHealthy = false;
-        this.healthCheck().catch((_err) => {}); // Trigger health check
+        this.healthCheck().catch((_err) => {});
         throw new Error(`Failed to create new page: ${(error as Error).message}`);
       }
-    }) as Promise<Page>; // Assert return type to satisfy signature
+    }) as Promise<Page>;
   }
 
-  /**
-   * Performs health checks on all instances.
-   */
   private async healthCheck(): Promise<void> {
     if (this.isCleaningUp) return;
 
@@ -366,8 +324,6 @@ export class PlaywrightBrowserPool {
       checks.push(
         (async () => {
           if (!instance.isHealthy) {
-            // Skip check if already marked unhealthy
-            // Maybe still check age/idle here? For now, assume it will be removed.
             return;
           }
           let shouldRemove = false;
@@ -387,7 +343,7 @@ export class PlaywrightBrowserPool {
           }
           if (
             !shouldRemove &&
-            this.pool.size > 1 &&
+            this.pool.size > 1 && // Only remove idle if pool has more than 1
             instance.pages.size === 0 &&
             this.maxIdleTime > 0 &&
             now.getTime() - instance.metrics.lastUsed.getTime() > this.maxIdleTime
@@ -401,50 +357,34 @@ export class PlaywrightBrowserPool {
             instance.metrics.isHealthy = false;
             await this.closeAndRemoveInstance(instance, reason);
           } else {
-            instance.isHealthy = true; // Ensure marked healthy if checks pass
+            instance.isHealthy = true;
             instance.metrics.isHealthy = true;
           }
-        })().catch((_err) => {
-          // Log errors during individual check? For now, ignore.
-        })
+        })().catch((_err) => {})
       );
     }
 
     try {
       await Promise.allSettled(checks);
     } finally {
-      // Always ensure minimum instances and reschedule check
-      this.ensureMinimumInstances();
+      await this.ensureMinimumInstances(); // Ensure minimum instances after check
       this.scheduleHealthCheck();
     }
   }
 
-  /**
-   * Closes and removes a browser instance from the pool.
-   */
-  private async closeAndRemoveInstance(
-    instance: PlaywrightBrowserInstance,
-    _reason?: string // Reason is unused, prefixed
-  ): Promise<void> {
+  private async closeAndRemoveInstance(instance: PlaywrightBrowserInstance, _reason?: string): Promise<void> {
     const removed = this.pool.delete(instance);
     if (!removed) return;
 
     instance.browser.off("disconnected", instance.disconnectedHandler);
     try {
       await instance.context.close();
-    } catch (_error) {
-      /* Ignore context close errors */
-    }
+    } catch (_error) {}
     try {
       await instance.browser.close();
-    } catch (_error) {
-      /* Ignore browser close errors */
-    }
+    } catch (_error) {}
   }
 
-  /**
-   * Releases a page back to the pool, closing it.
-   */
   public async releasePage(page: Page): Promise<void> {
     if (!page || page.isClosed()) return;
 
@@ -458,28 +398,22 @@ export class PlaywrightBrowserPool {
 
     try {
       await page.close();
-      // If owner known, update metrics
       if (ownerInstance) {
-        ownerInstance.pages.delete(page); // Ensure page is removed from set
+        ownerInstance.pages.delete(page);
         ownerInstance.metrics.activePages = ownerInstance.pages.size;
         ownerInstance.metrics.lastUsed = new Date();
       }
     } catch (error) {
-      // If close fails, mark instance potentially unhealthy
       if (ownerInstance) {
         ownerInstance.isHealthy = false;
         ownerInstance.metrics.isHealthy = false;
         ownerInstance.metrics.errors++;
-        // Remove page from set even on error closing?
         ownerInstance.pages.delete(page);
         ownerInstance.metrics.activePages = ownerInstance.pages.size;
       }
     }
   }
 
-  /**
-   * Stops health checks and closes all browser instances.
-   */
   public async cleanup(): Promise<void> {
     if (this.isCleaningUp) return;
     this.isCleaningUp = true;
@@ -488,7 +422,6 @@ export class PlaywrightBrowserPool {
       clearTimeout(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
-    // Clear the queue
     this.acquireQueue.clear();
     await this.acquireQueue.onIdle();
 
@@ -498,11 +431,7 @@ export class PlaywrightBrowserPool {
     this.isCleaningUp = false;
   }
 
-  /**
-   * Retrieves metrics for each browser instance in the pool.
-   */
   public getMetrics(): BrowserMetrics[] {
-    // Return a copy of metrics, ensuring health/active state is up-to-date
     return [...this.pool].map((instance) => ({
       ...instance.metrics,
       activePages: instance.pages.size,

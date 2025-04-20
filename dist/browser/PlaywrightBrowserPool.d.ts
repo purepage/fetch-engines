@@ -34,45 +34,15 @@ export declare class PlaywrightBrowserPool {
         };
         maxIdleTime?: number;
     });
-    /**
-     * Initializes the pool and starts health checks.
-     */
     initialize(): Promise<void>;
-    /**
-     * Schedules the next health check.
-     */
     private scheduleHealthCheck;
-    /**
-     * Ensures the pool has the configured maximum number of browser instances.
-     */
     private ensureMinimumInstances;
-    /**
-     * Creates a new Playwright Browser instance and adds it to the pool.
-     */
     private createBrowserInstance;
-    /**
-     * Acquires a Page from a healthy browser instance in the pool.
-     */
     acquirePage(): Promise<Page>;
-    /**
-     * Performs health checks on all instances.
-     */
     private healthCheck;
-    /**
-     * Closes and removes a browser instance from the pool.
-     */
     private closeAndRemoveInstance;
-    /**
-     * Releases a page back to the pool, closing it.
-     */
     releasePage(page: Page): Promise<void>;
-    /**
-     * Stops health checks and closes all browser instances.
-     */
     cleanup(): Promise<void>;
-    /**
-     * Retrieves metrics for each browser instance in the pool.
-     */
     getMetrics(): BrowserMetrics[];
 }
 //# sourceMappingURL=PlaywrightBrowserPool.d.ts.map
