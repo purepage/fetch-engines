@@ -1,9 +1,4 @@
-// Use playwright-extra via require
-
-const playwrightExtra = require("playwright-extra");
-
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-// Import types from original playwright
+// Use dynamic import for playwright-extra and stealth plugin
 import type { Browser, BrowserContext, Page, BrowserType, Route, LaunchOptions } from "playwright";
 import type { BrowserMetrics } from "../types.js";
 import UserAgent from "user-agents";
@@ -16,11 +11,46 @@ import PQueue from "p-queue"; // Restored
 // import * as Debug from "debug"; // Changed back to import
 // import Debug from "debug"; // Try default import
 
-// Cast the required chromium object to the correct type
-const chromium: BrowserType = playwrightExtra.chromium;
+// Declare variables to hold the imported modules
+let playwrightExtra: any;
+let StealthPluginInstance: any; // Renamed to clarify it holds the instance
+let chromium: BrowserType;
 
-// Apply stealth plugin - cast to any to access .use()
-(chromium as any).use(StealthPlugin());
+// Asynchronous function to load dependencies
+async function loadDependencies() {
+  if (!playwrightExtra) {
+    // Dynamically import playwright-extra
+    const playwrightExtraModule = await import("playwright-extra");
+    // Assign the module (or its default if structure requires)
+    playwrightExtra = playwrightExtraModule.default || playwrightExtraModule;
+
+    // Access chromium, assuming it's directly on the effective export
+    chromium = playwrightExtra.chromium;
+    if (!chromium) {
+      throw new Error("Could not find chromium export in playwright-extra module.");
+    }
+    // Ensure it's treated as BrowserType
+    chromium = chromium as BrowserType;
+
+    // Dynamically import the stealth plugin module
+    const StealthPluginModule = await import("puppeteer-extra-plugin-stealth");
+    // Access the factory function (likely default export)
+    const stealthPluginFactory = StealthPluginModule.default || StealthPluginModule;
+
+    // Check if the factory is indeed a function before calling it
+    if (typeof stealthPluginFactory !== "function") {
+      throw new Error(
+        "puppeteer-extra-plugin-stealth default export is not a function or module structure is unexpected."
+      );
+    }
+    // Call the factory function to get the plugin instance
+    StealthPluginInstance = stealthPluginFactory();
+
+    // Apply the plugin instance
+    // Use 'any' cast for the .use() method as it's added by playwright-extra
+    (chromium as any).use(StealthPluginInstance);
+  }
+}
 
 // Define structure for browser instance managed by this pool
 interface PlaywrightBrowserInstance {
@@ -129,6 +159,7 @@ export class PlaywrightBrowserPool {
    * Initializes the pool and starts health checks.
    */
   public async initialize(): Promise<void> {
+    await loadDependencies(); // Load dependencies first
     if (this.isCleaningUp) return;
     await this.ensureMinimumInstances();
     this.scheduleHealthCheck(); // Now defined
@@ -171,6 +202,7 @@ export class PlaywrightBrowserPool {
    * Creates a new Playwright Browser instance and adds it to the pool.
    */
   private async createBrowserInstance(): Promise<PlaywrightBrowserInstance> {
+    await loadDependencies(); // Ensure dependencies are loaded
     const id = uuidv4(); // Correct usage
     const launchOptions: LaunchOptions = {
       headless: !this.useHeadedMode,
@@ -187,13 +219,6 @@ export class PlaywrightBrowserPool {
       ],
       proxy: this.proxyConfig,
     };
-
-    const chromium = playwrightExtra.chromium as BrowserType;
-    try {
-      (chromium as any).use(StealthPlugin());
-    } catch (_e) {
-      /* Ignore stealth plugin errors */
-    }
 
     const browser = await chromium.launch(launchOptions);
     const context = await browser.newContext({

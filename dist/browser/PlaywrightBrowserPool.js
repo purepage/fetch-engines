@@ -1,6 +1,3 @@
-// Use playwright-extra via require
-const playwrightExtra = require("playwright-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue"; // Restored
@@ -9,10 +6,39 @@ import PQueue from "p-queue"; // Restored
 // const Debug = require("debug");
 // import * as Debug from "debug"; // Changed back to import
 // import Debug from "debug"; // Try default import
-// Cast the required chromium object to the correct type
-const chromium = playwrightExtra.chromium;
-// Apply stealth plugin - cast to any to access .use()
-chromium.use(StealthPlugin());
+// Declare variables to hold the imported modules
+let playwrightExtra;
+let StealthPluginInstance; // Renamed to clarify it holds the instance
+let chromium;
+// Asynchronous function to load dependencies
+async function loadDependencies() {
+    if (!playwrightExtra) {
+        // Dynamically import playwright-extra
+        const playwrightExtraModule = await import("playwright-extra");
+        // Assign the module (or its default if structure requires)
+        playwrightExtra = playwrightExtraModule.default || playwrightExtraModule;
+        // Access chromium, assuming it's directly on the effective export
+        chromium = playwrightExtra.chromium;
+        if (!chromium) {
+            throw new Error("Could not find chromium export in playwright-extra module.");
+        }
+        // Ensure it's treated as BrowserType
+        chromium = chromium;
+        // Dynamically import the stealth plugin module
+        const StealthPluginModule = await import("puppeteer-extra-plugin-stealth");
+        // Access the factory function (likely default export)
+        const stealthPluginFactory = StealthPluginModule.default || StealthPluginModule;
+        // Check if the factory is indeed a function before calling it
+        if (typeof stealthPluginFactory !== "function") {
+            throw new Error("puppeteer-extra-plugin-stealth default export is not a function or module structure is unexpected.");
+        }
+        // Call the factory function to get the plugin instance
+        StealthPluginInstance = stealthPluginFactory();
+        // Apply the plugin instance
+        // Use 'any' cast for the .use() method as it's added by playwright-extra
+        chromium.use(StealthPluginInstance);
+    }
+}
 /**
  * Manages a pool of Playwright Browser instances for efficient reuse.
  */
@@ -89,6 +115,7 @@ export class PlaywrightBrowserPool {
      * Initializes the pool and starts health checks.
      */
     async initialize() {
+        await loadDependencies(); // Load dependencies first
         if (this.isCleaningUp)
             return;
         await this.ensureMinimumInstances();
@@ -132,6 +159,7 @@ export class PlaywrightBrowserPool {
      * Creates a new Playwright Browser instance and adds it to the pool.
      */
     async createBrowserInstance() {
+        await loadDependencies(); // Ensure dependencies are loaded
         const id = uuidv4(); // Correct usage
         const launchOptions = {
             headless: !this.useHeadedMode,
@@ -148,13 +176,6 @@ export class PlaywrightBrowserPool {
             ],
             proxy: this.proxyConfig,
         };
-        const chromium = playwrightExtra.chromium;
-        try {
-            chromium.use(StealthPlugin());
-        }
-        catch (_e) {
-            /* Ignore stealth plugin errors */
-        }
         const browser = await chromium.launch(launchOptions);
         const context = await browser.newContext({
             userAgent: new UserAgent().toString(),
