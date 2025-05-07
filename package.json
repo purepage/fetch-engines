@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.2.0",
+  "version": "0.2.11",
   "type": "module",
   "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
   "main": "dist/index.js",
