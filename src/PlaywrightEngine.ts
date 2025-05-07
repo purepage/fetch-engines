@@ -447,7 +447,7 @@ export class PlaywrightEngine implements IEngine {
         response = await page.goto(url, {
           waitUntil: "domcontentloaded",
           timeout: 60000,
-        }); // Use domcontentloaded, adjust timeout
+        });
       } catch (navigationError: any) {
         throw new FetchError(
           `Playwright navigation failed: ${navigationError.message}`,
@@ -469,31 +469,95 @@ export class PlaywrightEngine implements IEngine {
         );
       }
 
-      const contentType = response.headers()["content-type"] || "";
-      if (!contentType.includes("html")) {
-        throw new FetchError(`Invalid content type received: ${contentType}`, "ERR_NON_HTML_CONTENT");
-      }
-
-      if (!fastMode && this.config.simulateHumanBehavior) {
-        await this.simulateHumanBehavior(page);
-      }
-
-      const html = await page.content();
+      const actualContentTypeHeader = response.headers()["content-type"]?.toLowerCase() || "";
       const title = await page.title();
       const finalUrl = page.url();
-      const status = response?.status();
+      const status = response.status();
 
-      let finalContent = html;
-      let finalContentType: "html" | "markdown" = "html";
+      let finalContent: string;
+      let finalContentType: "html" | "markdown";
 
-      if (convertToMarkdown) {
-        try {
-          const converter = new MarkdownConverter();
-          finalContent = converter.convert(html);
-          finalContentType = "markdown";
-        } catch (conversionError: any) {
-          console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
-          // Fallback to original HTML
+      const ALLOWED_RAW_TEXT_CONTENT_TYPE_PREFIXES = [
+        "text/html",
+        "application/xhtml+xml",
+        "application/xml",
+        "text/xml",
+        "text/plain",
+        "application/json",
+        "text/javascript",
+        "application/javascript",
+        "application/atom+xml",
+        "application/rss+xml",
+        // Add other text-based types as needed
+      ];
+
+      if (!convertToMarkdown) {
+        // RAW CONTENT FETCHING
+        const isAllowedRawType = ALLOWED_RAW_TEXT_CONTENT_TYPE_PREFIXES.some((prefix) =>
+          actualContentTypeHeader.startsWith(prefix)
+        );
+
+        if (isAllowedRawType) {
+          finalContent = await response.text();
+          // Per discussion, keep "html" to align with existing HTMLFetchResult type
+          // The actual content is raw, but the type field is constrained.
+          finalContentType = "html";
+        } else if (actualContentTypeHeader.startsWith("text/")) {
+          // Broader catch for other text/* types if not explicitly listed but still text
+          console.warn(
+            `PlaywrightEngine: Fetching raw content for generic text type '${actualContentTypeHeader}' not explicitly in ALLOWED_RAW_TEXT_CONTENT_TYPE_PREFIXES. Consider adding it if common.`
+          );
+          finalContent = await response.text();
+          finalContentType = "html";
+        } else {
+          throw new FetchError(
+            `Raw content fetching not supported for content type: ${actualContentTypeHeader || "unknown"}`,
+            "ERR_UNSUPPORTED_RAW_CONTENT_TYPE"
+          );
+        }
+      } else {
+        // MARKDOWN CONVERSION
+        if (
+          actualContentTypeHeader.startsWith("text/html") ||
+          actualContentTypeHeader.startsWith("application/xhtml+xml")
+        ) {
+          if (!fastMode && this.config.simulateHumanBehavior) {
+            if (await this.isPageValid(page)) {
+              // Ensure page is valid before simulation
+              await this.simulateHumanBehavior(page);
+            }
+          }
+          const html = await page.content(); // page.content() for HTML suitable for DOM-based conversion
+          try {
+            const converter = new MarkdownConverter();
+            finalContent = converter.convert(html);
+            finalContentType = "markdown";
+          } catch (conversionError: any) {
+            console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
+            // Fallback to original HTML on conversion error
+            finalContent = html;
+            finalContentType = "html";
+          }
+        } else {
+          // Cannot convert non-HTML to Markdown
+          throw new FetchError(
+            `Cannot convert non-HTML content type '${actualContentTypeHeader || "unknown"}' to Markdown.`,
+            "ERR_MARKDOWN_CONVERSION_NON_HTML"
+          );
+        }
+      }
+
+      // Simulate human behavior only if it's HTML and markdown conversion is NOT requested,
+      // or if it IS HTML and markdown conversion IS requested (handled above for markdown path).
+      // This avoids simulation on raw XML/text fetches if markdown:false.
+      if (
+        !convertToMarkdown &&
+        (actualContentTypeHeader.startsWith("text/html") || actualContentTypeHeader.startsWith("application/xhtml+xml"))
+      ) {
+        if (!fastMode && this.config.simulateHumanBehavior) {
+          if (await this.isPageValid(page)) {
+            await this.simulateHumanBehavior(page);
+          }
         }
       }
 
