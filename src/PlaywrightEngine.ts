@@ -55,6 +55,8 @@ export class PlaywrightEngine implements IEngine {
     proxy: undefined as any,
     useHeadedMode: false, // ADDED default
     markdown: true,
+    spaMode: false, // ADDED spaMode default
+    spaRenderDelayMs: 0, // ADDED spaRenderDelayMs default
   };
 
   /**
@@ -286,16 +288,23 @@ export class PlaywrightEngine implements IEngine {
    * @param url The URL to fetch.
    * @param options Optional settings for this specific fetch operation.
    * @param options.fastMode Overrides the engine's `defaultFastMode` configuration for this request.
+   * @param options.spaMode Overrides the engine's `spaMode` configuration for this request.
    * @returns A Promise resolving to an HTMLFetchResult object.
    * @throws {FetchError} If the fetch fails after all retries or encounters critical errors.
    */
-  async fetchHTML(url: string, options: FetchOptions & { markdown?: boolean } = {}): Promise<HTMLFetchResult> {
+  async fetchHTML(
+    url: string,
+    options: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {}
+  ): Promise<HTMLFetchResult> {
     const fetchConfig = {
       ...this.config,
       markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
       fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
+      spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
+      // spaRenderDelayMs will be taken from this.config directly where needed or passed via merged config
     };
     // Type assertion needed here as fetchConfig is slightly broader than the recursive fn expects
+    // We'll refine the type for _fetchRecursive to include spaMode and spaRenderDelayMs
     return this._fetchRecursive(url, fetchConfig as any, 0, 0);
   }
 
@@ -313,18 +322,22 @@ export class PlaywrightEngine implements IEngine {
     // Use Required<...> to ensure all properties are present for internal logic
     currentConfig: Required<
       FetchOptions & {
+        // FetchOptions now includes spaMode?: boolean
         markdown: boolean;
         retryDelay: number;
         maxRetries: number;
         useHttpFallback: boolean;
         useHeadedModeFallback: boolean;
         useHeadedMode: boolean;
+        // spaMode is part of FetchOptions, will be present due to Required<>
+        spaRenderDelayMs: number; // Added spaRenderDelayMs
       }
     >,
     retryAttempt: number,
     parentRetryCount: number
   ): Promise<HTMLFetchResult> {
     const useFastMode = currentConfig.fastMode;
+    const isSpaMode = currentConfig.spaMode; // Get spaMode from currentConfig
 
     if (retryAttempt === 0 && parentRetryCount === 0) {
       const cachedResult = this.checkCache(url);
@@ -353,7 +366,9 @@ export class PlaywrightEngine implements IEngine {
     }
 
     try {
-      if (currentConfig.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
+      // If spaMode is true, skip HTTP fallback and go directly to Playwright
+      // Corrected logic: useHttpFallback should only be attempted if NOT in spaMode
+      if (!isSpaMode && currentConfig.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
         try {
           const httpResult = await this.fetchHTMLWithHttpFallback(url);
           if (this.config.cacheTTL > 0) {
@@ -393,9 +408,16 @@ export class PlaywrightEngine implements IEngine {
         throw new FetchError("Browser pool unavailable.", "ERR_POOL_UNAVAILABLE");
       }
 
-      // Pass markdown setting to Playwright fetch
+      // Pass markdown setting, spaMode, and spaRenderDelayMs to Playwright fetch
       const result = await this.queue.add(() =>
-        this.fetchWithPlaywright(url, this.browserPool!, useFastMode, currentConfig.markdown)
+        this.fetchWithPlaywright(
+          url,
+          this.browserPool!,
+          useFastMode,
+          currentConfig.markdown,
+          isSpaMode,
+          currentConfig.spaRenderDelayMs
+        )
       );
 
       if (result && this.config.cacheTTL > 0) {
@@ -433,20 +455,29 @@ export class PlaywrightEngine implements IEngine {
   private async fetchWithPlaywright(
     url: string,
     pool: PlaywrightBrowserPool,
-    fastMode: boolean,
-    convertToMarkdown: boolean
+    fastMode: boolean, // This is the "requested" fastMode
+    convertToMarkdown: boolean,
+    isSpaMode: boolean, // Added isSpaMode parameter
+    spaRenderDelayMs: number // Added spaRenderDelayMs parameter
   ): Promise<HTMLFetchResult> {
     let page: Page | null = null;
     try {
       page = await pool.acquirePage();
 
-      await this.applyBlockingRules(page, fastMode);
+      // If SPA mode is active, force fastMode to false to ensure all resources load
+      const actualFastMode = isSpaMode ? false : fastMode;
+      await this.applyBlockingRules(page, actualFastMode);
+
+      // If SPA mode, don't simulate human behavior before navigation, do it after content might be loaded
+      // if (!isSpaMode && this.config.simulateHumanBehavior && !actualFastMode) {
+      //   await this.simulateHumanBehavior(page); // Potentially move this or make it conditional for SPA
+      // }
 
       let response: PlaywrightResponse | null = null;
       try {
         response = await page.goto(url, {
-          waitUntil: "domcontentloaded",
-          timeout: 60000,
+          waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
+          timeout: isSpaMode ? 90000 : 60000, // Longer timeout for SPA mode
         });
       } catch (navigationError: any) {
         throw new FetchError(
@@ -461,6 +492,9 @@ export class PlaywrightEngine implements IEngine {
       }
 
       if (!response.ok()) {
+        // Additional check: if SPA mode and we got an empty-ish page, it might be an error too
+        // This is tricky, as a valid SPA might initially be empty.
+        // For now, rely on status code and timeouts.
         throw new FetchError(
           `HTTP error status received: ${response.status()}`,
           "ERR_HTTP_ERROR",
@@ -473,6 +507,17 @@ export class PlaywrightEngine implements IEngine {
       const title = await page.title();
       const finalUrl = page.url();
       const status = response.status();
+
+      // Post-load delay for SPAs
+      if (isSpaMode && spaRenderDelayMs > 0) {
+        await page.waitForTimeout(spaRenderDelayMs);
+      }
+
+      // Simulate human behavior after potential SPA rendering
+      if (this.config.simulateHumanBehavior && !actualFastMode) {
+        // 'actualFastMode' is false if isSpaMode is true
+        await this.simulateHumanBehavior(page);
+      }
 
       let finalContent: string;
       let finalContentType: "html" | "markdown";
@@ -544,20 +589,6 @@ export class PlaywrightEngine implements IEngine {
             `Cannot convert non-HTML content type '${actualContentTypeHeader || "unknown"}' to Markdown.`,
             "ERR_MARKDOWN_CONVERSION_NON_HTML"
           );
-        }
-      }
-
-      // Simulate human behavior only if it's HTML and markdown conversion is NOT requested,
-      // or if it IS HTML and markdown conversion IS requested (handled above for markdown path).
-      // This avoids simulation on raw XML/text fetches if markdown:false.
-      if (
-        !convertToMarkdown &&
-        (actualContentTypeHeader.startsWith("text/html") || actualContentTypeHeader.startsWith("application/xhtml+xml"))
-      ) {
-        if (!fastMode && this.config.simulateHumanBehavior) {
-          if (await this.isPageValid(page)) {
-            await this.simulateHumanBehavior(page);
-          }
         }
       }
 

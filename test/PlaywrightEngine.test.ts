@@ -9,6 +9,7 @@ import axios from "axios"; // Import real axios
 import type { Page, Response as PlaywrightResponse } from "playwright";
 import PQueue from "p-queue";
 import type { MockInstance } from "vitest"; // Import MockInstance
+import type { HTMLFetchResult } from "../src/types.js"; // Added import for HTMLFetchResult
 
 // Mock dependencies
 vi.mock("../src/browser/PlaywrightBrowserPool.js");
@@ -612,4 +613,69 @@ describe("PlaywrightEngine", () => {
 
   // Test for the default markdown true behavior of the engine if config.markdown = true
   // ... existing code ...
+});
+
+// --- SPA Mode Integration Tests ---
+// These tests require an internet connection and may be slower.
+// They use a real PlaywrightEngine instance.
+// Remove .skip to run these tests locally.
+describe.skip("PlaywrightEngine - SPA Mode Integration Tests", () => {
+  let engine: PlaywrightEngine;
+  const spaUrl = "https://www.smallblackdots.net/release/16109/corrina-joseph-wish-tonite-lonely";
+
+  beforeEach(() => {
+    // Important: Unmock PlaywrightBrowserPool and PQueue for these integration tests
+    // This is a bit tricky with Vitest's module mocking. For a true integration test,
+    // you might need to ensure these are not mocked at the top level for this describe block.
+    // Or, instantiate PlaywrightEngine in a way that bypasses the mocks if possible.
+    // For now, we assume PlaywrightEngine can be instantiated "normally" and will work if not mocked.
+    // Vitest's vi.unmock doesn't work reliably inside describe blocks after top-level mocks.
+    // The most reliable way is to have separate test files for unit vs integration or conditional mocking.
+    // We will instantiate a real PlaywrightEngine here.
+  });
+
+  afterEach(async () => {
+    if (engine) {
+      await engine.cleanup();
+    }
+  });
+
+  it("FR_SPA_1: should correctly fetch content from a live SPA site with spaMode enabled", async () => {
+    engine = new PlaywrightEngine({
+      spaMode: true,
+      spaRenderDelayMs: 4000, // Give ample time for this specific site
+      useHttpFallback: false, // Ensure Playwright is used directly for SPA test
+      markdown: false,
+    });
+
+    let result: HTMLFetchResult | null = null;
+    try {
+      result = await engine.fetchHTML(spaUrl);
+    } catch (error) {
+      console.error("SPA Integration test failed during fetchHTML:", error);
+      throw error; // Re-throw to fail the test
+    }
+
+    expect(result).not.toBeNull();
+    if (!result) return; // Type guard
+
+    expect(result.error).toBeUndefined();
+    expect(result.statusCode).toBe(200);
+
+    // Check title (might be dynamic, so check for inclusion)
+    expect(result.title).toBeTruthy();
+    expect(result.title?.toLowerCase()).toContain("corrina joseph");
+    expect(result.title?.toLowerCase()).toContain("wish tonite");
+
+    // Check content
+    expect(result.content).toBeTruthy();
+    expect(result.content.toLowerCase()).toContain("corrina joseph");
+    expect(result.content.toLowerCase()).toContain("wish tonite / lonely");
+    expect(result.content.toLowerCase()).toContain("atlantic jaxx");
+    // Check for something that indicates JS has run, e.g., a class or text not in the initial shell
+    // From the web search, terms like "Add to basket" or track listings are good indicators.
+    expect(result.content.toLowerCase()).toContain("add to basket");
+    expect(result.content).toContain("A1"); // Track number
+    expect(result.content).toContain("Wish Tonite (Original Mix)"); // Track name
+  }, 30000); // Increased timeout for live fetch and rendering
 });

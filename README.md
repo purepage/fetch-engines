@@ -191,17 +191,19 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object with the follow
 
 **General Options:**
 
-| Option                  | Type      | Default  | Description                                                                                                                               |
-| ----------------------- | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `markdown`              | `boolean` | `false`  | If `true`, converts content (from Playwright or fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request. |
-| `useHttpFallback`       | `boolean` | `true`   | If `true`, attempts a fast HTTP fetch before using Playwright.                                                                            |
-| `useHeadedModeFallback` | `boolean` | `false`  | If `true`, automatically retries specific failed domains in headed (visible) mode.                                                        |
-| `defaultFastMode`       | `boolean` | `true`   | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request.                            |
-| `simulateHumanBehavior` | `boolean` | `true`   | If `true` (and not `fastMode`), attempts basic human-like interactions.                                                                   |
-| `concurrentPages`       | `number`  | `3`      | Max number of pages to process concurrently within the engine queue.                                                                      |
-| `maxRetries`            | `number`  | `3`      | Max retry attempts for a failed fetch (excluding initial try).                                                                            |
-| `retryDelay`            | `number`  | `5000`   | Delay (ms) between retries.                                                                                                               |
-| `cacheTTL`              | `number`  | `900000` | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                          |
+| Option                  | Type      | Default  | Description                                                                                                                                                                                                                                                             |
+| ----------------------- | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `markdown`              | `boolean` | `false`  | If `true`, converts content (from Playwright or fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request.                                                                                                                               |
+| `useHttpFallback`       | `boolean` | `true`   | If `true`, attempts a fast HTTP fetch before using Playwright.                                                                                                                                                                                                          |
+| `useHeadedModeFallback` | `boolean` | `false`  | If `true`, automatically retries specific failed domains in headed (visible) mode.                                                                                                                                                                                      |
+| `defaultFastMode`       | `boolean` | `true`   | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request.                                                                                                                                                          |
+| `simulateHumanBehavior` | `boolean` | `true`   | If `true` (and not `fastMode`), attempts basic human-like interactions.                                                                                                                                                                                                 |
+| `concurrentPages`       | `number`  | `3`      | Max number of pages to process concurrently within the engine queue.                                                                                                                                                                                                    |
+| `maxRetries`            | `number`  | `3`      | Max retry attempts for a failed fetch (excluding initial try).                                                                                                                                                                                                          |
+| `retryDelay`            | `number`  | `5000`   | Delay (ms) between retries.                                                                                                                                                                                                                                             |
+| `cacheTTL`              | `number`  | `900000` | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                                                                                                                                                        |
+| `spaMode`               | `boolean` | `false`  | If `true`, enables Single Page Application mode. This typically bypasses `useHttpFallback`, forces `fastMode` to effectively `false`, uses more patient load conditions (e.g., network idle), and may apply `spaRenderDelayMs`. Recommended for JavaScript-heavy sites. |
+| `spaRenderDelayMs`      | `number`  | `0`      | Explicit delay (ms) after page load events in `spaMode` to allow for client-side rendering. Only applies if `spaMode` is `true`.                                                                                                                                        |
 
 **Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
@@ -220,12 +222,28 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object with the follow
 
 The `HybridEngine` constructor accepts a single optional argument which uses the **`PlaywrightEngineConfig`** structure (see the `PlaywrightEngine` tables above). These options configure the underlying engines where applicable:
 
-- Options like `maxRetries`, `cacheTTL`, `proxy`, `maxBrowsers`, etc., are primarily passed to the internal `PlaywrightEngine`.
+- Options like `maxRetries`, `cacheTTL`, `proxy`, `maxBrowsers`, `spaMode`, `spaRenderDelayMs`, etc., are primarily passed to the internal `PlaywrightEngine` or used by `HybridEngine` to decide its strategy.
 - The `markdown` setting in the constructor (`boolean`, default: `false`) applies to **both** internal engines by default.
-- If you provide `markdown: true` in the `options` object when calling `fetchHTML`, this override **only applies if a fallback to `PlaywrightEngine` is necessary**. The `FetchEngine` part will always use the `markdown` setting provided in the `HybridEngine` constructor.
+- The `spaMode` setting in the constructor (`boolean`, default: `false`) configures the default SPA behavior for the `HybridEngine`. If `spaMode` is true, the `HybridEngine` will attempt to detect if the `FetchEngine` result is an SPA shell (e.g., empty root div, noscript tag). If so, it will automatically fallback to `PlaywrightEngine` (with `spaMode` active) even if `FetchEngine` returned a 200 status.
+- If you provide `markdown: true` or `spaMode: true` in the `options` object when calling `fetchHTML`, this override is handled as follows:
+  - For `markdown`: Only applies if a fallback to `PlaywrightEngine` is necessary or if `FetchEngine` succeeded but an SPA shell was detected in `spaMode` (forcing Playwright). The `FetchEngine` part (if its result is used) will always use the `markdown` setting provided in the `HybridEngine` constructor.
+  - For `spaMode`: This directly controls the `HybridEngine`'s SPA shell detection and informs the `PlaywrightEngine` if a fallback occurs.
 
 ```typescript
-// ... (HybridEngine examples remain the same) ...
+// Example: HybridEngine with SPA mode enabled by default
+const spaHybridEngine = new HybridEngine({ spaMode: true, spaRenderDelayMs: 2000 });
+
+async function fetchSpaSite() {
+  try {
+    // This will use PlaywrightEngine directly if smallblackdots is an SPA shell
+    const result = await spaHybridEngine.fetchHTML(
+      "https://www.smallblackdots.net/release/16109/corrina-joseph-wish-tonite-lonely"
+    );
+    console.log(`Title: ${result.title}`);
+  } catch (e) {
+    console.error(e);
+  }
+}
 ```
 
 ## Return Value
@@ -248,6 +266,7 @@ All `fetchHTML()` methods return a Promise that resolves to an `HTMLFetchResult`
 - `options?` (`FetchOptions`): Optional per-request overrides.
   - `markdown?: boolean`: (Playwright/Hybrid only) Request Markdown conversion. For Hybrid, only applies on fallback to Playwright.
   - `fastMode?: boolean`: (Playwright/Hybrid only) Override fast mode.
+  - `spaMode?: boolean`: (Playwright/Hybrid only) Override SPA mode behavior for this request.
 - **Returns:** `Promise<HTMLFetchResult>`
 
 Fetches content, returning HTML or Markdown based on configuration/options in `result.content` with `result.contentType` indicating the format.

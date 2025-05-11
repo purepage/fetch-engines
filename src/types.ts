@@ -157,6 +157,23 @@ export interface PlaywrightEngineConfig {
    * @default false
    */
   markdown?: boolean; // Add the new markdown option
+
+  /**
+   * Enables Single Page Application (SPA) mode, which adjusts fetching strategies
+   * for sites that heavily rely on client-side JavaScript rendering.
+   * When true, this may override options like `useHttpFallback` and `defaultFastMode`,
+   * and employ more patient page loading mechanisms.
+   * @default false
+   */
+  spaMode?: boolean;
+
+  /**
+   * Explicit delay in milliseconds to wait after initial page load events when spaMode is true,
+   * allowing more time for client-side rendering and data fetching to complete.
+   * Only applies if `spaMode` is true.
+   * @default 0 (no additional fixed delay beyond Playwright's own waits)
+   */
+  spaRenderDelayMs?: number;
 }
 
 /**
@@ -167,6 +184,8 @@ export interface FetchOptions {
   fastMode?: boolean;
   /** Overrides the engine's markdown setting for this specific request. (Playwright/Hybrid only) */
   markdown?: boolean;
+  /** Overrides the engine's spaMode setting for this specific request. (Playwright/Hybrid only) */
+  spaMode?: boolean;
 }
 
 /**
