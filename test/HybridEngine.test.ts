@@ -208,4 +208,104 @@ describe("HybridEngine", () => {
     expect(mockPlaywrightEngineInstance.getMetrics).toHaveBeenCalledTimes(1);
     expect(mockFetchEngineInstance.getMetrics).not.toHaveBeenCalled();
   });
+
+  describe("SPA Mode Logic", () => {
+    const spaTestUrl = "http://example-spa.com";
+    const spaShellHtml: HTMLFetchResult = {
+      content:
+        '<html><head><title></title></head><body><div id="root"></div><noscript>JS needed</noscript></body></html>',
+      contentType: "html",
+      title: "",
+      url: spaTestUrl,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    };
+
+    const fullPlaywrightResult: HTMLFetchResult = {
+      content: '<html><head><title>SPA Loaded</title></head><body><div id="root">Actual Content</div></body></html>',
+      contentType: "html",
+      title: "SPA Loaded",
+      url: spaTestUrl,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    };
+
+    it("should use FetchEngine if spaMode is false and FetchEngine succeeds (even with shell-like content)", async () => {
+      hybridEngine = new HybridEngine({ spaMode: false }); // Explicitly false
+      mockFetchEngineInstance.fetchHTML.mockResolvedValue(spaShellHtml);
+
+      const result = await hybridEngine.fetchHTML(spaTestUrl);
+
+      expect(result).toBe(spaShellHtml);
+      expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(spaTestUrl);
+      expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+    });
+
+    it("should fallback to PlaywrightEngine if spaMode is true and FetchEngine returns an SPA shell", async () => {
+      hybridEngine = new HybridEngine({ spaMode: true, spaRenderDelayMs: 100 });
+      mockFetchEngineInstance.fetchHTML.mockResolvedValue(spaShellHtml);
+      mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(fullPlaywrightResult);
+
+      const result = await hybridEngine.fetchHTML(spaTestUrl);
+
+      expect(result).toBe(fullPlaywrightResult);
+      expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(spaTestUrl);
+      expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
+        spaTestUrl,
+        expect.objectContaining({ spaMode: true, markdown: false, spaRenderDelayMs: 100 })
+      );
+    });
+
+    it("should use FetchEngine result if spaMode is true but content is not an SPA shell", async () => {
+      hybridEngine = new HybridEngine({ spaMode: true });
+      const notAShellResult: HTMLFetchResult = {
+        ...mockFetchResultHtml,
+        content:
+          "<html><head><title>Real Title</title></head><body><div>Proper content here, no noscript.</div></body></html>",
+        title: "Real Title",
+      };
+      mockFetchEngineInstance.fetchHTML.mockResolvedValue(notAShellResult);
+
+      const result = await hybridEngine.fetchHTML(testUrl);
+
+      expect(result).toBe(notAShellResult);
+      expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(testUrl);
+      expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+    });
+
+    it("should pass through per-request spaMode override to PlaywrightEngine on fetchError", async () => {
+      // Engine config spaMode: false
+      hybridEngine = new HybridEngine({ spaMode: false, markdown: true, spaRenderDelayMs: 0 });
+      const fetchError = new FetchEngineHttpError("Fetch failed", 403);
+      mockFetchEngineInstance.fetchHTML.mockRejectedValue(fetchError);
+      mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(mockPlaywrightResultMd);
+
+      // Per-request spaMode: true, markdown: false (to test override)
+      await hybridEngine.fetchHTML(testUrl, { spaMode: true, markdown: false });
+
+      expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
+        testUrl,
+        expect.objectContaining({ spaMode: true, markdown: false, spaRenderDelayMs: 0 })
+      );
+    });
+
+    it("should pass through per-request spaMode override (forcing Playwright) when FetchEngine returns shell", async () => {
+      // Engine config spaMode: false
+      hybridEngine = new HybridEngine({ spaMode: false, markdown: false, spaRenderDelayMs: 0 });
+      mockFetchEngineInstance.fetchHTML.mockResolvedValue(spaShellHtml);
+      mockPlaywrightEngineInstance.fetchHTML.mockResolvedValue(fullPlaywrightResult);
+
+      // Per-request spaMode: true, markdown: true (to test override)
+      const result = await hybridEngine.fetchHTML(spaTestUrl, { spaMode: true, markdown: true });
+
+      expect(result.contentType).toBe("html"); // Playwright mock returns HTML for fullPlaywrightResult
+      expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(spaTestUrl);
+      expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
+        spaTestUrl,
+        expect.objectContaining({ spaMode: true, markdown: true, spaRenderDelayMs: 0 })
+      );
+    });
+  });
 });
