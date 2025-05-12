@@ -258,9 +258,9 @@ export class PlaywrightEngine implements IEngine {
         });
         await delay(HUMAN_SIMULATION_MIN_DELAY_MS / 2 + Math.random() * (HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS / 2));
       }
-    } catch (err) {
-      // Ignore errors during simulation, log for debugging if necessary
-      // console.debug(`Error during human-like simulation on ${page.url()}: ${err.message}`);
+    } catch (err: any) {
+      // Errors during human-like simulation are logged for debugging but do not fail the operation.
+      console.debug(`Error during human-like simulation on page ${page.url()}: ${err?.message}`, err);
     }
   }
 
@@ -738,8 +738,10 @@ export class PlaywrightEngine implements IEngine {
 
           return route.continue();
         });
-      } catch (_error) {
-        /* Ignore errors setting up routing */
+      } catch (routingError: any) {
+        // Errors setting up routing are logged for debugging but do not fail the operation,
+        // as fetching can proceed without custom routing, albeit potentially less efficiently.
+        console.debug(`Error setting up Playwright routing rules: ${routingError?.message}`, routingError);
       }
     }
   }
@@ -760,8 +762,9 @@ export class PlaywrightEngine implements IEngine {
         this.browserPool = null;
       }
       this.isUsingHeadedMode = false; // Reset mode flag
-    } catch (_error) {
-      /* Ignore errors during cleanup */
+    } catch (cleanupError: any) {
+      // Errors during cleanup are logged as warnings, as they might indicate resource leak issues.
+      console.warn(`Error during PlaywrightEngine cleanup: ${cleanupError?.message}`, cleanupError);
     }
   }
 

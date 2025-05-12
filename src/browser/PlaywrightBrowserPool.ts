@@ -141,8 +141,11 @@ export class PlaywrightBrowserPool {
     }
     if (this.healthCheckInterval > 0) {
       this.healthCheckTimer = setTimeout(() => {
-        this.healthCheck().catch((_err) => {
-          /* Ignore health check errors */
+        this.healthCheck().catch((err: any) => {
+          console.warn(
+            `Scheduled PlaywrightBrowserPool health check process encountered an error: ${err?.message}`,
+            err
+          );
         });
       }, this.healthCheckInterval);
     }
@@ -205,7 +208,11 @@ export class PlaywrightBrowserPool {
         } else {
           await route.continue();
         }
-      } catch (_e) {
+      } catch (routeError: any) {
+        console.debug(
+          `Error in PlaywrightBrowserPool route interceptor for URL ${url}: ${routeError?.message}. Request continued.`,
+          routeError
+        );
         await route.continue();
       }
     });
@@ -235,7 +242,12 @@ export class PlaywrightBrowserPool {
       if (instance.isHealthy) {
         instance.isHealthy = false;
         instance.metrics.isHealthy = false;
-        this.healthCheck().catch((_err) => {});
+        this.healthCheck().catch((hcError: any) => {
+          console.debug(
+            `Health check triggered by disconnect for instance ${instance.id} encountered an error: ${hcError?.message}`,
+            hcError
+          );
+        });
       }
     };
     browser.on("disconnected", instance.disconnectedHandler);
