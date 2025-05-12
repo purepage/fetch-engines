@@ -5,6 +5,7 @@ This document outlines the plan to address the feedback from the code review. Th
 ## I. Readability and Clarity
 
 ### 1.1. Magic Numbers and String Literals
+
     - **Issue:** Usage of magic numbers (e.g., timeouts, retry counts, scoring values) and repeated string literals.
     - **File(s) Affected (examples):** `markdown-converter.ts`, `PlaywrightEngine.ts`.
     - **Action:**
@@ -13,6 +14,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Replace all occurrences with these constants.
 
 ### 1.2. Complex Conditional Logic
+
     - **Issue:** Nested or complex conditional logic making functions hard to follow.
     - **File(s) Affected (examples):** `PlaywrightEngine.ts` (specifically `_fetchRecursive`), `markdown-converter.ts` (specifically `preprocessHTML`, `extractArticleContentElement`).
     - **Action:**
@@ -20,6 +22,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Review `preprocessHTML` and `extractArticleContentElement` in `markdown-converter.ts`. Decompose complex conditional blocks into smaller, focused helper functions with descriptive names.
 
 ### 1.3. Inconsistent Error Handling
+
     - **Issue:** Varied level of detail in error messages, inconsistent error wrapping, and some catch blocks ignoring errors.
     - **File(s) Affected (examples):** Places with `/* Ignore errors during simulation */`, `/* Ignore health check errors */`.
     - **Action:**
@@ -31,6 +34,7 @@ This document outlines the plan to address the feedback from the code review. Th
 ## II. Over-engineering and Complexity
 
 ### 2.1. HybridEngine Fallback Logic
+
     - **Issue:** The `_isSpaShell` heuristic in `HybridEngine.ts` for fallback is complex and potentially fragile.
     - **File(s) Affected:** `HybridEngine.ts`.
     - **Action:**
@@ -41,6 +45,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Simplify the existing heuristic if it's retained, or document its limitations thoroughly.
 
 ### 2.2. PlaywrightBrowserPool Complexity
+
     - **Issue:** `PlaywrightBrowserPool.ts` has intricate logic for managing browser instances, health checks, recycling, etc., leading to high complexity in a single class.
     - **File(s) Affected:** `src/browser/PlaywrightBrowserPool.ts`.
     - **Action:**
@@ -53,6 +58,7 @@ This document outlines the plan to address the feedback from the code review. Th
 ## III. Confusing Syntax and Patterns
 
 ### 3.1. Type Assertions and `any`
+
     - **Issue:** Use of type assertions (`as any`, `as unknown as ...`) and `any` reduces type safety.
     - **File(s) Affected (examples):** `PlaywrightEngine.ts`, `PlaywrightBrowserPool.ts`.
     - **Action:**
@@ -62,6 +68,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Refactor code where possible to eliminate the need for assertions.
 
 ### 3.2. `this` Context in Turndown Rules
+
     - **Issue:** Potential confusion with `this` context in Turndown rules using standard function expressions.
     - **File(s) Affected:** `markdown-converter.ts` (specifically `listItem` rule).
     - **Action:**
@@ -71,6 +78,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - If `this` is necessary, ensure it's correctly typed and handled, possibly with explicit binding if needed.
 
 ### 3.3. Regex Complexity
+
     - **Issue:** Some regular expressions are complex and hard to understand.
     - **File(s) Affected:** `markdown-converter.ts`.
     - **Action:**
@@ -81,6 +89,7 @@ This document outlines the plan to address the feedback from the code review. Th
 ## IV. Adherence to Patterns & World-Class Code Principles
 
 ### 4.1. Optimization (Time/Space Complexity)
+
     - **Issue:** Lack of explicit consideration or documentation for algorithmic efficiency.
     - **File(s) Affected (potential):** `markdown-converter.ts` (HTML parsing/manipulation).
     - **Action:**
@@ -90,6 +99,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Implement optimizations if clear bottlenecks are identified and improvements are significant.
 
 ### 4.2. Parallelization
+
     - **Issue:** Current parallelization approach (using `PQueue`) is not fully documented, and other opportunities might exist.
     - **File(s) Affected (examples):** `PlaywrightEngine.ts`, `PlaywrightBrowserPool.ts`.
     - **Action:**
@@ -98,6 +108,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Ensure any new parallelization is carefully managed to avoid resource contention or deadlocks.
 
 ### 4.3. Minimal, Focused Code with Zero Technical Debt
+
     - **Issue:** Presence of `TODO` comments and other explicitly mentioned technical debt. General complexity contributes to this.
     - **File(s) Affected:** Codebase-wide, specific markers in `PlaywrightEngine.ts`.
     - **Action:**
@@ -107,6 +118,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Strive for code that is simple, focused, and easy to maintain.
 
 ### 4.4. Language-Specific Best Practices (TypeScript)
+
     - **Issue:** While generally good, type precision can be improved by reducing `any` usage.
     - **Action:** (Covered by Action 3.1)
         - Reinforce the goal of maximizing TypeScript's type system benefits by using precise types, interfaces, and type aliases.
@@ -115,11 +127,13 @@ This document outlines the plan to address the feedback from the code review. Th
 ## V. File-Specific Action Items (Beyond General Observations)
 
 ### 5.1. `src/IEngine.ts`
+
     - **Observation:** Uses ESM import with `.js` extension.
     - **Action:** Verify if the `.js` extension in imports is strictly necessary based on the project's `tsconfig.json` (specifically `moduleResolution` and `allowImportingTsExtensions` or similar) and build setup. Ensure consistency with project conventions. If `moduleResolution` is `node16` or `nodenext`, it's typically required for ESM.
 
 ### 5.2. `src/utils/markdown-converter.ts`
+
     - **Observation:** Scoring mechanism and selectors for content extraction could be further refined or documented.
     - **Action:**
         - Add detailed comments explaining the logic behind the content extraction heuristics and scoring mechanism in `extractArticleContentElement` and related functions.
-        - Consider if these selectors and scoring values can be made more configurable or robust. 
+        - Consider if these selectors and scoring values can be made more configurable or robust.

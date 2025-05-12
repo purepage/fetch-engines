@@ -6,15 +6,8 @@ const urlsToFetch = [
   "http://example.com", // Good for FetchEngine
   "https://quotes.toscrape.com/js/", // Requires JS rendering (Good for PlaywrightEngine)
   "https://www.openai.com", // Good for HybridEngine
+  "https://www.essentialenergy.com.au",
 ];
-
-const playwrightConfig = {
-  concurrentPages: 2,
-  maxRetries: 1, // Lower retries for example brevity
-  useHttpFallback: true,
-  poolBlockedResourceTypes: ["image", "font"], // Example config
-  markdown: true,
-};
 
 // --- Helper Function ---
 async function runEngine(

@@ -1,6 +1,14 @@
 // Import chromium directly from playwright
-import { chromium as playwrightChromium } from "playwright";
-import type { Browser, BrowserContext, Page, Route, LaunchOptions } from "playwright";
+import {
+  chromium as playwrightChromiumLauncher,
+  Browser as PlaywrightBrowserType,
+  ChromiumBrowser as PlaywrightChromiumBrowserInstanceType,
+  BrowserContext,
+  Page,
+  Route,
+  LaunchOptions,
+  BrowserType as PlaywrightBrowserLauncherType,
+} from "playwright";
 import type { BrowserMetrics } from "../types.js";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
@@ -8,39 +16,36 @@ import PQueue from "p-queue";
 
 // Import addExtra from playwright-extra
 import { addExtra } from "playwright-extra";
+// Import PuppeteerExtraPlugin type (base type for stealth plugin)
+import type { PuppeteerExtraPlugin } from "puppeteer-extra-plugin";
 
-// Use 'any' for the wrapped chromium type to handle the added .use() method
-let chromiumWithExtras: any;
-let StealthPluginInstance: any; // Still need the stealth plugin instance
+// Interface to describe the augmented Chromium LAUNCHER from playwright-extra
+// It extends the generic BrowserType launcher and adds the .use() method.
+interface AugmentedChromiumLauncher extends PlaywrightBrowserLauncherType<PlaywrightChromiumBrowserInstanceType> {
+  use(plugin: PuppeteerExtraPlugin): this;
+}
+
+let augmentedLauncher: AugmentedChromiumLauncher;
+let stealthPlugin: PuppeteerExtraPlugin;
 
 // Asynchronous function to load dependencies (now mainly for stealth plugin)
 async function loadDependencies() {
-  if (!chromiumWithExtras) {
-    // Wrap the imported playwrightChromium using addExtra
-    chromiumWithExtras = addExtra(playwrightChromium);
-
-    // Dynamically import the stealth plugin module
-    const StealthPluginModule = await import("puppeteer-extra-plugin-stealth");
-    // Check if the default export exists and is a function, otherwise use the module itself
-    const stealthPluginFactory =
-      typeof StealthPluginModule.default === "function" ? StealthPluginModule.default : StealthPluginModule;
-
-    // Ensure we have a callable factory
-    if (typeof stealthPluginFactory !== "function") {
-      throw new Error("puppeteer-extra-plugin-stealth export is not a function or module structure is unexpected.");
-    }
-    // Get the plugin instance
-    StealthPluginInstance = stealthPluginFactory();
-
-    // Apply the plugin instance to the wrapped chromium object
-    chromiumWithExtras.use(StealthPluginInstance);
+  if (!augmentedLauncher) {
+    // addExtra takes the original launcher and returns an augmented version.
+    // The original playwrightChromiumLauncher is of type BrowserType<ChromiumBrowser>.
+    // addExtra itself doesn't change this base type in a way TS immediately understands for .use,
+    // so we cast after applying the plugin.
+    const tempLauncher = addExtra(playwrightChromiumLauncher);
+    stealthPlugin = (await import("puppeteer-extra-plugin-stealth")).default();
+    tempLauncher.use(stealthPlugin); // Apply plugin
+    augmentedLauncher = tempLauncher as AugmentedChromiumLauncher; // Cast to our augmented type
   }
 }
 
 // Define structure for browser instance managed by this pool
 interface PlaywrightBrowserInstance {
   id: string;
-  browser: Browser;
+  browser: PlaywrightBrowserType;
   context: BrowserContext;
   pages: Set<Page>;
   metrics: BrowserMetrics;
@@ -50,7 +55,7 @@ interface PlaywrightBrowserInstance {
 
 class ManagedBrowserInstance {
   public readonly id: string;
-  public browser!: Browser;
+  public browser!: PlaywrightBrowserType;
   public context!: BrowserContext;
   public readonly pages: Set<Page> = new Set();
   public readonly metrics: BrowserMetrics;
@@ -90,7 +95,7 @@ class ManagedBrowserInstance {
   }
 
   async initialize(): Promise<void> {
-    await loadDependencies(); // Ensure Playwright-extra is ready
+    await loadDependencies(); // Ensure augmentedLauncher is ready
 
     const launchOptions: LaunchOptions = {
       headless: !this.useHeadedMode,
@@ -108,7 +113,7 @@ class ManagedBrowserInstance {
       proxy: this.proxyConfig,
     };
 
-    this.browser = await chromiumWithExtras.launch(launchOptions);
+    this.browser = await augmentedLauncher.launch(launchOptions);
     this.context = await this.browser.newContext({
       userAgent: new UserAgent().toString(),
       viewport: {

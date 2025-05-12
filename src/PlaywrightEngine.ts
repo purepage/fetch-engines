@@ -33,6 +33,12 @@ interface CacheEntry {
   timestamp: number;
 }
 
+// Define a type for the fully resolved engine configuration
+// All properties from PlaywrightEngineConfig are required, except for 'proxy' which can be undefined.
+type ResolvedPlaywrightEngineConfig = Required<Omit<PlaywrightEngineConfig, "proxy">> & {
+  proxy: PlaywrightEngineConfig["proxy"]; // Retains original optionality, allowing undefined
+};
+
 /**
  * PlaywrightEngine - Fetches HTML using a managed pool of headless Playwright browser instances.
  *
@@ -44,7 +50,7 @@ export class PlaywrightEngine implements IEngine {
   private browserPool: PlaywrightBrowserPool | null = null;
   private readonly queue: PQueue;
   private readonly cache: Map<string, CacheEntry> = new Map();
-  private readonly config: Required<PlaywrightEngineConfig>;
+  private readonly config: ResolvedPlaywrightEngineConfig;
 
   // Browser pooling safety flags
   private initializingBrowserPool: boolean = false;
@@ -52,7 +58,7 @@ export class PlaywrightEngine implements IEngine {
   private headedFallbackSites: Set<string> = new Set(); // Stores domains marked for headed mode
 
   // Default configuration - Ensure all required fields are present
-  private static readonly DEFAULT_CONFIG: Required<PlaywrightEngineConfig> = {
+  private static readonly DEFAULT_CONFIG: ResolvedPlaywrightEngineConfig = {
     concurrentPages: 3,
     maxRetries: 3,
     retryDelay: 5000,
@@ -67,11 +73,12 @@ export class PlaywrightEngine implements IEngine {
     healthCheckInterval: 60 * 1000,
     poolBlockedDomains: [],
     poolBlockedResourceTypes: [],
-    proxy: undefined as any,
-    useHeadedMode: false, // ADDED default
+    proxy: undefined, // No longer needs 'as any'
+    useHeadedMode: false,
     markdown: true,
-    spaMode: false, // ADDED spaMode default
-    spaRenderDelayMs: 0, // ADDED spaRenderDelayMs default
+    spaMode: false,
+    spaRenderDelayMs: 0,
+    playwrightOnlyPatterns: [], // Added default for the new field from HybridEngine work
   };
 
   /**
@@ -187,10 +194,11 @@ export class PlaywrightEngine implements IEngine {
         statusCode: response.status,
         error: undefined,
       };
-    } catch (error: any) {
-      // Wrap non-FetchErrors
+    } catch (error: unknown) {
       if (!(error instanceof FetchError)) {
-        throw new FetchError(`HTTP fallback failed: ${error.message}`, "ERR_HTTP_FALLBACK_FAILED", error);
+        const message = error instanceof Error ? error.message : String(error);
+        const cause = error instanceof Error ? error : undefined;
+        throw new FetchError(`HTTP fallback failed: ${message}`, "ERR_HTTP_FALLBACK_FAILED", cause);
       }
       throw error; // Re-throw FetchError or other wrapped errors
     }
@@ -258,9 +266,13 @@ export class PlaywrightEngine implements IEngine {
         });
         await delay(HUMAN_SIMULATION_MIN_DELAY_MS / 2 + Math.random() * (HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS / 2));
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       // Errors during human-like simulation are logged for debugging but do not fail the operation.
-      console.debug(`Error during human-like simulation on page ${page.url()}: ${err?.message}`, err);
+      console.debug(
+        `Error during human-like simulation on page ${page.url()}: ${message}`,
+        err instanceof Error ? err : undefined
+      );
     }
   }
 
@@ -296,11 +308,12 @@ export class PlaywrightEngine implements IEngine {
       markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
       fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
       spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
-      // spaRenderDelayMs will be taken from this.config directly where needed or passed via merged config
+      // Ensure all fields expected by _fetchRecursive's currentConfig are present
+      // Most come from this.config, which is ResolvedPlaywrightEngineConfig
+      // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
     };
-    // Type assertion needed here as fetchConfig is slightly broader than the recursive fn expects
-    // We'll refine the type for _fetchRecursive to include spaMode and spaRenderDelayMs
-    return this._fetchRecursive(url, fetchConfig as any, 0, 0);
+    // Try removing 'as any' to see the specific type error
+    return this._fetchRecursive(url, fetchConfig, 0, 0);
   }
 
   /**
@@ -457,7 +470,6 @@ export class PlaywrightEngine implements IEngine {
    */
   private async _fetchRecursive(
     url: string,
-    // Use Required<...> to ensure all properties are present for internal logic
     currentConfig: Required<
       FetchOptions & {
         markdown: boolean;
@@ -518,7 +530,7 @@ export class PlaywrightEngine implements IEngine {
 
       this.addToCache(url, result); // Cache successful Playwright result
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Retry logic:
       // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
       if (currentConfig.fastMode && retryAttempt === 0) {
@@ -527,24 +539,26 @@ export class PlaywrightEngine implements IEngine {
       }
 
       // b. Standard retry mechanism
+      const errorMessage = error instanceof Error ? error.message : String(error);
       if (retryAttempt < currentConfig.maxRetries) {
         console.warn(
-          `Fetch attempt ${retryAttempt + 1} for ${url} failed. Retrying after delay... Error: ${error.message}`
+          `Fetch attempt ${retryAttempt + 1} for ${url} failed. Retrying after delay... Error: ${errorMessage}`
         );
         await delay(currentConfig.retryDelay);
         return this._fetchRecursive(url, currentConfig, retryAttempt + 1, 0); // Pass 0 for parentRetryCount
       }
 
       // c. Max retries reached
+      const originalErrorAsError = error instanceof Error ? error : undefined;
       const finalError =
         error instanceof FetchError
           ? error
-          : new FetchError(`Fetch failed: ${error.message}`, "ERR_FETCH_FAILED", error);
+          : new FetchError(`Fetch failed: ${errorMessage}`, "ERR_FETCH_FAILED", originalErrorAsError);
 
       throw new FetchError(
         `Fetch failed for ${url} after ${currentConfig.maxRetries} retries (and potential fastMode retry): ${finalError.message}`,
         finalError.code || "ERR_MAX_RETRIES_REACHED",
-        finalError.originalError || error
+        finalError.originalError || originalErrorAsError
       );
     }
   }
@@ -738,10 +752,14 @@ export class PlaywrightEngine implements IEngine {
 
           return route.continue();
         });
-      } catch (routingError: any) {
+      } catch (routingError: unknown) {
+        const message = routingError instanceof Error ? routingError.message : String(routingError);
         // Errors setting up routing are logged for debugging but do not fail the operation,
         // as fetching can proceed without custom routing, albeit potentially less efficiently.
-        console.debug(`Error setting up Playwright routing rules: ${routingError?.message}`, routingError);
+        console.debug(
+          `Error setting up Playwright routing rules: ${message}`,
+          routingError instanceof Error ? routingError : undefined
+        );
       }
     }
   }
@@ -762,9 +780,13 @@ export class PlaywrightEngine implements IEngine {
         this.browserPool = null;
       }
       this.isUsingHeadedMode = false; // Reset mode flag
-    } catch (cleanupError: any) {
+    } catch (cleanupError: unknown) {
+      const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
       // Errors during cleanup are logged as warnings, as they might indicate resource leak issues.
-      console.warn(`Error during PlaywrightEngine cleanup: ${cleanupError?.message}`, cleanupError);
+      console.warn(
+        `Error during PlaywrightEngine cleanup: ${message}`,
+        cleanupError instanceof Error ? cleanupError : undefined
+      );
     }
   }
 

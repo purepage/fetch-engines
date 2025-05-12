@@ -236,8 +236,8 @@ export class MarkdownConverter {
     // List items
     this.turndownService.addRule("listItem", {
       filter: "li",
-      // Use standard function for `this` context if needed, or ensure types match
-      replacement: function (content: string, node: TurndownNode, options: TurndownService.Options) {
+      // Use arrow function for consistency, as 'this' is not used.
+      replacement: (content: string, node: TurndownNode, options: TurndownService.Options) => {
         content = content
           .replace(/^\s+/gm, "") // Remove leading whitespace from each line
           .replace(/\n(?!\s*$)/gm, "\n  "); // Indent subsequent lines correctly
@@ -247,19 +247,21 @@ export class MarkdownConverter {
         if (parentNode && parentNode.nodeName === "OL") {
           try {
             const start = parentNode.getAttribute("start");
-            // Ensure node is an Element before accessing children/indexOf
             const elementNode = node as Element;
             const parentElement = parentNode as Element;
             const index = Array.prototype.indexOf.call(parentElement.children, elementNode);
             prefix = (start ? Number(start) + index : index + 1) + ". ";
-          } catch (e) {
-            console.warn("Could not determine ordered list index:", e);
-            prefix = DEFAULT_ORDERED_LIST_ITEM_PREFIX; // Fallback
+          } catch (e: unknown) {
+            prefix = DEFAULT_ORDERED_LIST_ITEM_PREFIX;
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(
+              `MarkdownConverter: Error processing OL start attribute or LI index: ${message}`,
+              e instanceof Error ? e : undefined
+            );
           }
         }
-        // Add newline only if needed (next sibling exists and current content doesn't end with newline)
-        const trimmedContent = content.trim();
-        return prefix + trimmedContent + (node.nextSibling && !/\n$/.test(trimmedContent) ? "\n" : "");
+
+        return prefix + content.trim() + "\n"; // Add newline after each item
       },
     });
 
@@ -297,8 +299,12 @@ export class MarkdownConverter {
           if (href.includes("%")) {
             decodedHref = decodeURI(href);
           }
-        } catch (e) {
-          console.warn(`Failed to decode URI, keeping original: ${href}`, e);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn(
+            `Failed to decode URI '${href}': ${message}. Keeping original.`,
+            e instanceof Error ? e : undefined
+          );
           // Keep original href if decoding fails
         }
 
@@ -493,7 +499,17 @@ export class MarkdownConverter {
       if (isForum) {
         contentElement = this.extractForumContentElement(rootElement);
       } else {
-        contentElement = this.extractArticleContentElement(rootElement);
+        try {
+          contentElement = this.extractArticleContentElement(rootElement);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.error(
+            `MarkdownConverter: Error during main content extraction, falling back to full body: ${message}`,
+            e instanceof Error ? e : undefined
+          );
+          // Fallback to the original root (full body) if extraction fails
+          contentElement = rootElement;
+        }
       }
 
       let contentHtml =
@@ -502,9 +518,10 @@ export class MarkdownConverter {
 
       const metadataString = metadata.length > 0 ? metadata.join("\n\n") + "\n\n---\n\n" : "";
       return metadataString + contentHtml;
-    } catch (error) {
-      console.error("HTML preprocessing failed:", error);
-      return this.cleanupHtml(html);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`HTML preprocessing failed: ${message}`, error instanceof Error ? error : undefined);
+      return this.cleanupHtml(html); // Return original (but cleaned) HTML on failure
     }
   }
 
@@ -645,8 +662,9 @@ export class MarkdownConverter {
             // Ensure script content exists before parsing
             const textContent = script.textContent;
             return textContent ? JSON.parse(textContent) : null;
-          } catch (e) {
-            // Ignore invalid JSON
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(`Failed to parse JSON-LD content: ${message}`, e instanceof Error ? e : undefined);
             return null;
           }
         })
@@ -658,6 +676,14 @@ export class MarkdownConverter {
         metadata.push("```json", JSON.stringify(jsonLdData, null, 2), "```");
         metadata.push("</details>");
         addedMeta.add("json-ld");
+
+        // Add other relevant fields like 'author', 'datePublished', etc.
+        jsonLdData.forEach((jsonData) => {
+          if (typeof jsonData === "object" && jsonData !== null) {
+            // jsonData is already type 'object' here
+            addMeta("Organization", (jsonData as Record<string, any>).publisher?.name);
+          }
+        });
       }
     }
 
@@ -674,9 +700,11 @@ export class MarkdownConverter {
             return count + root.querySelectorAll(selector).length;
           }
           return count;
-        } catch {
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn(`MarkdownConverter: Invalid selector during forum detection: '${selector}'. Error: ${message}`);
           return count;
-        } // Ignore selector errors
+        } // Ignore selector errors, but log a warning
       }, 0);
     };
 
@@ -702,8 +730,12 @@ export class MarkdownConverter {
           hostname.includes("discuss") ||
           hostname.includes("community");
       }
-    } catch (e) {
-      console.warn("Could not parse URL for forum detection:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Could not parse URL for forum detection. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // Decision logic: requires significant indicators or known host
@@ -746,8 +778,10 @@ export class MarkdownConverter {
       if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
         score *= 0.2;
       }
-    } catch {
-      /* Ignore selector match errors */
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(`MarkdownConverter: Error matching selector in _calculateElementScore: ${message}`);
+      /* Ignore selector match errors, but log a warning */
     }
 
     // Penalize if it contains high-link density elements that weren't removed
@@ -791,8 +825,12 @@ export class MarkdownConverter {
             bestCandidate = element;
           }
         }
-      } catch (e) {
-        // Ignore invalid selectors
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.warn(
+          `MarkdownConverter: Invalid selector '${selector}' in extractArticleContentElement. Error: ${message}`
+        );
+        // Ignore invalid selectors, but log a warning
       }
     }
 
@@ -814,8 +852,12 @@ export class MarkdownConverter {
       if (mainPost) {
         tempContainer.appendChild(mainPost.clone());
       }
-    } catch (e) {
-      console.warn("Error finding forum main post:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Error finding forum main post. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // 2. Find, clean, and clone the comments container
@@ -831,15 +873,23 @@ export class MarkdownConverter {
           FORUM_OBVIOUS_NON_CONTENT_SELECTORS.forEach((selector) => {
             try {
               clonedComments.querySelectorAll(selector).forEach((el) => el.remove());
-            } catch {
-              /* ignore */
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              console.warn(
+                `MarkdownConverter: Error cleaning forum comments (selector: '${selector}'). Error: ${message}`,
+                e instanceof Error ? e : undefined
+              );
             }
           });
           tempContainer.appendChild(clonedComments);
         }
       }
-    } catch (e) {
-      console.warn("Error finding forum comments container:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Error finding forum comments container. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // If we found specific parts, return the combined container
@@ -855,8 +905,12 @@ export class MarkdownConverter {
         FORUM_OBVIOUS_NON_CONTENT_SELECTORS.forEach((selector) => {
           try {
             clonedBody.querySelectorAll(selector).forEach((el) => el.remove());
-          } catch {
-            /* ignore */
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(
+              `MarkdownConverter: Error cleaning forum body fallback (selector: '${selector}'). Error: ${message}`,
+              e instanceof Error ? e : undefined
+            );
           }
         });
         // Also remove high link density from body fallback
@@ -902,11 +956,13 @@ export class MarkdownConverter {
 
     // 2. Fix list spacing (ensure blank line before list, compact items)
     processed = processed.replace(/^(\s*\n)?(([\*\-+>]|\d+\.)\s)/gm, (_match, _p1, p2) => `\n\n${p2}`); // Ensure blank line before first item
-    // Remove single newlines *between* simple list items of the same type unless followed by indented block
+    // The following regex for compacting list items is temporarily commented out due to test failures indicating item concatenation.
+    /*
     processed = processed.replace(
       /(\n([\*\-+]|\d+\.)\s(?:(?!\n\n|\n {2,}|\n\t)[\s\S])*?)\n(?=([\*\-+]|\d+\.)\s)/g,
       "$1"
     );
+    */
 
     // 3. Remove empty Markdown elements (links, images)
     processed = processed.replace(/\[\]\([^)]*\)/g, ""); // Empty links: [](...)
@@ -928,6 +984,10 @@ export class MarkdownConverter {
     processed = processed.replace(/^(\s*\n)?(```(.*)\n[\s\S]*?\n```)(\s*\n)?/gm, "\n\n$2\n\n");
 
     // 8. Remove excessively repeated *lines* (simple check for duplication)
+    // This regex identifies lines that are at least 30 characters long and are immediately repeated.
+    // - `^(.{30,})$`: Captures a line of 30+ characters into group 1 (\1).
+    // - `(\n\1)+`: Matches one or more occurrences of a newline followed by the exact content of group 1.
+    // Replaces the entire match (original line + all its immediate repetitions) with just the original line ($1).
     processed = processed.replace(/^(.{30,})$(\n\1)+/gm, "$1");
 
     // 9. Tidy up metadata section (ensure spacing)
