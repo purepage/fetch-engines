@@ -110,7 +110,7 @@ import { PlaywrightEngine } from "@purepageio/fetch-engines";
 // Engine configured to fetch HTML by default and pass custom launch arguments
 const engine = new PlaywrightEngine({
   markdown: false,
-  playwrightLaunchOptions: { args: ['--disable-gpu'] } 
+  playwrightLaunchOptions: { args: ["--disable-gpu"] },
 });
 
 async function main() {
@@ -195,20 +195,20 @@ The `PlaywrightEngine` accepts a `PlaywrightEngineConfig` object with the follow
 
 **General Options:**
 
-| Option                  | Type                       | Default  | Description                                                                                                                                                                                                                                                             |
-| ----------------------- | -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `markdown`              | `boolean`                  | `false`  | If `true`, converts content (from Playwright or its internal HTTP fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request.                                                                                                           |
-| `useHttpFallback`       | `boolean`                  | `true`   | If `true`, attempts a fast HTTP fetch before using Playwright. Ineffective if `spaMode` is `true`.                                                                                                                                                                  |
-| `useHeadedModeFallback` | `boolean`                  | `false`  | If `true`, automatically retries specific failed Playwright attempts in headed (visible) mode.                                                                                                                                                                       |
-| `defaultFastMode`       | `boolean`                  | `true`   | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request. Effectively `false` if `spaMode` is `true`.                                                                                                           |
-| `simulateHumanBehavior` | `boolean`                  | `true`   | If `true` (and not `fastMode` or `spaMode`), attempts basic human-like interactions.                                                                                                                                                                                  |
-| `concurrentPages`       | `number`                   | `3`      | Max number of pages to process concurrently within the engine queue.                                                                                                                                                                                                    |
-| `maxRetries`            | `number`                   | `3`      | Max retry attempts for a failed fetch (excluding initial try).                                                                                                                                                                                                          |
-| `retryDelay`            | `number`                   | `5000`   | Delay (ms) between retries.                                                                                                                                                                                                                                             |
-| `cacheTTL`              | `number`                   | `900000` | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                                                                                                                                                        |
-| `spaMode`               | `boolean`                  | `false`  | If `true`, enables Single Page Application mode. This typically bypasses `useHttpFallback`, effectively sets `fastMode` to `false`, uses more patient load conditions (e.g., network idle), and may apply `spaRenderDelayMs`. Recommended for JavaScript-heavy sites. |
-| `spaRenderDelayMs`      | `number`                   | `0`      | Explicit delay (ms) after page load events in `spaMode` to allow for client-side rendering. Only applies if `spaMode` is `true`.                                                                                                                                        |
-| `playwrightLaunchOptions`| `LaunchOptions`            | `undefined`| Optional Playwright launch options (from `playwright` package, e.g., `{ args: ['--some-flag'] }`) passed when a browser instance is created. Merged with internal defaults.                                                                                      |
+| Option                    | Type            | Default     | Description                                                                                                                                                                                                                                                           |
+| ------------------------- | --------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `markdown`                | `boolean`       | `false`     | If `true`, converts content (from Playwright or its internal HTTP fallback) to Markdown. `contentType` will be `'markdown'`. Can be overridden per-request.                                                                                                           |
+| `useHttpFallback`         | `boolean`       | `true`      | If `true`, attempts a fast HTTP fetch before using Playwright. Ineffective if `spaMode` is `true`.                                                                                                                                                                    |
+| `useHeadedModeFallback`   | `boolean`       | `false`     | If `true`, automatically retries specific failed Playwright attempts in headed (visible) mode.                                                                                                                                                                        |
+| `defaultFastMode`         | `boolean`       | `true`      | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request. Effectively `false` if `spaMode` is `true`.                                                                                                            |
+| `simulateHumanBehavior`   | `boolean`       | `true`      | If `true` (and not `fastMode` or `spaMode`), attempts basic human-like interactions.                                                                                                                                                                                  |
+| `concurrentPages`         | `number`        | `3`         | Max number of pages to process concurrently within the engine queue.                                                                                                                                                                                                  |
+| `maxRetries`              | `number`        | `3`         | Max retry attempts for a failed fetch (excluding initial try).                                                                                                                                                                                                        |
+| `retryDelay`              | `number`        | `5000`      | Delay (ms) between retries.                                                                                                                                                                                                                                           |
+| `cacheTTL`                | `number`        | `900000`    | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                                                                                                                                                      |
+| `spaMode`                 | `boolean`       | `false`     | If `true`, enables Single Page Application mode. This typically bypasses `useHttpFallback`, effectively sets `fastMode` to `false`, uses more patient load conditions (e.g., network idle), and may apply `spaRenderDelayMs`. Recommended for JavaScript-heavy sites. |
+| `spaRenderDelayMs`        | `number`        | `0`         | Explicit delay (ms) after page load events in `spaMode` to allow for client-side rendering. Only applies if `spaMode` is `true`.                                                                                                                                      |
+| `playwrightLaunchOptions` | `LaunchOptions` | `undefined` | Optional Playwright launch options (from `playwright` package, e.g., `{ args: ['--some-flag'] }`) passed when a browser instance is created. Merged with internal defaults.                                                                                           |
 
 **Browser Pool Options (Passed to internal `PlaywrightBrowserPool`):**
 
@@ -324,10 +324,10 @@ Common `FetchError` codes and scenarios:
 - **`ERR_PROXY_CONFIG_ERROR`**: Problem with proxy configuration.
 - **`ERR_BROWSER_POOL_EXHAUSTED`**: If the browser pool cannot provide a page (e.g. max browsers reached and all are busy beyond timeout).
 - **Other Scenarios (often wrapped by `ERR_PLAYWRIGHT_OPERATION` or a generic `FetchError`):**
-    - Network issues (DNS resolution, connection refused).
-    - Proxy connection failures.
-    - Page crashes or context/browser disconnections within Playwright.
-    - Failures during browser launch or management by the pool.
+  - Network issues (DNS resolution, connection refused).
+  - Proxy connection failures.
+  - Page crashes or context/browser disconnections within Playwright.
+  - Failures during browser launch or management by the pool.
 
 The `HTMLFetchResult` object may also contain an `error` property if the final fetch attempt failed after all retries but an earlier attempt (within retries) might have produced some intermediate (potentially unusable) result data. It's generally best to rely on the thrown error for failure handling.
 
@@ -373,7 +373,7 @@ async function fetchWithHandling(url: string) {
 async function runExamples() {
   await fetchWithHandling("https://nonexistentdomain.example.com"); // Likely DNS or navigation error
   await fetchWithHandling("https://example.com/non_html_resource.json"); // Test with actual JSON URL if available
-                                                                      // or a site known to cause Playwright issues for a demo.
+  // or a site known to cause Playwright issues for a demo.
   await engine.cleanup(); // Important for PlaywrightEngine
 }
 
@@ -391,5 +391,3 @@ Contributions are welcome! Please open an issue or submit a pull request on the 
 ## License
 
 MIT
-
-
