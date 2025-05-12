@@ -6,7 +6,7 @@ const urlsToFetch = [
   "http://example.com", // Good for FetchEngine
   "https://quotes.toscrape.com/js/", // Requires JS rendering (Good for PlaywrightEngine)
   "https://www.openai.com", // Good for HybridEngine
-  "https://www.essentialenergy.com.au",
+  "https://www.juno.co.uk", // Good for HybridEngine as strong Cloudflare protection
 ];
 
 // --- Helper Function ---
