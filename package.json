@@ -24,6 +24,7 @@
     "p-queue": "^7.4.1",
     "playwright": "^1.43.0",
     "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin": "^3.2.3",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2",
