@@ -1,4 +1,4 @@
-import type { Browser as PlaywrightBrowser, BrowserContext } from "playwright";
+import type { Browser as PlaywrightBrowser, BrowserContext, LaunchOptions } from "playwright";
 
 /**
  * Defines the structure for the result of fetching HTML content.
@@ -174,6 +174,21 @@ export interface PlaywrightEngineConfig {
    * @default 0 (no additional fixed delay beyond Playwright's own waits)
    */
   spaRenderDelayMs?: number;
+
+  /**
+   * An array of string or RegExp patterns. If a URL matches any of these patterns,
+   * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and SPA shell heuristics.
+   * @default []
+   */
+  playwrightOnlyPatterns?: (string | RegExp)[];
+
+  /**
+   * Optional Playwright launch options to be passed when a browser instance is created.
+   * These will be merged with the pool's default launch options.
+   * @see https://playwright.dev/docs/api/class-browsertype#browser-type-launch
+   * @default undefined
+   */
+  playwrightLaunchOptions?: LaunchOptions;
 }
 
 /**

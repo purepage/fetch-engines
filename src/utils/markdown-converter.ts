@@ -63,6 +63,12 @@ const CODE_BLOCK_LANG_PREFIXES: ReadonlyArray<string> = ["language-", "lang-"];
 // Postprocessing
 const POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES = 2; // Keep paragraphs separate
 
+// Turndown specific
+const DEFAULT_ORDERED_LIST_ITEM_PREFIX = "1. ";
+const TURNDOWN_NODE_ELEMENT_TYPE = 1;
+const TURNDOWN_PRESENTATION_ROLE = "presentation";
+const TURNDOWN_PRESERVE_CLASS = "preserve";
+
 // --- Types ---
 
 export interface ConversionOptions {
@@ -91,9 +97,12 @@ export class MarkdownConverter {
       // Use nodeType check instead of window.HTMLElement
       keepReplacement: ((_content: string, node: TurndownNode) => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType === 1) {
+        if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
           const htmlElement = node as TurndownHTMLElement;
-          if (htmlElement.getAttribute("role") === "presentation" || htmlElement.classList?.contains("preserve")) {
+          if (
+            htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
+            htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS)
+          ) {
             return htmlElement.outerHTML;
           }
         }
@@ -143,7 +152,7 @@ export class MarkdownConverter {
     this.turndownService.addRule("main-content-marker", {
       filter: (node: TurndownNode): boolean => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType !== 1) return false;
+        if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE) return false;
         const el = node as TurndownHTMLElement;
         const element = node as Element;
         return (
@@ -206,7 +215,7 @@ export class MarkdownConverter {
       filter: ["ul", "ol"],
       replacement: (content: string, node: TurndownNode) => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType !== 1) return content;
+        if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE) return content;
         // Check if the parent is a list item (nested list)
         const parent = node.parentNode;
         const indent = parent && parent.nodeName.toLowerCase() === "li" ? "  " : "";
@@ -227,8 +236,8 @@ export class MarkdownConverter {
     // List items
     this.turndownService.addRule("listItem", {
       filter: "li",
-      // Use standard function for `this` context if needed, or ensure types match
-      replacement: function (content: string, node: TurndownNode, options: TurndownService.Options) {
+      // Use arrow function for consistency, as 'this' is not used.
+      replacement: (content: string, node: TurndownNode, options: TurndownService.Options) => {
         content = content
           .replace(/^\s+/gm, "") // Remove leading whitespace from each line
           .replace(/\n(?!\s*$)/gm, "\n  "); // Indent subsequent lines correctly
@@ -238,19 +247,21 @@ export class MarkdownConverter {
         if (parentNode && parentNode.nodeName === "OL") {
           try {
             const start = parentNode.getAttribute("start");
-            // Ensure node is an Element before accessing children/indexOf
             const elementNode = node as Element;
             const parentElement = parentNode as Element;
             const index = Array.prototype.indexOf.call(parentElement.children, elementNode);
             prefix = (start ? Number(start) + index : index + 1) + ". ";
-          } catch (e) {
-            console.warn("Could not determine ordered list index:", e);
-            prefix = "1. "; // Fallback
+          } catch (e: unknown) {
+            prefix = DEFAULT_ORDERED_LIST_ITEM_PREFIX;
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(
+              `MarkdownConverter: Error processing OL start attribute or LI index: ${message}`,
+              e instanceof Error ? e : undefined
+            );
           }
         }
-        // Add newline only if needed (next sibling exists and current content doesn't end with newline)
-        const trimmedContent = content.trim();
-        return prefix + trimmedContent + (node.nextSibling && !/\n$/.test(trimmedContent) ? "\n" : "");
+
+        return prefix + content.trim() + "\n"; // Add newline after each item
       },
     });
 
@@ -288,8 +299,12 @@ export class MarkdownConverter {
           if (href.includes("%")) {
             decodedHref = decodeURI(href);
           }
-        } catch (e) {
-          console.warn(`Failed to decode URI, keeping original: ${href}`, e);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn(
+            `Failed to decode URI '${href}': ${message}. Keeping original.`,
+            e instanceof Error ? e : undefined
+          );
           // Keep original href if decoding fails
         }
 
@@ -449,6 +464,17 @@ export class MarkdownConverter {
   // --- HTML Preprocessing ---
 
   private preprocessHTML(html: string): string {
+    // This function performs multi-stage processing on the HTML string:
+    // 1. Initial cleanup (regex-based).
+    // 2. Parsing into a DOM tree.
+    // 3. Removing specified elements (scripts, styles, etc.).
+    // 4. Removing elements with high link density.
+    // 5. Extracting document metadata.
+    // 6. Detecting if the page is a forum.
+    // 7. Extracting main article or forum content.
+    // 8. Final cleanup of extracted content HTML.
+    // The overall complexity is influenced by DOM traversals, querySelectorAll calls,
+    // and text content access, potentially super-linear in the size of the HTML.
     try {
       html = this.cleanupHtml(html);
       const root = parse(html, {
@@ -484,7 +510,17 @@ export class MarkdownConverter {
       if (isForum) {
         contentElement = this.extractForumContentElement(rootElement);
       } else {
-        contentElement = this.extractArticleContentElement(rootElement);
+        try {
+          contentElement = this.extractArticleContentElement(rootElement);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.error(
+            `MarkdownConverter: Error during main content extraction, falling back to full body: ${message}`,
+            e instanceof Error ? e : undefined
+          );
+          // Fallback to the original root (full body) if extraction fails
+          contentElement = rootElement;
+        }
       }
 
       let contentHtml =
@@ -493,9 +529,10 @@ export class MarkdownConverter {
 
       const metadataString = metadata.length > 0 ? metadata.join("\n\n") + "\n\n---\n\n" : "";
       return metadataString + contentHtml;
-    } catch (error) {
-      console.error("HTML preprocessing failed:", error);
-      return this.cleanupHtml(html);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`HTML preprocessing failed: ${message}`, error instanceof Error ? error : undefined);
+      return this.cleanupHtml(html); // Return original (but cleaned) HTML on failure
     }
   }
 
@@ -533,6 +570,11 @@ export class MarkdownConverter {
     );
   }
 
+  // Potentially performance-intensive: involves iterating over many elements
+  // and performing sub-queries (querySelectorAll, textContent) for each.
+  // Complexity can be roughly O(B * (T_avg + L_avg * S_avg + M_avg)) where B is number of
+  // boilerplate candidates, T_avg is avg cost of textContent, L_avg is avg links per candidate,
+  // S_avg is avg cost of link text access, M_avg is avg cost of matches().
   private removeHighLinkDensityElements(element: NHPHTMLElement, threshold: number): void {
     const potentialBoilerplate = element.querySelectorAll(
       "div, nav, ul, aside, section, .sidebar, .widget, .menu, [role='navigation'], [role='menubar']"
@@ -636,8 +678,9 @@ export class MarkdownConverter {
             // Ensure script content exists before parsing
             const textContent = script.textContent;
             return textContent ? JSON.parse(textContent) : null;
-          } catch (e) {
-            // Ignore invalid JSON
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(`Failed to parse JSON-LD content: ${message}`, e instanceof Error ? e : undefined);
             return null;
           }
         })
@@ -649,6 +692,14 @@ export class MarkdownConverter {
         metadata.push("```json", JSON.stringify(jsonLdData, null, 2), "```");
         metadata.push("</details>");
         addedMeta.add("json-ld");
+
+        // Add other relevant fields like 'author', 'datePublished', etc.
+        jsonLdData.forEach((jsonData) => {
+          if (typeof jsonData === "object" && jsonData !== null) {
+            // jsonData is already type 'object' here
+            addMeta("Organization", (jsonData as Record<string, any>).publisher?.name);
+          }
+        });
       }
     }
 
@@ -665,9 +716,11 @@ export class MarkdownConverter {
             return count + root.querySelectorAll(selector).length;
           }
           return count;
-        } catch {
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn(`MarkdownConverter: Invalid selector during forum detection: '${selector}'. Error: ${message}`);
           return count;
-        } // Ignore selector errors
+        } // Ignore selector errors, but log a warning
       }, 0);
     };
 
@@ -693,8 +746,12 @@ export class MarkdownConverter {
           hostname.includes("discuss") ||
           hostname.includes("community");
       }
-    } catch (e) {
-      console.warn("Could not parse URL for forum detection:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Could not parse URL for forum detection. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // Decision logic: requires significant indicators or known host
@@ -706,7 +763,73 @@ export class MarkdownConverter {
     );
   }
 
-  // Tries to find the main content element for an article-like page
+  /**
+   * Calculates a score for a given HTML element to determine if it's likely the main content.
+   * @param element The HTML element to score.
+   * @param currentMaxScore The current maximum score found so far (used for body tag heuristic).
+   * @returns The calculated score for the element.
+   */
+  // This scoring function is called for each candidate element during content extraction.
+  // It involves text content access, querySelectorAll("p"), and potentially element.matches(),
+  // contributing to the overall complexity of extractArticleContentElement.
+  private _calculateElementScore(element: NHPHTMLElement, currentMaxScore: number): number {
+    // Basic scoring: text length
+    const textLength = (element.textContent || "").trim().length;
+    // Require some minimum length or presence of media to be considered
+    // Using a constant for minimum length (e.g., MIN_CONTENT_TEXT_LENGTH = 100)
+    const MIN_CONTENT_TEXT_LENGTH = 100; // Or define this at class/file level
+    if (textLength < MIN_CONTENT_TEXT_LENGTH && !element.querySelector("img, video, iframe, figure")) {
+      return -1; // Not a candidate if too short and no media
+    }
+
+    let score = textLength;
+
+    // Boost common content tags/roles
+    if (["ARTICLE", "MAIN"].includes(element.tagName)) score *= 1.5;
+    if (["main", "article"].includes(element.getAttribute("role") || "")) score *= 1.5;
+
+    // Penalize common boilerplate containers/roles
+    if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName)) score *= 0.3;
+    try {
+      const BOILERPLATE_SELECTORS_FOR_PENALTY =
+        '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]';
+      /* @ts-expect-error TODO: fix this (existing issue with NHPHTMLElement and matches) */
+      if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
+        score *= 0.2;
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(`MarkdownConverter: Error matching selector in _calculateElementScore: ${message}`);
+      /* Ignore selector match errors, but log a warning */
+    }
+
+    // Penalize if it contains high-link density elements that weren't removed
+    // Using a constant for the threshold (e.g., HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6)
+    const HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6;
+    if (this.hasHighLinkDensity(element, HIGH_LINK_DENSITY_THRESHOLD_PENALTY)) {
+      score *= 0.5;
+    }
+
+    // Boost if it contains multiple paragraph tags
+    // Using a constant for min paragraphs (e.g., MIN_PARAGRAPHS_FOR_BOOST = 2)
+    const MIN_PARAGRAPHS_FOR_BOOST = 2;
+    if (element.querySelectorAll("p").length > MIN_PARAGRAPHS_FOR_BOOST) score *= 1.2;
+
+    // Avoid selecting the entire body unless other scores are very low
+    // Using a constant for body score threshold (e.g., BODY_SCORE_THRESHOLD = 200)
+    const BODY_SCORE_THRESHOLD = 200;
+    if (element.tagName === "BODY" && currentMaxScore > BODY_SCORE_THRESHOLD) {
+      return -1; // Penalize body if better candidates already exist
+    }
+
+    return score;
+  }
+
+  // Tries to find the main content element for an article-like page.
+  // Iterates through MAIN_CONTENT_SELECTORS, runs querySelectorAll for each,
+  // then iterates through matched elements, calling _calculateElementScore.
+  // Complexity depends on the number of selectors, matched elements, and the
+  // cost of _calculateElementScore.
   private extractArticleContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
     let bestCandidate: NHPHTMLElement | null = null;
     let maxScore = -1;
@@ -718,49 +841,19 @@ export class MarkdownConverter {
         for (const element of Array.from(elements)) {
           if (!(element instanceof NHPHTMLElement)) continue;
 
-          // Basic scoring: text length
-          const textLength = (element.textContent || "").trim().length;
-          // Require some minimum length or presence of media to be considered
-          if (textLength < 100 && !element.querySelector("img, video, iframe, figure")) continue;
-
-          let score = textLength;
-
-          // Boost common content tags/roles
-          if (["ARTICLE", "MAIN"].includes(element.tagName)) score *= 1.5;
-          if (["main", "article"].includes(element.getAttribute("role") || "")) score *= 1.5;
-
-          // Penalize common boilerplate containers/roles
-          if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName)) score *= 0.3;
-          try {
-            // Explicitly assert type before calling matches
-            if (
-              /* @ts-expect-error TODO: fix this */
-              (element as NHPHTMLElement).matches(
-                '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]'
-              )
-            )
-              score *= 0.2;
-          } catch {}
-
-          // Penalize if it contains high-link density elements that weren't removed
-          if (this.hasHighLinkDensity(element, 0.6)) {
-            // Use a slightly higher threshold here
-            score *= 0.5;
-          }
-
-          // Boost if it contains multiple paragraph tags
-          if (element.querySelectorAll("p").length > 2) score *= 1.2;
-
-          // Avoid selecting the entire body unless other scores are very low
-          if (element.tagName === "BODY" && maxScore > 200) continue;
+          const score = this._calculateElementScore(element, maxScore);
 
           if (score > maxScore) {
             maxScore = score;
             bestCandidate = element;
           }
         }
-      } catch (e) {
-        // Ignore invalid selectors
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.warn(
+          `MarkdownConverter: Invalid selector '${selector}' in extractArticleContentElement. Error: ${message}`
+        );
+        // Ignore invalid selectors, but log a warning
       }
     }
 
@@ -768,7 +861,10 @@ export class MarkdownConverter {
     return bestCandidate || root;
   }
 
-  // Tries to find the main content element(s) for a forum-like page
+  // Tries to find the main content element(s) for a forum-like page.
+  // Involves multiple querySelector calls for specific forum parts, cloning nodes (O(subtree size)),
+  // and potentially a call to removeHighLinkDensityElements in the fallback case.
+  // The complexity can be significant depending on DOM structure and the need for fallbacks.
   private extractForumContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
     // For forums, combine the main post + comments container
     const tempContainer = parse("<div></div>").firstChild as NHPHTMLElement;
@@ -782,8 +878,12 @@ export class MarkdownConverter {
       if (mainPost) {
         tempContainer.appendChild(mainPost.clone());
       }
-    } catch (e) {
-      console.warn("Error finding forum main post:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Error finding forum main post. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // 2. Find, clean, and clone the comments container
@@ -799,15 +899,23 @@ export class MarkdownConverter {
           FORUM_OBVIOUS_NON_CONTENT_SELECTORS.forEach((selector) => {
             try {
               clonedComments.querySelectorAll(selector).forEach((el) => el.remove());
-            } catch {
-              /* ignore */
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              console.warn(
+                `MarkdownConverter: Error cleaning forum comments (selector: '${selector}'). Error: ${message}`,
+                e instanceof Error ? e : undefined
+              );
             }
           });
           tempContainer.appendChild(clonedComments);
         }
       }
-    } catch (e) {
-      console.warn("Error finding forum comments container:", e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `MarkdownConverter: Error finding forum comments container. Error: ${message}`,
+        e instanceof Error ? e : undefined
+      );
     }
 
     // If we found specific parts, return the combined container
@@ -823,8 +931,12 @@ export class MarkdownConverter {
         FORUM_OBVIOUS_NON_CONTENT_SELECTORS.forEach((selector) => {
           try {
             clonedBody.querySelectorAll(selector).forEach((el) => el.remove());
-          } catch {
-            /* ignore */
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn(
+              `MarkdownConverter: Error cleaning forum body fallback (selector: '${selector}'). Error: ${message}`,
+              e instanceof Error ? e : undefined
+            );
           }
         });
         // Also remove high link density from body fallback
@@ -838,6 +950,8 @@ export class MarkdownConverter {
   }
 
   // Helper function to check link density within an element
+  // Called by _calculateElementScore and removeHighLinkDensityElements.
+  // Involves textContent access and querySelectorAll("a").
   private hasHighLinkDensity(element: NHPHTMLElement, threshold: number): boolean {
     const textContent = element.textContent || "";
     if (textContent.length < MIN_LINK_DENSITY_TEXT_LENGTH) return false;
@@ -870,11 +984,13 @@ export class MarkdownConverter {
 
     // 2. Fix list spacing (ensure blank line before list, compact items)
     processed = processed.replace(/^(\s*\n)?(([\*\-+>]|\d+\.)\s)/gm, (_match, _p1, p2) => `\n\n${p2}`); // Ensure blank line before first item
-    // Remove single newlines *between* simple list items of the same type unless followed by indented block
+    // The following regex for compacting list items is temporarily commented out due to test failures indicating item concatenation.
+    /*
     processed = processed.replace(
       /(\n([\*\-+]|\d+\.)\s(?:(?!\n\n|\n {2,}|\n\t)[\s\S])*?)\n(?=([\*\-+]|\d+\.)\s)/g,
       "$1"
     );
+    */
 
     // 3. Remove empty Markdown elements (links, images)
     processed = processed.replace(/\[\]\([^)]*\)/g, ""); // Empty links: [](...)
@@ -896,6 +1012,10 @@ export class MarkdownConverter {
     processed = processed.replace(/^(\s*\n)?(```(.*)\n[\s\S]*?\n```)(\s*\n)?/gm, "\n\n$2\n\n");
 
     // 8. Remove excessively repeated *lines* (simple check for duplication)
+    // This regex identifies lines that are at least 30 characters long and are immediately repeated.
+    // - `^(.{30,})$`: Captures a line of 30+ characters into group 1 (\1).
+    // - `(\n\1)+`: Matches one or more occurrences of a newline followed by the exact content of group 1.
+    // Replaces the entire match (original line + all its immediate repetitions) with just the original line ($1).
     processed = processed.replace(/^(.{30,})$(\n\1)+/gm, "$1");
 
     // 9. Tidy up metadata section (ensure spacing)
