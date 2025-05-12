@@ -316,7 +316,7 @@ export class PlaywrightEngine implements IEngine {
       // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
     };
     // Try removing 'as any' to see the specific type error
-    return this._fetchRecursive(url, fetchConfig, 0, 0);
+    return this._fetchRecursive(url, fetchConfig, 0);
   }
 
   /**
@@ -484,8 +484,7 @@ export class PlaywrightEngine implements IEngine {
         spaRenderDelayMs: number;
       }
     >,
-    retryAttempt: number,
-    parentRetryCount: number // parentRetryCount is no longer needed with _ensureBrowserPoolInitialized handling its own retries
+    retryAttempt: number
   ): Promise<HTMLFetchResult> {
     const isSpaMode = currentConfig.spaMode;
 
@@ -538,7 +537,7 @@ export class PlaywrightEngine implements IEngine {
       // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
       if (currentConfig.fastMode && retryAttempt === 0) {
         console.warn(`Fast mode fetch failed for ${url}. Retrying with fastMode disabled.`);
-        return this._fetchRecursive(url, { ...currentConfig, fastMode: false }, 0, 0); // Reset retryAttempt for the non-fastMode attempt
+        return this._fetchRecursive(url, { ...currentConfig, fastMode: false }, 0); // Reset retryAttempt for the non-fastMode attempt
       }
 
       // b. Standard retry mechanism
@@ -548,7 +547,7 @@ export class PlaywrightEngine implements IEngine {
           `Fetch attempt ${retryAttempt + 1} for ${url} failed. Retrying after delay... Error: ${errorMessage}`
         );
         await delay(currentConfig.retryDelay);
-        return this._fetchRecursive(url, currentConfig, retryAttempt + 1, 0); // Pass 0 for parentRetryCount
+        return this._fetchRecursive(url, currentConfig, retryAttempt + 1);
       }
 
       // c. If retries exhausted for current mode, AND current mode is headless, AND headed fallback is enabled:
@@ -566,7 +565,7 @@ export class PlaywrightEngine implements IEngine {
           retryAttempt: 0, // Reset for the new mode
           maxRetries: 0, // Single attempt for headed fallback
         };
-        return this._fetchRecursive(url, headedConfig, 0, 0);
+        return this._fetchRecursive(url, headedConfig, 0);
       }
 
       // d. Max retries reached (and no applicable headed fallback)

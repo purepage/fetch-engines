@@ -7,39 +7,84 @@ export class HybridEngine {
     fetchEngine;
     playwrightEngine;
     config; // Store config for potential per-request PW overrides
+    playwrightOnlyPatterns;
     constructor(config = {}) {
         // Pass relevant config parts to each engine
         // FetchEngine only takes markdown option from the shared config
+        // spaMode from config is primarily for PlaywrightEngine, but HybridEngine uses it for decision making.
         this.fetchEngine = new FetchEngine({ markdown: config.markdown });
         this.playwrightEngine = new PlaywrightEngine(config);
         this.config = config; // Store for merging later
+        this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
+    }
+    _isSpaShell(htmlContent) {
+        if (!htmlContent || htmlContent.length < 150) {
+            // Very short content might be a shell or error
+            // Heuristic: if it's very short AND contains noscript, good chance it's a shell.
+            if (htmlContent.includes("<noscript>"))
+                return true;
+        }
+        // Check for <noscript> tag
+        if (htmlContent.includes("<noscript>"))
+            return true;
+        // Check for common empty root divs
+        if (/<div id=(?:"|')?(root|app)(?:"|')?[^>]*>\s*<\/div>/i.test(htmlContent))
+            return true;
+        // Check for empty title tag or no title tag at all
+        if (/<title>\s*<\/title>/i.test(htmlContent) || !/<title[^>]*>/i.test(htmlContent))
+            return true;
+        return false;
     }
     async fetchHTML(url, options = {}) {
-        // FetchEngine uses its constructor config; it doesn't accept per-request options here.
+        // Determine effective SPA mode and markdown options
+        // HybridEngine defaults to false for these if not otherwise specified in its own config or per-request options.
+        const effectiveSpaMode = options.spaMode !== undefined ? options.spaMode : this.config.spaMode !== undefined ? this.config.spaMode : false;
+        const effectiveMarkdown = options.markdown !== undefined
+            ? options.markdown
+            : this.config.markdown !== undefined
+                ? this.config.markdown
+                : false;
+        // Prepare options for PlaywrightEngine, to be used in fallback scenarios or direct calls
+        const playwrightOptions = {
+            ...this.config, // Start with base config given to HybridEngine (e.g. spaRenderDelayMs)
+            ...options, // Apply all per-request overrides first
+            markdown: effectiveMarkdown, // Then ensure HybridEngine's resolved markdown is set
+            spaMode: effectiveSpaMode, // Then ensure HybridEngine's resolved spaMode is set
+        };
+        // Check playwrightOnlyPatterns first
+        for (const pattern of this.playwrightOnlyPatterns) {
+            if (typeof pattern === "string" && url.includes(pattern)) {
+                console.warn(`HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly.`);
+                return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+            }
+            else if (pattern instanceof RegExp && pattern.test(url)) {
+                console.warn(`HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly.`);
+                return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+            }
+        }
         try {
             const fetchResult = await this.fetchEngine.fetchHTML(url);
-            // If fetch succeeded, return its result directly (it handles its own markdown config)
-            // No need to check contentType here, FetchEngine handles it based on its constructor.
+            // If FetchEngine succeeded AND spaMode is active, check if it's just a shell
+            if (effectiveSpaMode && fetchResult && fetchResult.content) {
+                if (this._isSpaShell(fetchResult.content)) {
+                    console.warn(`HybridEngine: FetchEngine returned likely SPA shell for ${url} in spaMode. Forcing PlaywrightEngine.`);
+                    // Fallback to PlaywrightEngine, passing the determined effective options
+                    return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+                }
+            }
+            // If not spaMode, or if spaMode but content is not a shell, return FetchEngine's result
             return fetchResult;
         }
         catch (fetchError) {
-            console.warn(`FetchEngine failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
-            // Merge constructor config with per-request options for Playwright fallback
-            const playwrightOptions = {
-                ...this.config, // Start with base config given to HybridEngine
-                ...options, // Override with per-request options
-            };
+            console.warn(`HybridEngine: FetchEngine failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
             try {
-                // Pass merged options to PlaywrightEngine
+                // Fallback to PlaywrightEngine, passing the determined effective options
                 const playwrightResult = await this.playwrightEngine.fetchHTML(url, playwrightOptions);
                 return playwrightResult;
             }
             catch (playwrightError) {
-                // Catch potential Playwright error
-                console.error(`PlaywrightEngine fallback failed for ${url}: ${playwrightError.message}`);
-                // Optionally, wrap or prioritize which error to throw
-                // Throwing the Playwright error as it's the last one encountered
-                throw playwrightError;
+                console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${playwrightError.message}`);
+                throw playwrightError; // Throw the Playwright error as it's the last one encountered
             }
         }
     }
