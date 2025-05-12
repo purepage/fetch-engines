@@ -715,6 +715,63 @@ export class MarkdownConverter {
     );
   }
 
+  /**
+   * Calculates a score for a given HTML element to determine if it's likely the main content.
+   * @param element The HTML element to score.
+   * @param currentMaxScore The current maximum score found so far (used for body tag heuristic).
+   * @returns The calculated score for the element.
+   */
+  private _calculateElementScore(element: NHPHTMLElement, currentMaxScore: number): number {
+    // Basic scoring: text length
+    const textLength = (element.textContent || "").trim().length;
+    // Require some minimum length or presence of media to be considered
+    // Using a constant for minimum length (e.g., MIN_CONTENT_TEXT_LENGTH = 100)
+    const MIN_CONTENT_TEXT_LENGTH = 100; // Or define this at class/file level
+    if (textLength < MIN_CONTENT_TEXT_LENGTH && !element.querySelector("img, video, iframe, figure")) {
+      return -1; // Not a candidate if too short and no media
+    }
+
+    let score = textLength;
+
+    // Boost common content tags/roles
+    if (["ARTICLE", "MAIN"].includes(element.tagName)) score *= 1.5;
+    if (["main", "article"].includes(element.getAttribute("role") || "")) score *= 1.5;
+
+    // Penalize common boilerplate containers/roles
+    if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName)) score *= 0.3;
+    try {
+      const BOILERPLATE_SELECTORS_FOR_PENALTY =
+        '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]';
+      /* @ts-expect-error TODO: fix this (existing issue with NHPHTMLElement and matches) */
+      if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
+        score *= 0.2;
+      }
+    } catch {
+      /* Ignore selector match errors */
+    }
+
+    // Penalize if it contains high-link density elements that weren't removed
+    // Using a constant for the threshold (e.g., HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6)
+    const HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6;
+    if (this.hasHighLinkDensity(element, HIGH_LINK_DENSITY_THRESHOLD_PENALTY)) {
+      score *= 0.5;
+    }
+
+    // Boost if it contains multiple paragraph tags
+    // Using a constant for min paragraphs (e.g., MIN_PARAGRAPHS_FOR_BOOST = 2)
+    const MIN_PARAGRAPHS_FOR_BOOST = 2;
+    if (element.querySelectorAll("p").length > MIN_PARAGRAPHS_FOR_BOOST) score *= 1.2;
+
+    // Avoid selecting the entire body unless other scores are very low
+    // Using a constant for body score threshold (e.g., BODY_SCORE_THRESHOLD = 200)
+    const BODY_SCORE_THRESHOLD = 200;
+    if (element.tagName === "BODY" && currentMaxScore > BODY_SCORE_THRESHOLD) {
+      return -1; // Penalize body if better candidates already exist
+    }
+
+    return score;
+  }
+
   // Tries to find the main content element for an article-like page
   private extractArticleContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
     let bestCandidate: NHPHTMLElement | null = null;
@@ -727,41 +784,7 @@ export class MarkdownConverter {
         for (const element of Array.from(elements)) {
           if (!(element instanceof NHPHTMLElement)) continue;
 
-          // Basic scoring: text length
-          const textLength = (element.textContent || "").trim().length;
-          // Require some minimum length or presence of media to be considered
-          if (textLength < 100 && !element.querySelector("img, video, iframe, figure")) continue;
-
-          let score = textLength;
-
-          // Boost common content tags/roles
-          if (["ARTICLE", "MAIN"].includes(element.tagName)) score *= 1.5;
-          if (["main", "article"].includes(element.getAttribute("role") || "")) score *= 1.5;
-
-          // Penalize common boilerplate containers/roles
-          if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName)) score *= 0.3;
-          try {
-            // Explicitly assert type before calling matches
-            if (
-              /* @ts-expect-error TODO: fix this */
-              (element as NHPHTMLElement).matches(
-                '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]'
-              )
-            )
-              score *= 0.2;
-          } catch {}
-
-          // Penalize if it contains high-link density elements that weren't removed
-          if (this.hasHighLinkDensity(element, 0.6)) {
-            // Use a slightly higher threshold here
-            score *= 0.5;
-          }
-
-          // Boost if it contains multiple paragraph tags
-          if (element.querySelectorAll("p").length > 2) score *= 1.2;
-
-          // Avoid selecting the entire body unless other scores are very low
-          if (element.tagName === "BODY" && maxScore > 200) continue;
+          const score = this._calculateElementScore(element, maxScore);
 
           if (score > maxScore) {
             maxScore = score;

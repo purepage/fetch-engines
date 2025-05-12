@@ -304,12 +304,155 @@ export class PlaywrightEngine implements IEngine {
   }
 
   /**
+   * Helper to check cache and potentially return a cached result.
+   * Handles logic for re-fetching if cache is stale or content type mismatch for markdown.
+   *
+   * @param url URL to check in cache
+   * @param currentConfig Current fetch configuration
+   * @returns Cached result or null if not found/needs re-fetch.
+   */
+  private _handleCacheCheck(
+    url: string,
+    currentConfig: Required<
+      FetchOptions & {
+        markdown: boolean;
+        retryDelay: number;
+        maxRetries: number;
+        useHttpFallback: boolean;
+        useHeadedModeFallback: boolean;
+        useHeadedMode: boolean;
+        spaRenderDelayMs: number;
+      }
+    >
+  ): HTMLFetchResult | null {
+    const cachedResult = this.checkCache(url);
+    if (cachedResult) {
+      // Check if markdown conversion is needed or if there's a type mismatch
+      const needsMarkdown = currentConfig.markdown;
+      const isMarkdown =
+        cachedResult.contentType === "markdown" ||
+        (typeof cachedResult.content === "string" &&
+          (cachedResult.content.startsWith("#") || cachedResult.content.includes("\n\n---\n\n")));
+
+      if (needsMarkdown && !isMarkdown) {
+        // Cached HTML, but Markdown requested
+        try {
+          const converter = new MarkdownConverter();
+          // Convert a copy, do not mutate the cached object directly
+          const convertedContent = converter.convert(cachedResult.content);
+          return {
+            ...cachedResult,
+            content: convertedContent,
+            contentType: "markdown",
+          };
+        } catch (e) {
+          console.error(`Failed to convert cached HTML to markdown for ${url}:`, e);
+          this.cache.delete(url); // Invalidate cache on conversion failure
+          return null; // Trigger re-fetch
+        }
+      } else if (!needsMarkdown && isMarkdown) {
+        // Cached Markdown, but HTML requested
+        console.warn(`Cached result for ${url} is Markdown, but HTML was requested. Re-fetching.`);
+        this.cache.delete(url);
+        return null; // Trigger re-fetch
+      }
+      // Cache hit and content type is appropriate
+      return cachedResult;
+    }
+    return null; // Cache miss
+  }
+
+  /**
+   * Attempts to fetch the URL using a simple HTTP GET request as a fallback.
+   *
+   * @param url The URL to fetch.
+   * @param currentConfig The current fetch configuration.
+   * @returns A Promise resolving to an HTMLFetchResult if successful, or null if fallback is skipped or a challenge page is encountered.
+   * @throws {FetchError} If the HTTP fallback itself fails with an unrecoverable error.
+   */
+  private async _attemptHttpFallback(
+    url: string,
+    currentConfig: Required<
+      FetchOptions & {
+        markdown: boolean;
+        useHttpFallback: boolean;
+        // other properties are not directly used by this helper but are part of the type
+      }
+    >
+  ): Promise<HTMLFetchResult | null> {
+    if (!currentConfig.useHttpFallback) {
+      return null;
+    }
+
+    try {
+      const httpResult = await this.fetchHTMLWithHttpFallback(url);
+      // If successful, cache it (addToCache handles TTL check)
+      this.addToCache(url, httpResult);
+      return httpResult;
+    } catch (httpError: any) {
+      if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
+        // Log or specific handling for challenge page if needed, then signal to proceed with Playwright
+        console.warn(`HTTP fallback for ${url} resulted in a challenge page. Proceeding with Playwright.`);
+        return null;
+      } else {
+        // For other HTTP fallback errors, log them but still allow proceeding to Playwright
+        // as per original logic (empty catch block).
+        console.warn(`HTTP fallback for ${url} failed: ${httpError.message}. Proceeding with Playwright.`);
+        return null;
+      }
+    }
+  }
+
+  /**
+   * Ensures the browser pool is initialized with the correct mode (headed/headless).
+   * Handles one retry attempt if the initial pool initialization fails.
+   *
+   * @param useHeadedMode Whether to initialize the pool in headed mode.
+   * @param currentConfig The current fetch configuration (for retryDelay).
+   * @returns A Promise that resolves when the pool is initialized, or rejects if initialization fails after retries.
+   * @throws {FetchError} If pool initialization fails after retries or if the pool is unavailable.
+   */
+  private async _ensureBrowserPoolInitialized(
+    useHeadedMode: boolean,
+    currentConfig: Required<{ retryDelay: number }>
+  ): Promise<void> {
+    // This check is slightly different from initializeBrowserPool internal check,
+    // as it needs to be called before attempting initialization within _fetchRecursive
+    if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
+      return; // Pool already initialized with the correct mode
+    }
+
+    try {
+      await this.initializeBrowserPool(useHeadedMode);
+    } catch (initError) {
+      // Allow one retry for pool initialization failure as per original _fetchRecursive logic
+      console.warn(
+        `Browser pool initialization failed. Retrying once after delay... Error: ${(initError as Error).message}`
+      );
+      await delay(currentConfig.retryDelay);
+      try {
+        await this.initializeBrowserPool(useHeadedMode);
+      } catch (secondInitError) {
+        throw new FetchError(
+          `Pool initialization failed after retry: ${(secondInitError as Error).message}`,
+          "ERR_POOL_INIT_FAILED",
+          secondInitError as Error
+        );
+      }
+    }
+
+    if (!this.browserPool) {
+      // Simplified check: if pool is null after attempts, it's an error.
+      throw new FetchError("Browser pool unavailable after initialization attempt.", "ERR_POOL_UNAVAILABLE");
+    }
+  }
+
+  /**
    * Internal recursive method to handle fetching with retries.
    *
    * @param url URL to fetch
    * @param currentConfig The merged configuration including markdown option
    * @param retryAttempt Current retry attempt number (starts at 0)
-   * @param parentRetryCount Tracks retries related to pool initialization errors (starts at 0)
    * @returns Promise resolving to HTMLFetchResult
    */
   private async _fetchRecursive(
@@ -317,127 +460,90 @@ export class PlaywrightEngine implements IEngine {
     // Use Required<...> to ensure all properties are present for internal logic
     currentConfig: Required<
       FetchOptions & {
-        // FetchOptions now includes spaMode?: boolean
         markdown: boolean;
         retryDelay: number;
         maxRetries: number;
         useHttpFallback: boolean;
         useHeadedModeFallback: boolean;
         useHeadedMode: boolean;
-        // spaMode is part of FetchOptions, will be present due to Required<>
-        spaRenderDelayMs: number; // Added spaRenderDelayMs
+        spaRenderDelayMs: number;
       }
     >,
     retryAttempt: number,
-    parentRetryCount: number
+    parentRetryCount: number // parentRetryCount is no longer needed with _ensureBrowserPoolInitialized handling its own retries
   ): Promise<HTMLFetchResult> {
-    const useFastMode = currentConfig.fastMode;
-    const isSpaMode = currentConfig.spaMode; // Get spaMode from currentConfig
+    const isSpaMode = currentConfig.spaMode;
 
-    if (retryAttempt === 0 && parentRetryCount === 0) {
-      const cachedResult = this.checkCache(url);
+    // 1. Cache Check (only on the very first attempt)
+    if (retryAttempt === 0) {
+      const cachedResult = this._handleCacheCheck(url, currentConfig);
       if (cachedResult) {
-        if (
-          currentConfig.markdown &&
-          !cachedResult.content.startsWith("#") &&
-          !cachedResult.content.includes("\n\n---\n\n")
-        ) {
-          try {
-            const converter = new MarkdownConverter();
-            cachedResult.content = converter.convert(cachedResult.content);
-          } catch (e) {
-            console.error("Failed to convert cached result to markdown", e);
-          }
-        } else if (
-          !currentConfig.markdown &&
-          (cachedResult.content.startsWith("#") || cachedResult.content.includes("\n\n---\n\n"))
-        ) {
-          console.warn("Cached result is Markdown, but HTML was requested. Re-fetching.");
-          this.cache.delete(url);
-          return this._fetchRecursive(url, currentConfig, 0, 0);
-        }
         return cachedResult;
       }
     }
 
-    try {
-      // If spaMode is true, skip HTTP fallback and go directly to Playwright
-      // Corrected logic: useHttpFallback should only be attempted if NOT in spaMode
-      if (!isSpaMode && currentConfig.useHttpFallback && retryAttempt === 0 && parentRetryCount === 0) {
-        try {
-          const httpResult = await this.fetchHTMLWithHttpFallback(url);
-          if (this.config.cacheTTL > 0) {
-            this.addToCache(url, httpResult);
-          }
-          return httpResult;
-        } catch (httpError: any) {
-          if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
-            /* Continue */
-          } else {
-            /* Log? Continue */
-          }
-        }
+    // 2. HTTP Fallback (only on the very first attempt, if not SPA mode)
+    if (retryAttempt === 0 && !isSpaMode) {
+      const fallbackResult = await this._attemptHttpFallback(url, currentConfig);
+      if (fallbackResult) {
+        return fallbackResult;
       }
+    }
 
+    // 3. Main Playwright Fetch Logic with Retries
+    try {
       const useHeadedMode =
         (currentConfig.useHeadedModeFallback && (retryAttempt >= 2 || this.shouldUseHeadedMode(url))) ||
         currentConfig.useHeadedMode;
 
-      try {
-        if (!this.browserPool || this.isUsingHeadedMode !== useHeadedMode) {
-          await this.initializeBrowserPool(useHeadedMode);
-        }
-      } catch (initError) {
-        if (parentRetryCount < 1) {
-          await delay(currentConfig.retryDelay);
-          return this._fetchRecursive(url, currentConfig, retryAttempt, parentRetryCount + 1);
-        }
-        throw new FetchError(
-          `Pool init failed: ${(initError as Error).message}`,
-          "ERR_POOL_INIT_FAILED",
-          initError as Error
-        );
-      }
+      await this._ensureBrowserPoolInitialized(useHeadedMode, currentConfig);
 
-      if (!this.browserPool) {
-        throw new FetchError("Browser pool unavailable.", "ERR_POOL_UNAVAILABLE");
-      }
-
-      // Pass markdown setting, spaMode, and spaRenderDelayMs to Playwright fetch
+      // browserPool is guaranteed to be non-null here by _ensureBrowserPoolInitialized
+      // The non-null assertion operator (!) is safe to use here.
       const result = await this.queue.add(() =>
         this.fetchWithPlaywright(
           url,
           this.browserPool!,
-          useFastMode,
+          currentConfig.fastMode, // Pass the current fastMode setting
           currentConfig.markdown,
           isSpaMode,
           currentConfig.spaRenderDelayMs
         )
       );
 
-      if (result && this.config.cacheTTL > 0) {
-        this.addToCache(url, result);
-      }
       if (!result) {
-        throw new FetchError("Playwright fetch queued but no result.", "ERR_QUEUE_NO_RESULT");
-      }
-      return result;
-    } catch (error: any) {
-      if (useFastMode && retryAttempt === 0 && parentRetryCount === 0) {
-        return this._fetchRecursive(url, { ...currentConfig, fastMode: false }, 0, parentRetryCount);
-      }
-      if (retryAttempt < currentConfig.maxRetries) {
-        await delay(currentConfig.retryDelay);
-        return this._fetchRecursive(url, currentConfig, retryAttempt + 1, parentRetryCount);
+        // Should not happen if fetchWithPlaywright resolves, but good to check.
+        throw new FetchError("Playwright fetch queued but no result returned.", "ERR_QUEUE_NO_RESULT");
       }
 
+      this.addToCache(url, result); // Cache successful Playwright result
+      return result;
+    } catch (error: any) {
+      // Retry logic:
+      // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
+      if (currentConfig.fastMode && retryAttempt === 0) {
+        console.warn(`Fast mode fetch failed for ${url}. Retrying with fastMode disabled.`);
+        return this._fetchRecursive(url, { ...currentConfig, fastMode: false }, 0, 0); // Reset retryAttempt for the non-fastMode attempt
+      }
+
+      // b. Standard retry mechanism
+      if (retryAttempt < currentConfig.maxRetries) {
+        console.warn(
+          `Fetch attempt ${retryAttempt + 1} for ${url} failed. Retrying after delay... Error: ${error.message}`
+        );
+        await delay(currentConfig.retryDelay);
+        return this._fetchRecursive(url, currentConfig, retryAttempt + 1, 0); // Pass 0 for parentRetryCount
+      }
+
+      // c. Max retries reached
       const finalError =
         error instanceof FetchError
           ? error
           : new FetchError(`Fetch failed: ${error.message}`, "ERR_FETCH_FAILED", error);
+
       throw new FetchError(
-        `Fetch failed after ${currentConfig.maxRetries} retries: ${finalError.message}`,
-        finalError.code,
+        `Fetch failed for ${url} after ${currentConfig.maxRetries} retries (and potential fastMode retry): ${finalError.message}`,
+        finalError.code || "ERR_MAX_RETRIES_REACHED",
         finalError.originalError || error
       );
     }
