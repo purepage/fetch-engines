@@ -464,6 +464,17 @@ export class MarkdownConverter {
   // --- HTML Preprocessing ---
 
   private preprocessHTML(html: string): string {
+    // This function performs multi-stage processing on the HTML string:
+    // 1. Initial cleanup (regex-based).
+    // 2. Parsing into a DOM tree.
+    // 3. Removing specified elements (scripts, styles, etc.).
+    // 4. Removing elements with high link density.
+    // 5. Extracting document metadata.
+    // 6. Detecting if the page is a forum.
+    // 7. Extracting main article or forum content.
+    // 8. Final cleanup of extracted content HTML.
+    // The overall complexity is influenced by DOM traversals, querySelectorAll calls,
+    // and text content access, potentially super-linear in the size of the HTML.
     try {
       html = this.cleanupHtml(html);
       const root = parse(html, {
@@ -559,6 +570,11 @@ export class MarkdownConverter {
     );
   }
 
+  // Potentially performance-intensive: involves iterating over many elements
+  // and performing sub-queries (querySelectorAll, textContent) for each.
+  // Complexity can be roughly O(B * (T_avg + L_avg * S_avg + M_avg)) where B is number of
+  // boilerplate candidates, T_avg is avg cost of textContent, L_avg is avg links per candidate,
+  // S_avg is avg cost of link text access, M_avg is avg cost of matches().
   private removeHighLinkDensityElements(element: NHPHTMLElement, threshold: number): void {
     const potentialBoilerplate = element.querySelectorAll(
       "div, nav, ul, aside, section, .sidebar, .widget, .menu, [role='navigation'], [role='menubar']"
@@ -753,6 +769,9 @@ export class MarkdownConverter {
    * @param currentMaxScore The current maximum score found so far (used for body tag heuristic).
    * @returns The calculated score for the element.
    */
+  // This scoring function is called for each candidate element during content extraction.
+  // It involves text content access, querySelectorAll("p"), and potentially element.matches(),
+  // contributing to the overall complexity of extractArticleContentElement.
   private _calculateElementScore(element: NHPHTMLElement, currentMaxScore: number): number {
     // Basic scoring: text length
     const textLength = (element.textContent || "").trim().length;
@@ -806,7 +825,11 @@ export class MarkdownConverter {
     return score;
   }
 
-  // Tries to find the main content element for an article-like page
+  // Tries to find the main content element for an article-like page.
+  // Iterates through MAIN_CONTENT_SELECTORS, runs querySelectorAll for each,
+  // then iterates through matched elements, calling _calculateElementScore.
+  // Complexity depends on the number of selectors, matched elements, and the
+  // cost of _calculateElementScore.
   private extractArticleContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
     let bestCandidate: NHPHTMLElement | null = null;
     let maxScore = -1;
@@ -838,7 +861,10 @@ export class MarkdownConverter {
     return bestCandidate || root;
   }
 
-  // Tries to find the main content element(s) for a forum-like page
+  // Tries to find the main content element(s) for a forum-like page.
+  // Involves multiple querySelector calls for specific forum parts, cloning nodes (O(subtree size)),
+  // and potentially a call to removeHighLinkDensityElements in the fallback case.
+  // The complexity can be significant depending on DOM structure and the need for fallbacks.
   private extractForumContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
     // For forums, combine the main post + comments container
     const tempContainer = parse("<div></div>").firstChild as NHPHTMLElement;
@@ -924,6 +950,8 @@ export class MarkdownConverter {
   }
 
   // Helper function to check link density within an element
+  // Called by _calculateElementScore and removeHighLinkDensityElements.
+  // Involves textContent access and querySelectorAll("a").
   private hasHighLinkDensity(element: NHPHTMLElement, threshold: number): boolean {
     const textContent = element.textContent || "";
     if (textContent.length < MIN_LINK_DENSITY_TEXT_LENGTH) return false;

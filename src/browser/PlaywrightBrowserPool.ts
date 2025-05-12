@@ -42,7 +42,8 @@ async function loadDependencies() {
   }
 }
 
-// Define structure for browser instance managed by this pool
+// Define structure for browser instance managed by this pool -- THIS INTERFACE IS NO LONGER USED AND CAN BE REMOVED
+/*
 interface PlaywrightBrowserInstance {
   id: string;
   browser: PlaywrightBrowserType;
@@ -52,6 +53,7 @@ interface PlaywrightBrowserInstance {
   isHealthy: boolean;
   disconnectedHandler: () => void;
 }
+*/
 
 class ManagedBrowserInstance {
   public readonly id: string;
@@ -300,6 +302,11 @@ export class PlaywrightBrowserPool {
   ];
   private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES = ["image", "font", "media", "websocket"];
 
+  // The acquireQueue is used to serialize all page acquisition requests.
+  // With concurrency: 1, it ensures that operations for finding/creating browser instances
+  // and then acquiring a page from an instance are processed one at a time.
+  // This prevents race conditions when checking pool capacity, creating new browser instances,
+  // or selecting an instance from the pool, thus maintaining a consistent state for the pool.
   private readonly acquireQueue: PQueue = new PQueue({ concurrency: 1 });
 
   constructor(

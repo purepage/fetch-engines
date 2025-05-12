@@ -12,6 +12,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Identify all magic numbers and string literals across the codebase.
         - Define them as named constants (e.g., `const DEFAULT_TIMEOUT = 30000;`) at the top of relevant files or in a dedicated `src/constants.ts` file.
         - Replace all occurrences with these constants.
+    - **Status: DONE**
 
 ### 1.2. Complex Conditional Logic
 
@@ -20,6 +21,7 @@ This document outlines the plan to address the feedback from the code review. Th
     - **Action:**
         - Review `_fetchRecursive` in `PlaywrightEngine.ts`. Break down the retry logic and other complex parts into smaller, well-named helper functions.
         - Review `preprocessHTML` and `extractArticleContentElement` in `markdown-converter.ts`. Decompose complex conditional blocks into smaller, focused helper functions with descriptive names.
+    - **Status: DONE**
 
 ### 1.3. Inconsistent Error Handling
 
@@ -30,6 +32,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Avoid ignoring errors in catch blocks unless explicitly justified and documented.
         - Ensure custom errors (`WorkspaceError`, `WorkspaceEngineHttpError`) are used effectively and wrap underlying errors to preserve stack traces where appropriate.
         - Review all `catch` blocks for consistent and informative error handling.
+    - **Status: DONE**
 
 ## II. Over-engineering and Complexity
 
@@ -43,6 +46,7 @@ This document outlines the plan to address the feedback from the code review. Th
             - Making the fallback behavior more explicit (e.g., a flag in engine options).
             - Providing clearer configuration options for users to control fallback.
         - Simplify the existing heuristic if it's retained, or document its limitations thoroughly.
+    - **Status: DONE** (Added `playwrightOnlyPatterns` for explicit control)
 
 ### 2.2. PlaywrightBrowserPool Complexity
 
@@ -54,6 +58,7 @@ This document outlines the plan to address the feedback from the code review. Th
             - A `BrowserInstance` class to manage its own state, health checks, and lifecycle.
             - Separate modules for specific tasks like health checking or recycling logic.
         - Aim to improve modularity and reduce the cognitive load of understanding `PlaywrightBrowserPool`.
+    - **Status: DONE** (Created `ManagedBrowserInstance` class)
 
 ## III. Confusing Syntax and Patterns
 
@@ -66,6 +71,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Strive to replace them with more precise types.
         - Define interfaces or type aliases for complex object shapes (e.g., for `this.config as any`, `let chromiumWithExtras: any`).
         - Refactor code where possible to eliminate the need for assertions.
+    - **Status: DONE**
 
 ### 3.2. `this` Context in Turndown Rules
 
@@ -76,6 +82,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Ensure consistency in handling `this`.
         - If `this` is not strictly necessary, refactor rules to use arrow functions for clarity and to avoid `this` context issues.
         - If `this` is necessary, ensure it's correctly typed and handled, possibly with explicit binding if needed.
+    - **Status: DONE**
 
 ### 3.3. Regex Complexity
 
@@ -85,6 +92,7 @@ This document outlines the plan to address the feedback from the code review. Th
         - Review complex regex patterns in `markdown-converter.ts`.
         - Add detailed comments explaining the purpose and structure of each complex regex.
         - Investigate if any highly complex regex can be simplified or replaced with a series of simpler regex operations or string manipulation methods without sacrificing correctness.
+    - **Status: ADDRESSED.** (Comment added for one regex. Another complex regex's problematic comment was removed, and the regex itself is currently commented out as a test-related issue was fixed by other means.)
 
 ## IV. Adherence to Patterns & World-Class Code Principles
 
