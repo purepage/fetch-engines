@@ -63,6 +63,12 @@ const CODE_BLOCK_LANG_PREFIXES: ReadonlyArray<string> = ["language-", "lang-"];
 // Postprocessing
 const POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES = 2; // Keep paragraphs separate
 
+// Turndown specific
+const DEFAULT_ORDERED_LIST_ITEM_PREFIX = "1. ";
+const TURNDOWN_NODE_ELEMENT_TYPE = 1;
+const TURNDOWN_PRESENTATION_ROLE = "presentation";
+const TURNDOWN_PRESERVE_CLASS = "preserve";
+
 // --- Types ---
 
 export interface ConversionOptions {
@@ -91,9 +97,12 @@ export class MarkdownConverter {
       // Use nodeType check instead of window.HTMLElement
       keepReplacement: ((_content: string, node: TurndownNode) => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType === 1) {
+        if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
           const htmlElement = node as TurndownHTMLElement;
-          if (htmlElement.getAttribute("role") === "presentation" || htmlElement.classList?.contains("preserve")) {
+          if (
+            htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
+            htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS)
+          ) {
             return htmlElement.outerHTML;
           }
         }
@@ -143,7 +152,7 @@ export class MarkdownConverter {
     this.turndownService.addRule("main-content-marker", {
       filter: (node: TurndownNode): boolean => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType !== 1) return false;
+        if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE) return false;
         const el = node as TurndownHTMLElement;
         const element = node as Element;
         return (
@@ -206,7 +215,7 @@ export class MarkdownConverter {
       filter: ["ul", "ol"],
       replacement: (content: string, node: TurndownNode) => {
         // Node.ELEMENT_NODE is 1
-        if (node.nodeType !== 1) return content;
+        if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE) return content;
         // Check if the parent is a list item (nested list)
         const parent = node.parentNode;
         const indent = parent && parent.nodeName.toLowerCase() === "li" ? "  " : "";
@@ -245,7 +254,7 @@ export class MarkdownConverter {
             prefix = (start ? Number(start) + index : index + 1) + ". ";
           } catch (e) {
             console.warn("Could not determine ordered list index:", e);
-            prefix = "1. "; // Fallback
+            prefix = DEFAULT_ORDERED_LIST_ITEM_PREFIX; // Fallback
           }
         }
         // Add newline only if needed (next sibling exists and current content doesn't end with newline)

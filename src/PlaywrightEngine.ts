@@ -6,6 +6,21 @@ import type { Route, Page, /* BrowserContext, */ Response as PlaywrightResponse 
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import {
+  DEFAULT_HTTP_TIMEOUT,
+  SHORT_DELAY_MS,
+  EVALUATION_TIMEOUT_MS,
+  COMMON_HEADERS,
+  MAX_REDIRECTS,
+  REGEX_TITLE_TAG,
+  REGEX_SIMPLE_HTML_TITLE_FALLBACK,
+  REGEX_SANITIZE_HTML_TAGS,
+  REGEX_CHALLENGE_PAGE_KEYWORDS,
+  HUMAN_SIMULATION_MIN_DELAY_MS,
+  HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS,
+  HUMAN_SIMULATION_SCROLL_DELAY_MS,
+  HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS,
+} from "./constants.js"; // Corrected path
 
 function delay(time: number): Promise<void> {
   // Added return type
@@ -80,7 +95,7 @@ export class PlaywrightEngine implements IEngine {
     }
     if (this.initializingBrowserPool) {
       while (this.initializingBrowserPool) {
-        await delay(100);
+        await delay(SHORT_DELAY_MS);
       }
       if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
         return;
@@ -120,27 +135,9 @@ export class PlaywrightEngine implements IEngine {
   private async fetchHTMLWithHttpFallback(url: string): Promise<HTMLFetchResult> {
     try {
       const response = await axios.get(url, {
-        headers: {
-          // Use more standard browser-like headers
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Accept-Encoding": "gzip, deflate, br", // Allow compression
-          Referer: "https://www.google.com/", // Common referer
-          "Upgrade-Insecure-Requests": "1",
-          "Sec-Ch-Ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-          "Sec-Ch-Ua-Mobile": "?0",
-          "Sec-Ch-Ua-Platform": '"Windows"',
-          "Sec-Fetch-Dest": "document",
-          "Sec-Fetch-Mode": "navigate",
-          "Sec-Fetch-Site": "cross-site",
-          "Sec-Fetch-User": "?1",
-          Connection: "keep-alive", // Keep connection open
-          // Avoid Cache-Control/Pragma unless specifically needed
-        },
-        maxRedirects: 5,
-        timeout: 30000,
+        headers: COMMON_HEADERS,
+        maxRedirects: MAX_REDIRECTS,
+        timeout: DEFAULT_HTTP_TIMEOUT,
         responseType: "text",
         // Decompress response automatically
         decompress: true,
@@ -148,17 +145,16 @@ export class PlaywrightEngine implements IEngine {
 
       // Extract title using regex (more robust version needed for real HTML)
       // For testing, handle simple cases like <html>Title</html>
-      const titleMatch = response.data.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const titleMatch = response.data.match(REGEX_TITLE_TAG);
       let title = titleMatch ? titleMatch[1].trim() : "";
       // Simple fallback for testing mocks like <html>Fallback OK</html>
-      if (!title && /<html>([^<]+)<\/html>/.test(response.data)) {
-        title = response.data.replace(/<\/?html>/g, "").trim();
+      if (!title && REGEX_SIMPLE_HTML_TITLE_FALLBACK.test(response.data)) {
+        title = response.data.replace(REGEX_SANITIZE_HTML_TAGS, "").trim();
       }
 
       // Basic check for challenge pages
       const lowerHtml = response.data.toLowerCase();
-      const isChallengeOrBot =
-        /cloudflare|checking your browser|please wait|verification|captcha|attention required/i.test(lowerHtml);
+      const isChallengeOrBot = REGEX_CHALLENGE_PAGE_KEYWORDS.test(lowerHtml);
 
       if (isChallengeOrBot) {
         // Throw specific error code for easier handling upstream
@@ -222,7 +218,7 @@ export class PlaywrightEngine implements IEngine {
       // Check connection status
       if (!page.context().browser()?.isConnected()) return false;
       // Try a simple operation that throws if the page is crashed/detached
-      await page.evaluate("1 + 1", { timeout: 1000 });
+      await page.evaluate("1 + 1", { timeout: EVALUATION_TIMEOUT_MS });
       return true;
     } catch (error) {
       return false;
@@ -241,31 +237,30 @@ export class PlaywrightEngine implements IEngine {
 
       // Gentle mouse movements
       await page.mouse.move(Math.random() * viewport.width, (Math.random() * viewport.height) / 3, { steps: 5 });
-      await delay(150 + Math.random() * 200);
+      await delay(HUMAN_SIMULATION_MIN_DELAY_MS + Math.random() * HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS);
       await page.mouse.move(
         Math.random() * viewport.width,
         viewport.height / 2 + (Math.random() * viewport.height) / 2,
         { steps: 10 }
       );
-      await delay(200 + Math.random() * 300);
+      await delay(HUMAN_SIMULATION_SCROLL_DELAY_MS + Math.random() * HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS);
 
-      // Gentle scrolling
-      await page.evaluate(() => {
-        window.scrollBy({
-          top: window.innerHeight * (0.3 + Math.random() * 0.4),
-          behavior: "smooth",
+      // Gentle scroll
+      const scrollAmount = Math.floor(Math.random() * (viewport.height / 2)) + viewport.height / 4;
+      await page.evaluate((scroll) => window.scrollBy(0, scroll), scrollAmount);
+      await delay(HUMAN_SIMULATION_SCROLL_DELAY_MS + Math.random() * HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS);
+
+      // Additional random small mouse movements
+      for (let i = 0; i < 2; i++) {
+        if (!(await this.isPageValid(page))) break;
+        await page.mouse.move(Math.random() * viewport.width, Math.random() * viewport.height, {
+          steps: 3 + Math.floor(Math.random() * 3),
         });
-      });
-      await delay(400 + Math.random() * 600);
-      await page.evaluate(() => {
-        window.scrollBy({
-          top: window.innerHeight * (0.2 + Math.random() * 0.3),
-          behavior: "smooth",
-        });
-      });
-      await delay(300 + Math.random() * 400);
-    } catch (_error) {
-      /* Ignore errors during simulation */
+        await delay(HUMAN_SIMULATION_MIN_DELAY_MS / 2 + Math.random() * (HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS / 2));
+      }
+    } catch (err) {
+      // Ignore errors during simulation, log for debugging if necessary
+      // console.debug(`Error during human-like simulation on ${page.url()}: ${err.message}`);
     }
   }
 
