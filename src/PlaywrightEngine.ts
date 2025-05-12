@@ -35,8 +35,9 @@ interface CacheEntry {
 
 // Define a type for the fully resolved engine configuration
 // All properties from PlaywrightEngineConfig are required, except for 'proxy' which can be undefined.
-type ResolvedPlaywrightEngineConfig = Required<Omit<PlaywrightEngineConfig, "proxy">> & {
+type ResolvedPlaywrightEngineConfig = Required<Omit<PlaywrightEngineConfig, "proxy" | "playwrightLaunchOptions">> & {
   proxy: PlaywrightEngineConfig["proxy"]; // Retains original optionality, allowing undefined
+  playwrightLaunchOptions: PlaywrightEngineConfig["playwrightLaunchOptions"]; // Retains original optionality
 };
 
 /**
@@ -73,12 +74,13 @@ export class PlaywrightEngine implements IEngine {
     healthCheckInterval: 60 * 1000,
     poolBlockedDomains: [],
     poolBlockedResourceTypes: [],
-    proxy: undefined, // No longer needs 'as any'
+    proxy: undefined,
     useHeadedMode: false,
     markdown: true,
     spaMode: false,
     spaRenderDelayMs: 0,
-    playwrightOnlyPatterns: [], // Added default for the new field from HybridEngine work
+    playwrightOnlyPatterns: [],
+    playwrightLaunchOptions: undefined, // Added default for playwrightLaunchOptions
   };
 
   /**
@@ -124,6 +126,7 @@ export class PlaywrightEngine implements IEngine {
         blockedDomains: this.config.poolBlockedDomains,
         blockedResourceTypes: this.config.poolBlockedResourceTypes,
         proxy: this.config.proxy,
+        launchOptions: this.config.playwrightLaunchOptions,
       });
       await this.browserPool.initialize();
     } catch (error) {
@@ -548,7 +551,25 @@ export class PlaywrightEngine implements IEngine {
         return this._fetchRecursive(url, currentConfig, retryAttempt + 1, 0); // Pass 0 for parentRetryCount
       }
 
-      // c. Max retries reached
+      // c. If retries exhausted for current mode, AND current mode is headless, AND headed fallback is enabled:
+      //    Attempt to switch to headed mode.
+      //    The error type check (e.g. specific Playwright errors) can be added here if needed.
+      if (!currentConfig.useHeadedMode && currentConfig.useHeadedModeFallback) {
+        console.warn(
+          `All headless attempts for ${url} (retries: ${retryAttempt}/${currentConfig.maxRetries}) failed. Attempting headed mode fallback.`
+        );
+        // Create a new config for the headed attempt. Reset retryAttempt for this new mode.
+        // For this headed fallback attempt, let's use maxRetries: 0 to ensure it's a single try.
+        const headedConfig = {
+          ...currentConfig,
+          useHeadedMode: true,
+          retryAttempt: 0, // Reset for the new mode
+          maxRetries: 0, // Single attempt for headed fallback
+        };
+        return this._fetchRecursive(url, headedConfig, 0, 0);
+      }
+
+      // d. Max retries reached (and no applicable headed fallback)
       const originalErrorAsError = error instanceof Error ? error : undefined;
       const finalError =
         error instanceof FetchError
@@ -577,7 +598,16 @@ export class PlaywrightEngine implements IEngine {
   ): Promise<HTMLFetchResult> {
     let page: Page | null = null;
     try {
-      page = await pool.acquirePage();
+      try {
+        page = await pool.acquirePage();
+      } catch (acquireError: any) {
+        if (acquireError instanceof FetchError) throw acquireError;
+        throw new FetchError(
+          `Playwright page acquisition failed: ${acquireError.message}`,
+          "ERR_PLAYWRIGHT_OPERATION", // Specific code for acquisition failure
+          acquireError
+        );
+      }
 
       // If SPA mode is active, force fastMode to false to ensure all resources load
       const actualFastMode = isSpaMode ? false : fastMode;

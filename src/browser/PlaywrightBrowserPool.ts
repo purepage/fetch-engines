@@ -69,13 +69,15 @@ class ManagedBrowserInstance {
   private readonly blockedResourceTypes: string[];
   private readonly proxyConfig?: { server: string; username?: string; password?: string };
   private readonly onDisconnect: (instanceId: string) => void;
+  private readonly launchOptions?: LaunchOptions;
 
   constructor(config: {
     useHeadedMode: boolean;
     blockedDomains: string[];
     blockedResourceTypes: string[];
     proxyConfig?: { server: string; username?: string; password?: string };
-    onDisconnect: (instanceId: string) => void; // Callback for when browser disconnects
+    onDisconnect: (instanceId: string) => void;
+    launchOptions?: LaunchOptions;
   }) {
     this.id = uuidv4();
     this.useHeadedMode = config.useHeadedMode;
@@ -83,6 +85,7 @@ class ManagedBrowserInstance {
     this.blockedResourceTypes = config.blockedResourceTypes;
     this.proxyConfig = config.proxyConfig;
     this.onDisconnect = config.onDisconnect;
+    this.launchOptions = config.launchOptions;
 
     const now = new Date();
     this.metrics = {
@@ -99,23 +102,39 @@ class ManagedBrowserInstance {
   async initialize(): Promise<void> {
     await loadDependencies(); // Ensure augmentedLauncher is ready
 
-    const launchOptions: LaunchOptions = {
-      headless: !this.useHeadedMode,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-        "--mute-audio",
-        "--disable-background-networking",
-      ],
-      proxy: this.proxyConfig,
+    const defaultLaunchArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--disable-gpu",
+      "--mute-audio",
+      "--disable-background-networking",
+    ];
+
+    // Start with default headless state based on useHeadedMode, and default args
+    // Then merge with provided launchOptions, which can override headless and args.
+    const mergedLaunchOptions: LaunchOptions = {
+      headless: !this.useHeadedMode, // Default based on pool mode
+      args: [...defaultLaunchArgs], // Default args
+      proxy: this.proxyConfig, // Proxy from pool config (can be overridden by this.launchOptions.proxy)
+      ...this.launchOptions, // User-provided options (can override headless, args, proxy)
     };
 
-    this.browser = await augmentedLauncher.launch(launchOptions);
+    // If user-provided launchOptions include args, ensure they are merged, not just replaced.
+    // User args should ideally be additive or replace specific conflicting args intelligently.
+    // For simplicity, we'll concatenate and de-duplicate, giving preference to user args for duplicates if any.
+    if (this.launchOptions && this.launchOptions.args) {
+      mergedLaunchOptions.args = Array.from(new Set([...defaultLaunchArgs, ...this.launchOptions.args]));
+    }
+    // Explicitly set headless from this.launchOptions if provided, otherwise default based on this.useHeadedMode
+    if (this.launchOptions && typeof this.launchOptions.headless === "boolean") {
+      mergedLaunchOptions.headless = this.launchOptions.headless;
+    }
+
+    this.browser = await augmentedLauncher.launch(mergedLaunchOptions);
     this.context = await this.browser.newContext({
       userAgent: new UserAgent().toString(),
       viewport: {
@@ -275,6 +294,7 @@ export class PlaywrightBrowserPool {
     username?: string;
     password?: string;
   };
+  private readonly launchOptions?: LaunchOptions;
 
   private static readonly DEFAULT_BLOCKED_DOMAINS: string[] = [
     "doubleclick.net",
@@ -320,6 +340,7 @@ export class PlaywrightBrowserPool {
       blockedResourceTypes?: string[];
       proxy?: { server: string; username?: string; password?: string };
       maxIdleTime?: number;
+      launchOptions?: LaunchOptions;
     } = {}
   ) {
     this.maxBrowsers = config.maxBrowsers ?? 2;
@@ -337,6 +358,7 @@ export class PlaywrightBrowserPool {
         ? config.blockedResourceTypes
         : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
     this.proxyConfig = config.proxy;
+    this.launchOptions = config.launchOptions;
   }
 
   public async initialize(): Promise<void> {
@@ -381,6 +403,7 @@ export class PlaywrightBrowserPool {
       blockedDomains: this.blockedDomains,
       blockedResourceTypes: this.blockedResourceTypes,
       proxyConfig: this.proxyConfig,
+      launchOptions: this.launchOptions,
       onDisconnect: (instanceId) => {
         // Find the instance by ID and remove it from the pool
         let instanceToRemove: ManagedBrowserInstance | undefined;
