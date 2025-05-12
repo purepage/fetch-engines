@@ -174,6 +174,13 @@ export interface PlaywrightEngineConfig {
    * @default 0 (no additional fixed delay beyond Playwright's own waits)
    */
   spaRenderDelayMs?: number;
+
+  /**
+   * An array of string or RegExp patterns. If a URL matches any of these patterns,
+   * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and SPA shell heuristics.
+   * @default []
+   */
+  playwrightOnlyPatterns?: (string | RegExp)[];
 }
 
 /**

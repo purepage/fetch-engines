@@ -10,6 +10,7 @@ export class HybridEngine implements IEngine {
   private readonly fetchEngine: FetchEngine;
   private readonly playwrightEngine: PlaywrightEngine;
   private readonly config: PlaywrightEngineConfig; // Store config for potential per-request PW overrides
+  private readonly playwrightOnlyPatterns: (string | RegExp)[];
 
   constructor(config: PlaywrightEngineConfig = {}) {
     // Pass relevant config parts to each engine
@@ -18,6 +19,7 @@ export class HybridEngine implements IEngine {
     this.fetchEngine = new FetchEngine({ markdown: config.markdown });
     this.playwrightEngine = new PlaywrightEngine(config);
     this.config = config; // Store for merging later
+    this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
   }
 
   private _isSpaShell(htmlContent: string): boolean {
@@ -50,15 +52,26 @@ export class HybridEngine implements IEngine {
           ? this.config.markdown
           : false;
 
-    // Prepare options for PlaywrightEngine, to be used in fallback scenarios
-    // The order of spread and explicit assignment ensures that effectiveSpaMode and effectiveMarkdown (HybridEngine's interpretation)
-    // are what PlaywrightEngine receives for these specific fields, while other configs are passed through.
+    // Prepare options for PlaywrightEngine, to be used in fallback scenarios or direct calls
     const playwrightOptions: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {
       ...this.config, // Start with base config given to HybridEngine (e.g. spaRenderDelayMs)
       ...options, // Apply all per-request overrides first
       markdown: effectiveMarkdown, // Then ensure HybridEngine's resolved markdown is set
       spaMode: effectiveSpaMode, // Then ensure HybridEngine's resolved spaMode is set
     };
+
+    // Check playwrightOnlyPatterns first
+    for (const pattern of this.playwrightOnlyPatterns) {
+      if (typeof pattern === "string" && url.includes(pattern)) {
+        console.warn(`HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly.`);
+        return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+      } else if (pattern instanceof RegExp && pattern.test(url)) {
+        console.warn(
+          `HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly.`
+        );
+        return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+      }
+    }
 
     try {
       const fetchResult = await this.fetchEngine.fetchHTML(url);
