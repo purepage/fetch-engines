@@ -7,7 +7,9 @@ export declare class HybridEngine implements IEngine {
     private readonly fetchEngine;
     private readonly playwrightEngine;
     private readonly config;
+    private readonly playwrightOnlyPatterns;
     constructor(config?: PlaywrightEngineConfig);
+    private _isSpaShell;
     fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
     /**
      * Delegates getMetrics to the PlaywrightEngine.

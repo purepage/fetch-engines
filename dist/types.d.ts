@@ -1,4 +1,4 @@
-import type { Browser as PlaywrightBrowser, BrowserContext } from "playwright";
+import type { Browser as PlaywrightBrowser, BrowserContext, LaunchOptions } from "playwright";
 /**
  * Defines the structure for the result of fetching HTML content.
  */
@@ -147,6 +147,34 @@ export interface PlaywrightEngineConfig {
      * @default false
      */
     markdown?: boolean;
+    /**
+     * Enables Single Page Application (SPA) mode, which adjusts fetching strategies
+     * for sites that heavily rely on client-side JavaScript rendering.
+     * When true, this may override options like `useHttpFallback` and `defaultFastMode`,
+     * and employ more patient page loading mechanisms.
+     * @default false
+     */
+    spaMode?: boolean;
+    /**
+     * Explicit delay in milliseconds to wait after initial page load events when spaMode is true,
+     * allowing more time for client-side rendering and data fetching to complete.
+     * Only applies if `spaMode` is true.
+     * @default 0 (no additional fixed delay beyond Playwright's own waits)
+     */
+    spaRenderDelayMs?: number;
+    /**
+     * An array of string or RegExp patterns. If a URL matches any of these patterns,
+     * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and SPA shell heuristics.
+     * @default []
+     */
+    playwrightOnlyPatterns?: (string | RegExp)[];
+    /**
+     * Optional Playwright launch options to be passed when a browser instance is created.
+     * These will be merged with the pool's default launch options.
+     * @see https://playwright.dev/docs/api/class-browsertype#browser-type-launch
+     * @default undefined
+     */
+    playwrightLaunchOptions?: LaunchOptions;
 }
 /**
  * Options that can be passed per-request to engine.fetchHTML().
@@ -156,6 +184,8 @@ export interface FetchOptions {
     fastMode?: boolean;
     /** Overrides the engine's markdown setting for this specific request. (Playwright/Hybrid only) */
     markdown?: boolean;
+    /** Overrides the engine's spaMode setting for this specific request. (Playwright/Hybrid only) */
+    spaMode?: boolean;
 }
 /**
  * Configuration options specifically for the FetchEngine.

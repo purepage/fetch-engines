@@ -51,19 +51,48 @@ export declare class PlaywrightEngine implements IEngine {
      * @param url The URL to fetch.
      * @param options Optional settings for this specific fetch operation.
      * @param options.fastMode Overrides the engine's `defaultFastMode` configuration for this request.
+     * @param options.spaMode Overrides the engine's `spaMode` configuration for this request.
      * @returns A Promise resolving to an HTMLFetchResult object.
      * @throws {FetchError} If the fetch fails after all retries or encounters critical errors.
      */
     fetchHTML(url: string, options?: FetchOptions & {
         markdown?: boolean;
+        spaMode?: boolean;
     }): Promise<HTMLFetchResult>;
+    /**
+     * Helper to check cache and potentially return a cached result.
+     * Handles logic for re-fetching if cache is stale or content type mismatch for markdown.
+     *
+     * @param url URL to check in cache
+     * @param currentConfig Current fetch configuration
+     * @returns Cached result or null if not found/needs re-fetch.
+     */
+    private _handleCacheCheck;
+    /**
+     * Attempts to fetch the URL using a simple HTTP GET request as a fallback.
+     *
+     * @param url The URL to fetch.
+     * @param currentConfig The current fetch configuration.
+     * @returns A Promise resolving to an HTMLFetchResult if successful, or null if fallback is skipped or a challenge page is encountered.
+     * @throws {FetchError} If the HTTP fallback itself fails with an unrecoverable error.
+     */
+    private _attemptHttpFallback;
+    /**
+     * Ensures the browser pool is initialized with the correct mode (headed/headless).
+     * Handles one retry attempt if the initial pool initialization fails.
+     *
+     * @param useHeadedMode Whether to initialize the pool in headed mode.
+     * @param currentConfig The current fetch configuration (for retryDelay).
+     * @returns A Promise that resolves when the pool is initialized, or rejects if initialization fails after retries.
+     * @throws {FetchError} If pool initialization fails after retries or if the pool is unavailable.
+     */
+    private _ensureBrowserPoolInitialized;
     /**
      * Internal recursive method to handle fetching with retries.
      *
      * @param url URL to fetch
      * @param currentConfig The merged configuration including markdown option
      * @param retryAttempt Current retry attempt number (starts at 0)
-     * @param parentRetryCount Tracks retries related to pool initialization errors (starts at 0)
      * @returns Promise resolving to HTMLFetchResult
      */
     private _fetchRecursive;

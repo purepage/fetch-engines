@@ -23,6 +23,13 @@ export declare class MarkdownConverter {
     private removeHighLinkDensityElements;
     private extractDocumentMetadata;
     private detectForumPage;
+    /**
+     * Calculates a score for a given HTML element to determine if it's likely the main content.
+     * @param element The HTML element to score.
+     * @param currentMaxScore The current maximum score found so far (used for body tag heuristic).
+     * @returns The calculated score for the element.
+     */
+    private _calculateElementScore;
     private extractArticleContentElement;
     private extractForumContentElement;
     private hasHighLinkDensity;
