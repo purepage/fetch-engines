@@ -60,6 +60,7 @@ export class PlaywrightEngine implements IEngine {
 
   // Default configuration - Ensure all required fields are present
   private static readonly DEFAULT_CONFIG: ResolvedPlaywrightEngineConfig = {
+    headers: {}, // Added default for headers
     concurrentPages: 3,
     maxRetries: 3,
     retryDelay: 5000,
@@ -80,7 +81,7 @@ export class PlaywrightEngine implements IEngine {
     spaMode: false,
     spaRenderDelayMs: 0,
     playwrightOnlyPatterns: [],
-    playwrightLaunchOptions: undefined, // Added default for playwrightLaunchOptions
+    playwrightLaunchOptions: undefined,
   };
 
   /**
@@ -142,10 +143,10 @@ export class PlaywrightEngine implements IEngine {
    * Fallback method using simple HTTP requests via Axios.
    * Ensures return type matches HTMLFetchResult.
    */
-  private async fetchHTMLWithHttpFallback(url: string): Promise<HTMLFetchResult> {
+  private async fetchHTMLWithHttpFallback(url: string, headers: Record<string, string> = {}): Promise<HTMLFetchResult> {
     try {
       const response = await axios.get(url, {
-        headers: COMMON_HEADERS,
+        headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
         maxRedirects: MAX_REDIRECTS,
         timeout: DEFAULT_HTTP_TIMEOUT,
         responseType: "text",
@@ -304,19 +305,25 @@ export class PlaywrightEngine implements IEngine {
    */
   async fetchHTML(
     url: string,
-    options: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {}
+    options: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {} // options includes headers?
   ): Promise<HTMLFetchResult> {
+    const constructorHeaders = this.config.headers || {};
+    const requestSpecificHeaders = options.headers || {};
+    const effectiveHeaders = { ...constructorHeaders, ...requestSpecificHeaders };
+
     const fetchConfig = {
-      ...this.config,
+      ...this.config, // Includes constructor-level headers if this.config.headers is set
       markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
       fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
       spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
+      headers: effectiveHeaders, // Ensure effectiveHeaders are part of the config for _fetchRecursive
       // Ensure all fields expected by _fetchRecursive's currentConfig are present
       // Most come from this.config, which is ResolvedPlaywrightEngineConfig
       // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
     };
-    // Try removing 'as any' to see the specific type error
-    return this._fetchRecursive(url, fetchConfig, 0);
+    // The type of fetchConfig will need to accommodate 'headers'.
+    // ResolvedPlaywrightEngineConfig already has 'headers', so this should be fine if fetchConfig is typed as such.
+    return this._fetchRecursive(url, fetchConfig as any, 0); // Using 'as any' for now, will refine if needed
   }
 
   /**
@@ -338,6 +345,7 @@ export class PlaywrightEngine implements IEngine {
         useHeadedModeFallback: boolean;
         useHeadedMode: boolean;
         spaRenderDelayMs: number;
+        headers?: Record<string, string>; // Add headers here
       }
     >
   ): HTMLFetchResult | null {
@@ -392,6 +400,7 @@ export class PlaywrightEngine implements IEngine {
       FetchOptions & {
         markdown: boolean;
         useHttpFallback: boolean;
+        headers?: Record<string, string>; // Add headers here
         // other properties are not directly used by this helper but are part of the type
       }
     >
@@ -401,7 +410,7 @@ export class PlaywrightEngine implements IEngine {
     }
 
     try {
-      const httpResult = await this.fetchHTMLWithHttpFallback(url);
+      const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers); // Pass headers
       // If successful, cache it (addToCache handles TTL check)
       this.addToCache(url, httpResult);
       return httpResult;
@@ -482,6 +491,7 @@ export class PlaywrightEngine implements IEngine {
         useHeadedModeFallback: boolean;
         useHeadedMode: boolean;
         spaRenderDelayMs: number;
+        headers?: Record<string, string>; // Add headers here
       }
     >,
     retryAttempt: number
@@ -521,7 +531,8 @@ export class PlaywrightEngine implements IEngine {
           currentConfig.fastMode, // Pass the current fastMode setting
           currentConfig.markdown,
           isSpaMode,
-          currentConfig.spaRenderDelayMs
+          currentConfig.spaRenderDelayMs,
+          currentConfig.headers // Pass effective headers
         )
       );
 
@@ -593,7 +604,8 @@ export class PlaywrightEngine implements IEngine {
     fastMode: boolean, // This is the "requested" fastMode
     convertToMarkdown: boolean,
     isSpaMode: boolean, // Added isSpaMode parameter
-    spaRenderDelayMs: number // Added spaRenderDelayMs parameter
+    spaRenderDelayMs: number, // Added spaRenderDelayMs parameter
+    headers?: Record<string, string> // Added headers parameter
   ): Promise<HTMLFetchResult> {
     let page: Page | null = null;
     try {
@@ -611,6 +623,11 @@ export class PlaywrightEngine implements IEngine {
       // If SPA mode is active, force fastMode to false to ensure all resources load
       const actualFastMode = isSpaMode ? false : fastMode;
       await this.applyBlockingRules(page, actualFastMode);
+
+      // Set extra HTTP headers before navigation
+      if (headers && Object.keys(headers).length > 0) {
+        await page.setExtraHTTPHeaders(headers);
+      }
 
       // If SPA mode, don't simulate human behavior before navigation, do it after content might be loaded
       // if (!isSpaMode && this.config.simulateHumanBehavior && !actualFastMode) {

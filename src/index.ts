@@ -4,5 +4,5 @@ import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { HTMLFetchResult, BrowserMetrics } from "./types.js"; // Import types
 
 export type { IEngine, HTMLFetchResult, BrowserMetrics }; // Export types
-export { FetchEngine, PlaywrightEngine };
+export { FetchEngine };
 export * from "./HybridEngine.js"; // Export the new engine
