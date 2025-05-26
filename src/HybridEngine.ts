@@ -16,7 +16,7 @@ export class HybridEngine implements IEngine {
     // Pass relevant config parts to each engine
     // FetchEngine only takes markdown option from the shared config
     // spaMode from config is primarily for PlaywrightEngine, but HybridEngine uses it for decision making.
-    this.fetchEngine = new FetchEngine({ markdown: config.markdown });
+    this.fetchEngine = new FetchEngine({ markdown: config.markdown, headers: config.headers });
     this.playwrightEngine = new PlaywrightEngine(config);
     this.config = config; // Store for merging later
     this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
@@ -53,11 +53,24 @@ export class HybridEngine implements IEngine {
           : false;
 
     // Prepare options for PlaywrightEngine, to be used in fallback scenarios or direct calls
-    const playwrightOptions: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {
-      ...this.config, // Start with base config given to HybridEngine (e.g. spaRenderDelayMs)
-      ...options, // Apply all per-request overrides first
-      markdown: effectiveMarkdown, // Then ensure HybridEngine's resolved markdown is set
-      spaMode: effectiveSpaMode, // Then ensure HybridEngine's resolved spaMode is set
+    // Retrieve headers from constructor config and per-request options
+    const constructorHeaders = this.config.headers || {};
+    const requestSpecificHeaders = options.headers || {}; // 'options' is the FetchOptions argument to HybridEngine.fetchHTML
+
+    // Merge them, with request-specific headers taking precedence
+    const mergedHeadersForPlaywright = { ...constructorHeaders, ...requestSpecificHeaders };
+
+    // Construct playwrightOptions, now with explicitly merged headers
+    const playwrightOptions: FetchOptions & {
+      markdown?: boolean;
+      spaMode?: boolean;
+      headers?: Record<string, string>;
+    } = {
+      ...this.config, // Spread config for other options (like spaRenderDelayMs, etc.)
+      ...options, // Spread options for other options (like fastMode, etc.)
+      headers: mergedHeadersForPlaywright, // Assign the correctly merged headers
+      markdown: effectiveMarkdown,
+      spaMode: effectiveSpaMode,
     };
 
     // Check playwrightOnlyPatterns first
@@ -74,7 +87,12 @@ export class HybridEngine implements IEngine {
     }
 
     try {
-      const fetchResult = await this.fetchEngine.fetchHTML(url);
+      // Prepare options for FetchEngine call
+      const fetchEngineCallSpecificOptions: FetchOptions = {
+        markdown: effectiveMarkdown, // Pass the resolved markdown setting
+        headers: options.headers, // Pass only the request-specific headers. FetchEngine will merge these with its own constructor headers.
+      };
+      const fetchResult = await this.fetchEngine.fetchHTML(url, fetchEngineCallSpecificOptions);
 
       // If FetchEngine succeeded AND spaMode is active, check if it's just a shell
       if (effectiveSpaMode && fetchResult && fetchResult.content) {

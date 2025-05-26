@@ -175,6 +175,8 @@ export interface PlaywrightEngineConfig {
      * @default undefined
      */
     playwrightLaunchOptions?: LaunchOptions;
+    /** Optional headers to include in the request. */
+    headers?: Record<string, string>;
 }
 /**
  * Options that can be passed per-request to engine.fetchHTML().
@@ -186,6 +188,8 @@ export interface FetchOptions {
     markdown?: boolean;
     /** Overrides the engine's spaMode setting for this specific request. (Playwright/Hybrid only) */
     spaMode?: boolean;
+    /** Optional headers to include in the request. */
+    headers?: Record<string, string>;
 }
 /**
  * Configuration options specifically for the FetchEngine.
@@ -193,5 +197,7 @@ export interface FetchOptions {
 export interface FetchEngineOptions {
     /** If true, convert the fetched HTML to Markdown. Default: false */
     markdown?: boolean;
+    /** Optional headers to include in the request. */
+    headers?: Record<string, string>;
 }
 //# sourceMappingURL=types.d.ts.map

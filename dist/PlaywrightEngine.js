@@ -26,6 +26,7 @@ export class PlaywrightEngine {
     headedFallbackSites = new Set(); // Stores domains marked for headed mode
     // Default configuration - Ensure all required fields are present
     static DEFAULT_CONFIG = {
+        headers: {}, // Added default for headers
         concurrentPages: 3,
         maxRetries: 3,
         retryDelay: 5000,
@@ -46,7 +47,7 @@ export class PlaywrightEngine {
         spaMode: false,
         spaRenderDelayMs: 0,
         playwrightOnlyPatterns: [],
-        playwrightLaunchOptions: undefined, // Added default for playwrightLaunchOptions
+        playwrightLaunchOptions: undefined,
     };
     /**
      * Creates an instance of PlaywrightEngine.
@@ -107,10 +108,10 @@ export class PlaywrightEngine {
      * Fallback method using simple HTTP requests via Axios.
      * Ensures return type matches HTMLFetchResult.
      */
-    async fetchHTMLWithHttpFallback(url) {
+    async fetchHTMLWithHttpFallback(url, headers = {}) {
         try {
             const response = await axios.get(url, {
-                headers: COMMON_HEADERS,
+                headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
                 maxRedirects: MAX_REDIRECTS,
                 timeout: DEFAULT_HTTP_TIMEOUT,
                 responseType: "text",
@@ -254,18 +255,24 @@ export class PlaywrightEngine {
      * @returns A Promise resolving to an HTMLFetchResult object.
      * @throws {FetchError} If the fetch fails after all retries or encounters critical errors.
      */
-    async fetchHTML(url, options = {}) {
+    async fetchHTML(url, options = {} // options includes headers?
+    ) {
+        const constructorHeaders = this.config.headers || {};
+        const requestSpecificHeaders = options.headers || {};
+        const effectiveHeaders = { ...constructorHeaders, ...requestSpecificHeaders };
         const fetchConfig = {
-            ...this.config,
+            ...this.config, // Includes constructor-level headers if this.config.headers is set
             markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
             fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
             spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
+            headers: effectiveHeaders, // Ensure effectiveHeaders are part of the config for _fetchRecursive
             // Ensure all fields expected by _fetchRecursive's currentConfig are present
             // Most come from this.config, which is ResolvedPlaywrightEngineConfig
             // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
         };
-        // Try removing 'as any' to see the specific type error
-        return this._fetchRecursive(url, fetchConfig, 0);
+        // The type of fetchConfig will need to accommodate 'headers'.
+        // ResolvedPlaywrightEngineConfig already has 'headers', so this should be fine if fetchConfig is typed as such.
+        return this._fetchRecursive(url, fetchConfig, 0); // Using 'as any' for now, will refine if needed
     }
     /**
      * Helper to check cache and potentially return a cached result.
@@ -325,7 +332,7 @@ export class PlaywrightEngine {
             return null;
         }
         try {
-            const httpResult = await this.fetchHTMLWithHttpFallback(url);
+            const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers); // Pass headers
             // If successful, cache it (addToCache handles TTL check)
             this.addToCache(url, httpResult);
             return httpResult;
@@ -410,7 +417,8 @@ export class PlaywrightEngine {
             // browserPool is guaranteed to be non-null here by _ensureBrowserPoolInitialized
             // The non-null assertion operator (!) is safe to use here.
             const result = await this.queue.add(() => this.fetchWithPlaywright(url, this.browserPool, currentConfig.fastMode, // Pass the current fastMode setting
-            currentConfig.markdown, isSpaMode, currentConfig.spaRenderDelayMs));
+            currentConfig.markdown, isSpaMode, currentConfig.spaRenderDelayMs, currentConfig.headers // Pass effective headers
+            ));
             if (!result) {
                 // Should not happen if fetchWithPlaywright resolves, but good to check.
                 throw new FetchError("Playwright fetch queued but no result returned.", "ERR_QUEUE_NO_RESULT");
@@ -461,7 +469,8 @@ export class PlaywrightEngine {
      */
     async fetchWithPlaywright(url, pool, fastMode, // This is the "requested" fastMode
     convertToMarkdown, isSpaMode, // Added isSpaMode parameter
-    spaRenderDelayMs // Added spaRenderDelayMs parameter
+    spaRenderDelayMs, // Added spaRenderDelayMs parameter
+    headers // Added headers parameter
     ) {
         let page = null;
         try {
@@ -477,6 +486,10 @@ export class PlaywrightEngine {
             // If SPA mode is active, force fastMode to false to ensure all resources load
             const actualFastMode = isSpaMode ? false : fastMode;
             await this.applyBlockingRules(page, actualFastMode);
+            // Set extra HTTP headers before navigation
+            if (headers && Object.keys(headers).length > 0) {
+                await page.setExtraHTTPHeaders(headers);
+            }
             // If SPA mode, don't simulate human behavior before navigation, do it after content might be loaded
             // if (!isSpaMode && this.config.simulateHumanBehavior && !actualFastMode) {
             //   await this.simulateHumanBehavior(page); // Potentially move this or make it conditional for SPA
