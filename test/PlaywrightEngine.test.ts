@@ -69,6 +69,7 @@ describe("PlaywrightEngine - Headers", () => {
       }),
       title: vi.fn().mockResolvedValue("Test Title"),
       content: vi.fn().mockResolvedValue("<html><body>Playwright Content</body></html>"),
+      url: vi.fn().mockReturnValue(MOCK_URL), // Added this line
       close: vi.fn().mockResolvedValue(undefined),
       context: vi.fn(() => ({
         browser: vi.fn(() => ({
@@ -174,7 +175,8 @@ describe("PlaywrightEngine - Headers", () => {
       // This will cause the catch block in _fetchRecursive to be hit.
       // If useHttpFallback is true and it's the first attempt (retryAttempt === 0 and not SPA mode),
       // then _attemptHttpFallback will be called.
-      mockPage.goto.mockRejectedValueOnce(new Error("Simulated: page.goto failure"));
+      // Changed to mockRejectedValue to make all goto calls fail for these tests.
+      mockPage.goto.mockRejectedValue(new Error("Simulated: page.goto failure"));
     };
     
     it("should use merged custom headers (options over constructor) combined with ENGINE_COMMON_HEADERS for HTTP fallback", async () => {

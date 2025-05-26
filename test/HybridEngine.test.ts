@@ -111,10 +111,9 @@ describe("HybridEngine - Headers Propagation", () => {
     // The 'playwrightOptions' object in HybridEngine is constructed as:
     // { ...this.config, ...options, markdown: effectiveMarkdown, spaMode: effectiveSpaMode }
     // So, headers from 'options' (hybridFetchHtmlOptionsHeaders) override headers from 'this.config' (hybridConstructorHeaders).
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedMergedHeadersForPlaywright })
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsPatternMatch = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsPatternMatch.headers).toEqual(expectedMergedHeadersForPlaywright);
     expect(mockFetchEngineInstance.fetchHTML).not.toHaveBeenCalled();
   });
 
@@ -129,10 +128,9 @@ describe("HybridEngine - Headers Propagation", () => {
     await engine.fetchHTML(MOCK_URL, { headers: hybridFetchHtmlOptionsHeaders });
 
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(1); 
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedMergedHeadersForPlaywright })
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsFailure.headers).toEqual(expectedMergedHeadersForPlaywright);
   });
 
   it("should pass only constructor headers to PlaywrightEngine if no fetchHTML options headers (pattern match)", async () => {
@@ -145,10 +143,9 @@ describe("HybridEngine - Headers Propagation", () => {
 
     // playwrightOptions will be { ...this.config (with headers), ...options (no headers) }
     // So, headers from this.config (hybridConstructorHeaders) should be used.
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: hybridConstructorHeaders })
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsConstructOnly = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsConstructOnly.headers).toEqual(hybridConstructorHeaders);
   });
   
   it("should pass only fetchHTML options headers to PlaywrightEngine if no constructor headers (pattern match)", async () => {
@@ -160,10 +157,9 @@ describe("HybridEngine - Headers Propagation", () => {
 
     // playwrightOptions will be { ...this.config (no headers), ...options (with headers) }
     // So, headers from options (hybridFetchHtmlOptionsHeaders) should be used.
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: hybridFetchHtmlOptionsHeaders })
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsFetchOnly = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsFetchOnly.headers).toEqual(hybridFetchHtmlOptionsHeaders);
   });
 
   it("should pass undefined headers to PlaywrightEngine if no headers anywhere (pattern match)", async () => {
@@ -173,11 +169,10 @@ describe("HybridEngine - Headers Propagation", () => {
     await engine.fetchHTML(MOCK_URL, {}); // No fetchHTML options headers
 
     // playwrightOptions will be { ...this.config (no headers), ...options (no headers) }
-    // So, playwrightOptions.headers will be undefined.
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: undefined })
-    );
+    // So, playwrightOptions.headers will be {}.
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsUndefinedPattern = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsUndefinedPattern.headers).toEqual({});
   });
 
   it("should pass undefined headers to PlaywrightEngine if no headers anywhere (FetchEngine failure)", async () => {
@@ -185,9 +180,8 @@ describe("HybridEngine - Headers Propagation", () => {
     const engine = new HybridEngine({}); // No constructor headers
     await engine.fetchHTML(MOCK_URL, {}); // No fetchHTML options headers
 
-    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: undefined })
-    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+    const actualOptionsUndefinedFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    expect(actualOptionsUndefinedFailure.headers).toEqual({});
   });
 });

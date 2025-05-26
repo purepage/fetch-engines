@@ -163,9 +163,9 @@ Engines accept an optional configuration object in their constructor to customis
 
 The `FetchEngine` accepts a `FetchEngineOptions` object with the following properties:
 
-| Option     | Type                     | Default | Description                                                                                                                                                              |
-| ---------- | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `markdown` | `boolean`                | `false` | If `true`, converts fetched HTML to Markdown. `contentType` in the result will be set to `'markdown'`.                                                                     |
+| Option     | Type                     | Default | Description                                                                                                                                                                    |
+| ---------- | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `markdown` | `boolean`                | `false` | If `true`, converts fetched HTML to Markdown. `contentType` in the result will be set to `'markdown'`.                                                                         |
 | `headers`  | `Record<string, string>` | `{}`    | Custom HTTP headers to be sent with the request. These are merged with and can override the engine's default headers. Headers from `fetchHTML` options take higher precedence. |
 
 ```typescript
@@ -193,32 +193,32 @@ The `HybridEngine` constructor accepts a `PlaywrightEngineConfig` object. These 
 
 | Option                    | Type                     | Default     | Description                                                                                                                                                                                                                                                           |
 | ------------------------- | ------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `headers`                 | `Record<string, string>` | `{}`        | Custom HTTP headers. For `HybridEngine`, these serve as default headers for both its internal `FetchEngine` (constructor) and `PlaywrightEngine` (constructor). They can be overridden by headers in `HybridEngine.fetchHTML()` options.                            |
-| `markdown`                | `boolean`                | `false`     | Default Markdown conversion. For `HybridEngine`: sets default for internal `FetchEngine` (constructor) and internal `PlaywrightEngine`. Can be overridden per-request for the `PlaywrightEngine` part.                                                              |
-| `useHttpFallback`         | `boolean`                | `true`      | (For Playwright part) If `true`, attempts a fast HTTP fetch before using Playwright. Ineffective if `spaMode` is `true`.                                                                                                                                             |
-| `useHeadedModeFallback`   | `boolean`                | `false`     | (For Playwright part) If `true`, automatically retries specific failed Playwright attempts in headed (visible) mode.                                                                                                                                                      |
-| `defaultFastMode`         | `boolean`       | `true`      | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request. Effectively `false` if `spaMode` is `true`.                                                                                                            |
-| `simulateHumanBehavior`   | `boolean`       | `true`      | If `true` (and not `fastMode` or `spaMode`), attempts basic human-like interactions.                                                                                                                                                                                  |
-| `concurrentPages`         | `number`        | `3`         | Max number of pages to process concurrently within the engine queue.                                                                                                                                                                                                  |
-| `maxRetries`              | `number`        | `3`         | Max retry attempts for a failed fetch (excluding initial try).                                                                                                                                                                                                        |
-| `retryDelay`              | `number`        | `5000`      | Delay (ms) between retries.                                                                                                                                                                                                                                           |
-| `cacheTTL`                | `number`        | `900000`    | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                                                                                                                                                      |
-| `spaMode`                 | `boolean`       | `false`     | If `true`, enables Single Page Application mode. This typically bypasses `useHttpFallback`, effectively sets `fastMode` to `false`, uses more patient load conditions (e.g., network idle), and may apply `spaRenderDelayMs`. Recommended for JavaScript-heavy sites. |
-| `spaRenderDelayMs`        | `number`        | `0`         | Explicit delay (ms) after page load events in `spaMode` to allow for client-side rendering. Only applies if `spaMode` is `true`.                                                                                                                                      |
-| `playwrightLaunchOptions` | `LaunchOptions`          | `undefined` | (For Playwright part) Optional Playwright launch options (from `playwright` package, e.g., `{ args: ['--some-flag'] }`) passed when a browser instance is created. Merged with internal defaults.                                                                 |
+| `headers`                 | `Record<string, string>` | `{}`        | Custom HTTP headers. For `HybridEngine`, these serve as default headers for both its internal `FetchEngine` (constructor) and `PlaywrightEngine` (constructor). They can be overridden by headers in `HybridEngine.fetchHTML()` options.                              |
+| `markdown`                | `boolean`                | `false`     | Default Markdown conversion. For `HybridEngine`: sets default for internal `FetchEngine` (constructor) and internal `PlaywrightEngine`. Can be overridden per-request for the `PlaywrightEngine` part.                                                                |
+| `useHttpFallback`         | `boolean`                | `true`      | (For Playwright part) If `true`, attempts a fast HTTP fetch before using Playwright. Ineffective if `spaMode` is `true`.                                                                                                                                              |
+| `useHeadedModeFallback`   | `boolean`                | `false`     | (For Playwright part) If `true`, automatically retries specific failed Playwright attempts in headed (visible) mode.                                                                                                                                                  |
+| `defaultFastMode`         | `boolean`                | `true`      | If `true`, initially blocks non-essential resources and skips human simulation. Can be overridden per-request. Effectively `false` if `spaMode` is `true`.                                                                                                            |
+| `simulateHumanBehavior`   | `boolean`                | `true`      | If `true` (and not `fastMode` or `spaMode`), attempts basic human-like interactions.                                                                                                                                                                                  |
+| `concurrentPages`         | `number`                 | `3`         | Max number of pages to process concurrently within the engine queue.                                                                                                                                                                                                  |
+| `maxRetries`              | `number`                 | `3`         | Max retry attempts for a failed fetch (excluding initial try).                                                                                                                                                                                                        |
+| `retryDelay`              | `number`                 | `5000`      | Delay (ms) between retries.                                                                                                                                                                                                                                           |
+| `cacheTTL`                | `number`                 | `900000`    | Cache Time-To-Live (ms). `0` disables caching. (15 mins default)                                                                                                                                                                                                      |
+| `spaMode`                 | `boolean`                | `false`     | If `true`, enables Single Page Application mode. This typically bypasses `useHttpFallback`, effectively sets `fastMode` to `false`, uses more patient load conditions (e.g., network idle), and may apply `spaRenderDelayMs`. Recommended for JavaScript-heavy sites. |
+| `spaRenderDelayMs`        | `number`                 | `0`         | Explicit delay (ms) after page load events in `spaMode` to allow for client-side rendering. Only applies if `spaMode` is `true`.                                                                                                                                      |
+| `playwrightLaunchOptions` | `LaunchOptions`          | `undefined` | (For Playwright part) Optional Playwright launch options (from `playwright` package, e.g., `{ args: ['--some-flag'] }`) passed when a browser instance is created. Merged with internal defaults.                                                                     |
 
 **Browser Pool Options (For `HybridEngine`'s internal `PlaywrightEngine`):**
 
-| Option                     | Type                       | Default     | Description                                                                                        |
-| -------------------------- | -------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| `maxBrowsers`              | `number`                   | `2`         | Max concurrent browser instances managed by the pool.                                              |
-| `maxPagesPerContext`       | `number`                   | `6`         | Max pages per browser context before recycling.                                                    |
-| `maxBrowserAge`            | `number`                   | `1200000`   | Max age (ms) a browser instance lives before recycling. (20 mins default)                          |
-| `healthCheckInterval`      | `number`                   | `60000`     | How often (ms) the pool checks browser health. (1 min default)                                     |
-| `useHeadedMode`            | `boolean`                  | `false`     | Forces the _entire pool_ (for Playwright part) to launch browsers in headed (visible) mode.        |
-| `poolBlockedDomains`       | `string[]`                 | `[]`        | List of domain glob patterns to block requests to (for Playwright part).                           |
-| `poolBlockedResourceTypes` | `string[]`                 | `[]`        | List of Playwright resource types (e.g., 'image', 'font') to block (for Playwright part).          |
-| `proxy`                    | `{ server: string, ... }?` | `undefined` | Proxy configuration object (see `PlaywrightEngineConfig` type) (for Playwright part).              |
+| Option                     | Type                       | Default     | Description                                                                                 |
+| -------------------------- | -------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| `maxBrowsers`              | `number`                   | `2`         | Max concurrent browser instances managed by the pool.                                       |
+| `maxPagesPerContext`       | `number`                   | `6`         | Max pages per browser context before recycling.                                             |
+| `maxBrowserAge`            | `number`                   | `1200000`   | Max age (ms) a browser instance lives before recycling. (20 mins default)                   |
+| `healthCheckInterval`      | `number`                   | `60000`     | How often (ms) the pool checks browser health. (1 min default)                              |
+| `useHeadedMode`            | `boolean`                  | `false`     | Forces the _entire pool_ (for Playwright part) to launch browsers in headed (visible) mode. |
+| `poolBlockedDomains`       | `string[]`                 | `[]`        | List of domain glob patterns to block requests to (for Playwright part).                    |
+| `poolBlockedResourceTypes` | `string[]`                 | `[]`        | List of Playwright resource types (e.g., 'image', 'font') to block (for Playwright part).   |
+| `proxy`                    | `{ server: string, ... }?` | `undefined` | Proxy configuration object (see `PlaywrightEngineConfig` type) (for Playwright part).       |
 
 ### `HybridEngine` - Configuration Summary & Header Precedence
 
@@ -338,7 +338,7 @@ const engine = new HybridEngine({ useHttpFallback: false, maxRetries: 1 }); // u
 
 async function fetchWithHandling(url: string) {
   try {
-    const result = await engine.fetchHTML(url, { headers: {"X-My-Header": "TestValue"} });
+    const result = await engine.fetchHTML(url, { headers: { "X-My-Header": "TestValue" } });
     if (result.error) {
       console.warn(`Fetch for ${url} included non-critical error after retries: ${result.error.message}`);
     }
@@ -357,7 +357,9 @@ async function fetchWithHandling(url: string) {
       }
       // Example of specific handling:
       if (error.code === "ERR_PLAYWRIGHT_OPERATION") {
-        console.error("  Hint: This was a Playwright operation failure (HybridEngine's browser mode). Check Playwright logs or originalError.");
+        console.error(
+          "  Hint: This was a Playwright operation failure (HybridEngine's browser mode). Check Playwright logs or originalError."
+        );
       }
     } else if (error instanceof Error) {
       console.error(`  Generic Error: ${error.message}`);
