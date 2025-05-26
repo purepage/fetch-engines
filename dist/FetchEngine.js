@@ -21,6 +21,7 @@ export class FetchEngine {
     options;
     static DEFAULT_OPTIONS = {
         markdown: false,
+        headers: {},
     };
     /**
      * Creates an instance of FetchEngine.
@@ -41,14 +42,24 @@ export class FetchEngine {
         const effectiveOptions = { ...this.options, ...options }; // Combine constructor and call options
         let response;
         try {
+            const baseHeaders = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            };
+            // this.options.headers are headers passed to the constructor
+            const constructorHeaders = this.options.headers || {};
+            // options.headers are headers passed directly to the fetchHTML method
+            // options is the second argument to fetchHTML: async fetchHTML(url: string, options?: FetchEngineOptions)
+            const callSpecificHeaders = options?.headers || {};
+            const finalHeaders = {
+                ...baseHeaders,
+                ...constructorHeaders,
+                ...callSpecificHeaders, // Ensures callSpecificHeaders override constructorHeaders, which override baseHeaders
+            };
             response = await fetch(url, {
                 redirect: "follow",
-                headers: {
-                    // Standard browser-like headers
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
+                headers: finalHeaders,
             });
             if (!response.ok) {
                 throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
