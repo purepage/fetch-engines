@@ -170,22 +170,23 @@ async function fetchRawContent() {
     // Fetch a PDF document
     const pdfResult = await engine.fetchContent("https://example.com/document.pdf");
     console.log(`PDF Content-Type: ${pdfResult.contentType}`);
-    console.log(`PDF Size: ${Buffer.isBuffer(pdfResult.content) ? pdfResult.content.length : pdfResult.content.length} bytes`);
-    
+    console.log(
+      `PDF Size: ${Buffer.isBuffer(pdfResult.content) ? pdfResult.content.length : pdfResult.content.length} bytes`
+    );
+
     // Fetch JSON API
     const jsonResult = await engine.fetchContent("https://api.example.com/data");
     console.log(`JSON Content-Type: ${jsonResult.contentType}`);
-    console.log(`JSON Data: ${typeof jsonResult.content === 'string' ? jsonResult.content : 'Binary data'}`);
-    
+    console.log(`JSON Data: ${typeof jsonResult.content === "string" ? jsonResult.content : "Binary data"}`);
+
     // Fetch with custom headers
     const customResult = await engine.fetchContent("https://protected-api.example.com/data", {
       headers: {
-        "Authorization": "Bearer your-token",
-        "Accept": "application/json"
-      }
+        Authorization: "Bearer your-token",
+        Accept: "application/json",
+      },
     });
     console.log(`Custom fetch result: ${customResult.statusCode}`);
-    
   } catch (error) {
     console.error("Raw content fetch failed:", error);
   } finally {
@@ -200,9 +201,11 @@ fetchRawContent();
 Choose the right method for your use case:
 
 ### `fetchHTML(url, options?)`
+
 **Use when:** You want to extract and process web page content.
 
 **Features:**
+
 - Processes HTML content and extracts metadata (title, etc.)
 - Supports HTML-to-Markdown conversion
 - Optimized for web page content
@@ -210,15 +213,18 @@ Choose the right method for your use case:
 - Returns processed content as `string`
 
 **Best for:**
+
 - Web scraping
 - Content extraction
 - Blog/article processing
 - Any scenario where you need structured HTML or Markdown
 
 ### `fetchContent(url, options?)`
+
 **Use when:** You want raw content without processing, mimicking standard `fetch()` behavior.
 
 **Features:**
+
 - Retrieves any content type (PDFs, images, JSON, XML, etc.)
 - No content-type restrictions
 - Returns raw content as `Buffer` (binary) or `string` (text)
@@ -226,6 +232,7 @@ Choose the right method for your use case:
 - Minimal processing overhead
 
 **Best for:**
+
 - API consumption
 - File downloads (PDFs, images, etc.)
 - Binary content retrieval
@@ -470,12 +477,14 @@ async function fetchWithHandling(url: string) {
     // Use htmlResult.content
   } catch (error) {
     console.error(`fetchHTML failed for ${url}, trying fetchContent...`);
-    
+
     try {
       // Fallback to fetchContent for raw content
       const contentResult = await engine.fetchContent(url, { headers: { "X-My-Header": "TestValue" } });
       if (contentResult.error) {
-        console.warn(`fetchContent for ${url} included non-critical error after retries: ${contentResult.error.message}`);
+        console.warn(
+          `fetchContent for ${url} included non-critical error after retries: ${contentResult.error.message}`
+        );
       }
       console.log(`fetchContent Success for ${url}! Content type: ${contentResult.contentType}`);
       // Use contentResult.content (could be Buffer or string)
