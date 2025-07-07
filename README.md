@@ -9,10 +9,11 @@ Fetching web content can be complex. You need to handle static HTML, dynamic Jav
 
 **Why use `@purepageio/fetch-engines`?**
 
-- **Unified API:** Get content from simple or complex sites using the same `fetchHTML(url, options?)` method.
+- **Unified API:** Get content from simple or complex sites using the same `fetchHTML(url, options?)` method for processed content or `fetchContent(url, options?)` for raw content.
 - **Flexible Strategies:** Choose the right tool for the job:
   - `FetchEngine`: Lightweight and fast for static HTML, using the standard `fetch` API. Ideal for speed and efficiency with content that doesn't require JavaScript rendering. Supports custom headers.
   - `HybridEngine`: The best of both worlds – tries `FetchEngine` first for speed, automatically falls back to a powerful browser engine (internally, `PlaywrightEngine`) for reliability on complex, JavaScript-heavy pages. Supports custom headers.
+- **Raw Content Support:** Use `fetchContent()` to retrieve any type of content (PDFs, images, APIs, etc.) with the same smart fallback logic as `fetchHTML()`.
 - **Robust & Resilient:** Built-in caching, configurable retries, and standardized error handling make your fetching logic more dependable.
 - **Simplified Automation:** When `HybridEngine` uses its browser capabilities (via the internal `PlaywrightEngine`), it manages browser instances and contexts automatically through efficient pooling and includes integrated stealth measures to bypass common anti-bot systems.
 - **Content Transformation:** Optionally convert fetched HTML directly to clean Markdown content.
@@ -26,6 +27,7 @@ This package provides a high-level abstraction, letting you focus on using the w
 - [Installation](#installation)
 - [Engines](#engines)
 - [Basic Usage](#basic-usage)
+- [fetchHTML vs fetchContent](#fetchhtml-vs-fetchcontent)
 - [Configuration](#configuration)
 - [Return Value](#return-value)
 - [API Reference](#api-reference)
@@ -38,7 +40,8 @@ This package provides a high-level abstraction, letting you focus on using the w
 ## Features
 
 - **Multiple Fetching Strategies:** Choose between `FetchEngine` (lightweight `fetch`) or `HybridEngine` (smart fallback to a full browser engine).
-- **Unified API:** Simple `fetchHTML(url, options?)` interface across both primary engines.
+- **Unified API:** Simple `fetchHTML(url, options?)` interface for processed content and `fetchContent(url, options?)` for raw content across both primary engines.
+- **Raw Content Fetching:** Use `fetchContent()` to retrieve any type of content (PDFs, images, JSON, XML, etc.) without HTML processing or content-type restrictions.
 - **Custom Headers:** Easily provide custom HTTP headers for requests in both `FetchEngine` and `HybridEngine`.
 - **Configurable Retries:** Automatic retries on failure with customizable attempts and delays.
 - **Built-in Caching:** In-memory caching with configurable TTL to reduce redundant fetches.
@@ -155,6 +158,111 @@ async function main() {
 main();
 ```
 
+### Raw Content Fetching
+
+```typescript
+import { HybridEngine } from "@purepageio/fetch-engines";
+
+const engine = new HybridEngine();
+
+async function fetchRawContent() {
+  try {
+    // Fetch a PDF document
+    const pdfResult = await engine.fetchContent("https://example.com/document.pdf");
+    console.log(`PDF Content-Type: ${pdfResult.contentType}`);
+    console.log(
+      `PDF Size: ${Buffer.isBuffer(pdfResult.content) ? pdfResult.content.length : pdfResult.content.length} bytes`
+    );
+
+    // Fetch JSON API
+    const jsonResult = await engine.fetchContent("https://api.example.com/data");
+    console.log(`JSON Content-Type: ${jsonResult.contentType}`);
+    console.log(`JSON Data: ${typeof jsonResult.content === "string" ? jsonResult.content : "Binary data"}`);
+
+    // Fetch with custom headers
+    const customResult = await engine.fetchContent("https://protected-api.example.com/data", {
+      headers: {
+        Authorization: "Bearer your-token",
+        Accept: "application/json",
+      },
+    });
+    console.log(`Custom fetch result: ${customResult.statusCode}`);
+  } catch (error) {
+    console.error("Raw content fetch failed:", error);
+  } finally {
+    await engine.cleanup();
+  }
+}
+fetchRawContent();
+```
+
+## fetchHTML vs fetchContent
+
+Choose the right method for your use case:
+
+### `fetchHTML(url, options?)`
+
+**Use when:** You want to extract and process web page content.
+
+**Features:**
+
+- Processes HTML content and extracts metadata (title, etc.)
+- Supports HTML-to-Markdown conversion
+- Optimized for web page content
+- Content-type restrictions (HTML/XML only)
+- Returns processed content as `string`
+
+**Best for:**
+
+- Web scraping
+- Content extraction
+- Blog/article processing
+- Any scenario where you need structured HTML or Markdown
+
+### `fetchContent(url, options?)`
+
+**Use when:** You want raw content without processing, mimicking standard `fetch()` behavior.
+
+**Features:**
+
+- Retrieves any content type (PDFs, images, JSON, XML, etc.)
+- No content-type restrictions
+- Returns raw content as `Buffer` (binary) or `string` (text)
+- Preserves original MIME type information
+- Minimal processing overhead
+
+**Best for:**
+
+- API consumption
+- File downloads (PDFs, images, etc.)
+- Binary content retrieval
+- Any scenario where you need the raw response
+
+### Example Comparison
+
+```typescript
+import { HybridEngine } from "@purepageio/fetch-engines";
+
+const engine = new HybridEngine();
+
+// fetchHTML - for web page content
+const htmlResult = await engine.fetchHTML("https://example.com");
+console.log(htmlResult.title); // "Example Domain"
+console.log(htmlResult.contentType); // "html" or "markdown"
+console.log(typeof htmlResult.content); // "string" (processed HTML/Markdown)
+
+// fetchContent - for raw content
+const contentResult = await engine.fetchContent("https://example.com");
+console.log(contentResult.title); // "Example Domain" (extracted but not processed)
+console.log(contentResult.contentType); // "text/html" (original MIME type)
+console.log(typeof contentResult.content); // "string" (raw HTML)
+
+// fetchContent - for non-HTML content
+const pdfResult = await engine.fetchContent("https://example.com/doc.pdf");
+console.log(pdfResult.contentType); // "application/pdf"
+console.log(Buffer.isBuffer(pdfResult.content)); // true (binary content)
+```
+
 ## Configuration
 
 Engines accept an optional configuration object in their constructor to customise behavior.
@@ -234,7 +342,7 @@ When you configure `HybridEngine` using `PlaywrightEngineConfig`:
 - **`headers?: Record<string, string>`**:
   - These headers override any headers set in the `HybridEngine` constructor.
   - If `FetchEngine` is used: These headers are passed to `FetchEngine.fetchHTML(url, { headers: ... })`. `FetchEngine` then merges them with its constructor headers and base defaults.
-  - If `PlaywrightEngine` (fallback) is used: These headers are merged with `HybridEngine` constructor headers (options take precedence) and the result is passed to `PlaywrightEngine.fetchHTML()`. `PlaywrightEngine` then applies its own logic (e.g., for `page.setExtraHTTPHeaders` or its HTTP fallback).
+  - If `PlaywrightEngine` (fallback) is used: These headers are merged with `HybridEngine` constructor headers (options take precedence) and the result is passed to `PlaywrightEngine`'s `fetchHTML()`. `PlaywrightEngine` then applies its own logic (e.g., for `page.setExtraHTTPHeaders` or its HTTP fallback).
 - **`markdown?: boolean`**:
   - If `FetchEngine` is used: This per-request option is **ignored**. `FetchEngine` uses its own constructor `markdown` setting.
   - If `PlaywrightEngine` (fallback) is used: This overrides `PlaywrightEngine`'s default and determines its output format.
@@ -260,11 +368,25 @@ async function fetchSpaSite() {
 
 ## Return Value
 
+### `fetchHTML()` Result
+
 All `fetchHTML()` methods return a Promise that resolves to an `HTMLFetchResult` object:
 
 - `content` (`string`): The fetched content, either original HTML or converted Markdown.
 - `contentType` (`'html' | 'markdown'`): Indicates the format of the `content` string.
 - `title` (`string | null`): Extracted page title (from original HTML).
+- `url` (`string`): Final URL after redirects.
+- `isFromCache` (`boolean`): True if the result came from cache.
+- `statusCode` (`number | undefined`): HTTP status code.
+- `error` (`Error | undefined`): Error object if the fetch failed after all retries. It's generally recommended to rely on catching thrown errors for failure handling.
+
+### `fetchContent()` Result
+
+All `fetchContent()` methods return a Promise that resolves to a `ContentFetchResult` object:
+
+- `content` (`Buffer | string`): The raw fetched content. Binary content (PDFs, images, etc.) is returned as `Buffer`, text content as `string`.
+- `contentType` (`string`): The original MIME type from the server (e.g., `"application/pdf"`, `"text/html"`, `"application/json"`).
+- `title` (`string | null`): Extracted page title if the content is HTML, otherwise `null`.
 - `url` (`string`): Final URL after redirects.
 - `isFromCache` (`boolean`): True if the result came from cache.
 - `statusCode` (`number | undefined`): HTTP status code.
@@ -283,6 +405,15 @@ All `fetchHTML()` methods return a Promise that resolves to an `HTMLFetchResult`
 - **Returns:** `Promise<HTMLFetchResult>`
 
 Fetches content, returning HTML or Markdown based on configuration/options in `result.content` with `result.contentType` indicating the format.
+
+### `engine.fetchContent(url, options?)`
+
+- `url` (`string`): URL to fetch.
+- `options?` (`ContentFetchOptions`): Optional per-request overrides.
+  - `headers?: Record<string, string>`: Custom headers for this specific request.
+- **Returns:** `Promise<ContentFetchResult>`
+
+Fetches raw content without processing, mimicking standard `fetch()` behavior. Returns binary content as `Buffer` and text content as `string`. Supports any content type (PDFs, images, JSON, XML, etc.) and uses the same smart fallback logic as `fetchHTML()` but without HTML-specific processing or content-type restrictions.
 
 ### `engine.cleanup()` (`HybridEngine` and direct `FetchEngine` if no cleanup needed)
 
@@ -312,11 +443,10 @@ Errors during fetching are typically thrown as instances of `FetchError` (or its
 Common `FetchError` codes and scenarios:
 
 - **`ERR_HTTP_ERROR`**: Thrown by `FetchEngine` for HTTP status codes >= 400. `error.statusCode` will be set.
-- **`ERR_NON_HTML_CONTENT`**: Thrown by `FetchEngine` if the content type is not HTML and `markdown` conversion is not requested.
+- **`ERR_NON_HTML_CONTENT`**: Thrown by `FetchEngine` if the content type is not HTML and `markdown` conversion is not requested. **Note:** `fetchContent()` does not throw this error as it supports all content types.
 - **`ERR_PLAYWRIGHT_OPERATION`**: A general error from `HybridEngine`'s browser mode indicating a failure during a Playwright operation (e.g., page acquisition, navigation, interaction). The `originalError` property will often contain the specific Playwright error.
 - **`ERR_NAVIGATION`**: Often seen as part of `ERR_PLAYWRIGHT_OPERATION`'s message or in `originalError` when a Playwright navigation (in `HybridEngine`'s browser mode) fails (e.g., timeout, SSL error).
-- **`ERR_MARKDOWN_CONVERSION_NON_HTML`**: Thrown by `HybridEngine` (when its Playwright part is active) if `markdown: true` is requested for a non-HTML content type (e.g., XML, JSON).
-- **`ERR_UNSUPPORTED_RAW_CONTENT_TYPE`**: Thrown by `HybridEngine` (when its Playwright part is active and `markdown: false`) if requested for a content type it doesn't support for direct fetching (e.g., images, applications).
+- **`ERR_MARKDOWN_CONVERSION_NON_HTML`**: Thrown by `HybridEngine` (when its Playwright part is active) if `markdown: true` is requested for a non-HTML content type (e.g., XML, JSON). **Note:** Only applies to `fetchHTML()` as `fetchContent()` doesn't perform markdown conversion.
 - **`ERR_CACHE_ERROR`**: Indicates an issue with cache read/write operations.
 - **`ERR_PROXY_CONFIG_ERROR`**: Problem with proxy configuration (for `HybridEngine`'s browser mode).
 - **`ERR_BROWSER_POOL_EXHAUSTED`**: If `HybridEngine`'s browser pool cannot provide a page.
@@ -338,40 +468,56 @@ const engine = new HybridEngine({ useHttpFallback: false, maxRetries: 1 }); // u
 
 async function fetchWithHandling(url: string) {
   try {
-    const result = await engine.fetchHTML(url, { headers: { "X-My-Header": "TestValue" } });
-    if (result.error) {
-      console.warn(`Fetch for ${url} included non-critical error after retries: ${result.error.message}`);
+    // Try fetchHTML first
+    const htmlResult = await engine.fetchHTML(url, { headers: { "X-My-Header": "TestValue" } });
+    if (htmlResult.error) {
+      console.warn(`fetchHTML for ${url} included non-critical error after retries: ${htmlResult.error.message}`);
     }
-    console.log(`Success for ${url}! Title: ${result.title}, Content type: ${result.contentType}`);
-    // Use result.content
+    console.log(`fetchHTML Success for ${url}! Title: ${htmlResult.title}, Content type: ${htmlResult.contentType}`);
+    // Use htmlResult.content
   } catch (error) {
-    console.error(`Fetch failed for ${url}:`);
-    if (error instanceof FetchError) {
-      console.error(`  Error Code: ${error.code || "N/A"}`);
-      console.error(`  Message: ${error.message}`);
-      if (error.statusCode) {
-        console.error(`  Status Code: ${error.statusCode}`);
-      }
-      if (error.originalError) {
-        console.error(`  Original Error: ${error.originalError.name} - ${error.originalError.message}`);
-      }
-      // Example of specific handling:
-      if (error.code === "ERR_PLAYWRIGHT_OPERATION") {
-        console.error(
-          "  Hint: This was a Playwright operation failure (HybridEngine's browser mode). Check Playwright logs or originalError."
+    console.error(`fetchHTML failed for ${url}, trying fetchContent...`);
+
+    try {
+      // Fallback to fetchContent for raw content
+      const contentResult = await engine.fetchContent(url, { headers: { "X-My-Header": "TestValue" } });
+      if (contentResult.error) {
+        console.warn(
+          `fetchContent for ${url} included non-critical error after retries: ${contentResult.error.message}`
         );
       }
-    } else if (error instanceof Error) {
-      console.error(`  Generic Error: ${error.message}`);
-    } else {
-      console.error(`  Unknown error occurred: ${String(error)}`);
+      console.log(`fetchContent Success for ${url}! Content type: ${contentResult.contentType}`);
+      // Use contentResult.content (could be Buffer or string)
+    } catch (contentError) {
+      console.error(`Both fetchHTML and fetchContent failed for ${url}:`);
+      if (contentError instanceof FetchError) {
+        console.error(`  Error Code: ${contentError.code || "N/A"}`);
+        console.error(`  Message: ${contentError.message}`);
+        if (contentError.statusCode) {
+          console.error(`  Status Code: ${contentError.statusCode}`);
+        }
+        if (contentError.originalError) {
+          console.error(`  Original Error: ${contentError.originalError.name} - ${contentError.originalError.message}`);
+        }
+        // Example of specific handling:
+        if (contentError.code === "ERR_PLAYWRIGHT_OPERATION") {
+          console.error(
+            "  Hint: This was a Playwright operation failure (HybridEngine's browser mode). Check Playwright logs or originalError."
+          );
+        }
+      } else if (contentError instanceof Error) {
+        console.error(`  Generic Error: ${contentError.message}`);
+      } else {
+        console.error(`  Unknown error occurred: ${String(contentError)}`);
+      }
     }
   }
 }
 
 async function runExamples() {
-  await fetchWithHandling("https://nonexistentdomain.example.com"); // Likely DNS or navigation error via FetchEngine or Playwright
-  await fetchWithHandling("https://example.com/non_html_resource.json"); // Test with actual JSON URL if available (FetchEngine might handle, or Playwright if complex)
+  await fetchWithHandling("https://nonexistentdomain.example.com"); // Likely DNS or navigation error
+  await fetchWithHandling("https://example.com/document.pdf"); // PDF content - fetchHTML will fail, fetchContent will succeed
+  await fetchWithHandling("https://example.com/api/data.json"); // JSON content - fetchHTML will fail, fetchContent will succeed
   await engine.cleanup(); // Important for HybridEngine
 }
 

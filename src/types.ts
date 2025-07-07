@@ -21,6 +21,26 @@ export interface HTMLFetchResult {
 }
 
 /**
+ * Defines the structure for the result of fetching raw content (mimics fetch API).
+ */
+export interface ContentFetchResult {
+  /** The fetched raw content as Buffer for binary data or string for text data. */
+  content: Buffer | string;
+  /** The MIME type of the content as returned by the server. */
+  contentType: string;
+  /** The extracted title of the page, if available and if content is HTML. */
+  title: string | null;
+  /** The final URL after any redirects. */
+  url: string;
+  /** Indicates if the result came from the cache. */
+  isFromCache: boolean;
+  /** The HTTP status code of the final response. */
+  statusCode: number | undefined;
+  /** Any error encountered during the fetch process. */
+  error: Error | undefined;
+}
+
+/**
  * Metrics related to browser pool performance and status.
  */
 export interface BrowserMetrics {
@@ -205,6 +225,17 @@ export interface FetchOptions {
   spaMode?: boolean;
   /** Optional headers to include in the request. */
   headers?: Record<string, string>;
+}
+
+/**
+ * Options that can be passed per-request to engine.fetchContent().
+ * Mimics standard fetch behavior with minimal processing.
+ */
+export interface ContentFetchOptions {
+  /** Optional headers to include in the request. */
+  headers?: Record<string, string>;
+  /** Overrides the engine's defaultFastMode for this specific request. (Playwright/Hybrid only) */
+  fastMode?: boolean;
 }
 
 /**
