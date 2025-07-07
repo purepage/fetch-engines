@@ -1,4 +1,4 @@
-import type { HTMLFetchResult, BrowserMetrics, FetchEngineOptions } from "./types.js";
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, FetchEngineOptions } from "./types.js";
 import type { IEngine } from "./IEngine.js";
 import { FetchError } from "./errors.js";
 /**
@@ -31,6 +31,16 @@ export declare class FetchEngine implements IEngine {
      * @throws {Error} If the content type is not HTML or for other network errors.
      */
     fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult>;
+    /**
+     * Fetches raw content from the specified URL (mimics standard fetch API).
+     *
+     * @param url The URL to fetch.
+     * @param options Optional fetch options.
+     * @returns A Promise resolving to a ContentFetchResult object.
+     * @throws {FetchEngineHttpError} If the HTTP response status is not ok (e.g., 404, 500).
+     * @throws {Error} For network errors or other fetch failures.
+     */
+    fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
     /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.

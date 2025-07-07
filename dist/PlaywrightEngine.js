@@ -678,5 +678,238 @@ export class PlaywrightEngine {
             return false; // Invalid URL
         }
     }
+    /**
+     * Fetches raw content from the specified URL using Playwright with HTTP fallback.
+     * Mimics standard fetch API behavior.
+     *
+     * @param url The URL to fetch content from.
+     * @param options Optional fetch options.
+     * @returns A Promise resolving to a ContentFetchResult object.
+     * @throws {FetchError} If the fetch operation fails after all retries.
+     */
+    async fetchContent(url, options = {}) {
+        // Build current config by merging defaults with per-request options
+        const currentConfig = {
+            // From engine defaults
+            retryDelay: this.config.retryDelay,
+            maxRetries: this.config.maxRetries,
+            useHttpFallback: this.config.useHttpFallback,
+            useHeadedModeFallback: this.config.useHeadedModeFallback,
+            useHeadedMode: this.config.useHeadedMode,
+            cacheTTL: this.config.cacheTTL,
+            // From per-request options
+            fastMode: options.fastMode !== undefined ? options.fastMode : this.config.defaultFastMode,
+            headers: options.headers || this.config.headers || {},
+        };
+        // Check cache first
+        const cacheKey = `content_${url}`;
+        const cachedResult = this.checkContentCache(cacheKey);
+        if (cachedResult) {
+            return cachedResult;
+        }
+        // Start recursive fetch with retry logic
+        const result = await this._fetchContentRecursive(url, currentConfig, 0);
+        // Cache successful result
+        if (result && !result.error) {
+            this.addContentToCache(cacheKey, result);
+        }
+        return result;
+    }
+    /**
+     * Check cache for content fetch results.
+     */
+    checkContentCache(cacheKey) {
+        const cacheEntry = this.cache.get(cacheKey);
+        if (cacheEntry && Date.now() - cacheEntry.timestamp < this.config.cacheTTL) {
+            // Need to convert HTMLFetchResult to ContentFetchResult if cached
+            const htmlResult = cacheEntry.result;
+            return {
+                content: Buffer.isBuffer(htmlResult.content) ? htmlResult.content : htmlResult.content,
+                contentType: htmlResult.contentType === "html" ? "text/html" : htmlResult.contentType,
+                title: htmlResult.title,
+                url: htmlResult.url,
+                isFromCache: true,
+                statusCode: htmlResult.statusCode,
+                error: htmlResult.error,
+            };
+        }
+        return null;
+    }
+    /**
+     * Add content fetch result to cache.
+     */
+    addContentToCache(cacheKey, result) {
+        if (this.config.cacheTTL <= 0)
+            return; // Caching disabled
+        // Convert to HTMLFetchResult format for storage
+        const htmlResult = {
+            content: typeof result.content === "string" ? result.content : result.content.toString(),
+            contentType: result.contentType.includes("html") ? "html" : "html", // Store as html for compatibility
+            title: result.title,
+            url: result.url,
+            isFromCache: result.isFromCache,
+            statusCode: result.statusCode,
+            error: result.error,
+        };
+        this.cache.set(cacheKey, {
+            result: htmlResult,
+            timestamp: Date.now(),
+        });
+    }
+    /**
+     * Recursive fetch implementation with retry logic for content fetching.
+     */
+    async _fetchContentRecursive(url, currentConfig, retryAttempt) {
+        try {
+            // Try HTTP fallback first if enabled
+            if (currentConfig.useHttpFallback) {
+                try {
+                    const httpResult = await this._attemptContentHttpFallback(url, currentConfig);
+                    if (httpResult) {
+                        return httpResult;
+                    }
+                }
+                catch (httpError) {
+                    // Log but don't throw - will try Playwright next
+                    console.warn(`HTTP fallback failed for ${url}, trying Playwright:`, httpError);
+                }
+            }
+            // Initialize browser pool
+            const useHeadedMode = currentConfig.useHeadedMode || this.shouldUseHeadedMode(url);
+            await this._ensureBrowserPoolInitialized(useHeadedMode, currentConfig);
+            if (!this.browserPool) {
+                throw new FetchError("Browser pool initialization failed", "ERR_BROWSER_POOL_EXHAUSTED");
+            }
+            // Use Playwright to fetch content
+            return await this.fetchContentWithPlaywright(url, this.browserPool, currentConfig.fastMode, currentConfig.headers);
+        }
+        catch (error) {
+            // Handle retry logic
+            if (retryAttempt < currentConfig.maxRetries) {
+                console.warn(`Content fetch attempt ${retryAttempt + 1} failed for ${url}, retrying...`);
+                await delay(currentConfig.retryDelay);
+                return this._fetchContentRecursive(url, currentConfig, retryAttempt + 1);
+            }
+            // All retries exhausted
+            throw error;
+        }
+    }
+    /**
+     * HTTP fallback for content fetching.
+     */
+    async _attemptContentHttpFallback(url, currentConfig) {
+        if (!currentConfig.useHttpFallback)
+            return null;
+        try {
+            const response = await axios.get(url, {
+                headers: { ...COMMON_HEADERS, ...currentConfig.headers },
+                maxRedirects: MAX_REDIRECTS,
+                timeout: DEFAULT_HTTP_TIMEOUT,
+                responseType: "arraybuffer", // Get raw binary data
+                decompress: true,
+            });
+            const contentType = response.headers["content-type"] || "application/octet-stream";
+            // Determine if content is text-based
+            const isTextBased = contentType.startsWith("text/") ||
+                contentType.includes("json") ||
+                contentType.includes("xml") ||
+                contentType.includes("javascript") ||
+                contentType.includes("html") ||
+                contentType.includes("css");
+            let content;
+            if (isTextBased) {
+                content = response.data.toString("utf-8");
+            }
+            else {
+                content = Buffer.from(response.data);
+            }
+            // Extract title only if content is HTML
+            let title = null;
+            if (typeof content === "string" && contentType.includes("html")) {
+                const titleMatch = content.match(REGEX_TITLE_TAG);
+                title = titleMatch ? titleMatch[1].trim() : null;
+            }
+            return {
+                content,
+                contentType,
+                title,
+                url: response.request?.res?.responseUrl || response.config.url || url,
+                isFromCache: false,
+                statusCode: response.status,
+                error: undefined,
+            };
+        }
+        catch (error) {
+            // Let caller handle fallback to Playwright
+            throw new FetchError(`HTTP content fetch failed: ${error.message}`, "ERR_HTTP_FALLBACK", error);
+        }
+    }
+    /**
+     * Fetch content using Playwright browser.
+     */
+    async fetchContentWithPlaywright(url, pool, fastMode, headers) {
+        let page = null;
+        try {
+            page = await pool.acquirePage();
+            // Set headers if provided
+            if (headers && Object.keys(headers).length > 0) {
+                await page.setExtraHTTPHeaders(headers);
+            }
+            // Apply resource blocking for fast mode
+            if (fastMode) {
+                await this.applyBlockingRules(page, fastMode);
+            }
+            // Navigate to the page
+            const response = await page.goto(url, {
+                waitUntil: "domcontentloaded",
+                timeout: 30000,
+            });
+            if (!response) {
+                throw new FetchError(`Failed to get response for ${url}`, "ERR_NAVIGATION");
+            }
+            if (!response.ok()) {
+                throw new FetchError(`HTTP error! status: ${response.status()}`, "ERR_HTTP_ERROR", undefined, response.status());
+            }
+            const contentType = response.headers()["content-type"] || "application/octet-stream";
+            const title = await page.title();
+            const finalUrl = page.url();
+            const status = response.status();
+            // Get raw content based on content type
+            let content;
+            const isTextBased = contentType.startsWith("text/") ||
+                contentType.includes("json") ||
+                contentType.includes("xml") ||
+                contentType.includes("javascript") ||
+                contentType.includes("html") ||
+                contentType.includes("css");
+            if (isTextBased) {
+                content = await response.text();
+            }
+            else {
+                const bodyBuffer = await response.body();
+                content = Buffer.from(bodyBuffer);
+            }
+            // Extract title only if content is HTML
+            let extractedTitle = title || null;
+            if (typeof content === "string" && contentType.includes("html") && !extractedTitle) {
+                const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
+                extractedTitle = titleMatch ? titleMatch[1].trim() : null;
+            }
+            return {
+                content,
+                contentType,
+                title: extractedTitle,
+                url: finalUrl,
+                isFromCache: false,
+                statusCode: status,
+                error: undefined,
+            };
+        }
+        finally {
+            if (page) {
+                await pool.releasePage(page);
+            }
+        }
+    }
 }
 //# sourceMappingURL=PlaywrightEngine.js.map

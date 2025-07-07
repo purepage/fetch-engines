@@ -1,7 +1,14 @@
 import { FetchEngine } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
-import type { HTMLFetchResult, PlaywrightEngineConfig, FetchOptions, BrowserMetrics } from "./types.js";
+import type {
+  HTMLFetchResult,
+  ContentFetchResult,
+  ContentFetchOptions,
+  PlaywrightEngineConfig,
+  FetchOptions,
+  BrowserMetrics,
+} from "./types.js";
 
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
@@ -116,6 +123,53 @@ export class HybridEngine implements IEngine {
         return playwrightResult;
       } catch (playwrightError: any) {
         console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${playwrightError.message}`);
+        throw playwrightError; // Throw the Playwright error as it's the last one encountered
+      }
+    }
+  }
+
+  /**
+   * Fetches raw content from the specified URL using the hybrid approach.
+   * Tries FetchEngine first, falls back to PlaywrightEngine on failure.
+   * Mimics standard fetch API behavior.
+   *
+   * @param url The URL to fetch content from.
+   * @param options Optional fetch options.
+   * @returns A Promise resolving to a ContentFetchResult object.
+   * @throws {FetchError} If both engines fail to fetch the content.
+   */
+  async fetchContent(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+    // Check playwrightOnlyPatterns first
+    for (const pattern of this.playwrightOnlyPatterns) {
+      if (typeof pattern === "string" && url.includes(pattern)) {
+        console.warn(
+          `HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly for content fetch.`
+        );
+        return this.playwrightEngine.fetchContent(url, options);
+      } else if (pattern instanceof RegExp && pattern.test(url)) {
+        console.warn(
+          `HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly for content fetch.`
+        );
+        return this.playwrightEngine.fetchContent(url, options);
+      }
+    }
+
+    try {
+      // Try FetchEngine first
+      const fetchResult = await this.fetchEngine.fetchContent(url, options);
+      return fetchResult;
+    } catch (fetchError: any) {
+      console.warn(
+        `HybridEngine: FetchEngine failed for content fetch ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`
+      );
+      try {
+        // Fallback to PlaywrightEngine
+        const playwrightResult = await this.playwrightEngine.fetchContent(url, options);
+        return playwrightResult;
+      } catch (playwrightError: any) {
+        console.error(
+          `HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${playwrightError.message}`
+        );
         throw playwrightError; // Throw the Playwright error as it's the last one encountered
       }
     }

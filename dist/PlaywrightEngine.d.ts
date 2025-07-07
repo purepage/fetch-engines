@@ -1,4 +1,4 @@
-import type { HTMLFetchResult, BrowserMetrics, PlaywrightEngineConfig, FetchOptions } from "./types.js";
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, PlaywrightEngineConfig, FetchOptions } from "./types.js";
 import type { IEngine } from "./IEngine.js";
 /**
  * PlaywrightEngine - Fetches HTML using a managed pool of headless Playwright browser instances.
@@ -115,5 +115,35 @@ export declare class PlaywrightEngine implements IEngine {
      */
     getMetrics(): BrowserMetrics[];
     private shouldUseHeadedMode;
+    /**
+     * Fetches raw content from the specified URL using Playwright with HTTP fallback.
+     * Mimics standard fetch API behavior.
+     *
+     * @param url The URL to fetch content from.
+     * @param options Optional fetch options.
+     * @returns A Promise resolving to a ContentFetchResult object.
+     * @throws {FetchError} If the fetch operation fails after all retries.
+     */
+    fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
+    /**
+     * Check cache for content fetch results.
+     */
+    private checkContentCache;
+    /**
+     * Add content fetch result to cache.
+     */
+    private addContentToCache;
+    /**
+     * Recursive fetch implementation with retry logic for content fetching.
+     */
+    private _fetchContentRecursive;
+    /**
+     * HTTP fallback for content fetching.
+     */
+    private _attemptContentHttpFallback;
+    /**
+     * Fetch content using Playwright browser.
+     */
+    private fetchContentWithPlaywright;
 }
 //# sourceMappingURL=PlaywrightEngine.d.ts.map

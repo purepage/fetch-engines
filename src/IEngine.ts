@@ -1,4 +1,4 @@
-import type { HTMLFetchResult, BrowserMetrics } from "./types.js"; // Added .js extension
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics } from "./types.js"; // Added .js extension
 
 /**
  * Interface for browser engines that can fetch HTML content from URLs
@@ -10,6 +10,14 @@ export interface IEngine {
    * @returns A promise that resolves to an HTMLFetchResult
    */
   fetchHTML(url: string): Promise<HTMLFetchResult>;
+
+  /**
+   * Fetches raw content from a URL (mimics standard fetch API)
+   * @param url The URL to fetch
+   * @param options Optional fetch options
+   * @returns A promise that resolves to a ContentFetchResult
+   */
+  fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
 
   /**
    * Cleans up resources used by the engine
