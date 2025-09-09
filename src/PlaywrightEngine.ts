@@ -926,9 +926,7 @@ export class PlaywrightEngine implements IEngine {
     options: PostOptions = {}
   ): Promise<HTMLFetchResult> {
     const headers = { ...this.config.headers, ...(options.headers || {}) };
-    if (options.contentType && !(body instanceof FormData)) {
-      headers["Content-Type"] = options.contentType;
-    } else if (body instanceof URLSearchParams) {
+    if (body instanceof URLSearchParams && !headers["Content-Type"]) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
 

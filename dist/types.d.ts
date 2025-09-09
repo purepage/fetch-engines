@@ -211,6 +211,12 @@ export interface FetchOptions {
     headers?: Record<string, string>;
 }
 /**
+ * Options for POST-based requests such as postHTML.
+ * Specify the request body's MIME type via `headers['Content-Type']`.
+ */
+export interface PostOptions extends FetchOptions {
+}
+/**
  * Options that can be passed per-request to engine.fetchContent().
  * Mimics standard fetch behavior with minimal processing.
  */
