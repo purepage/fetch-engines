@@ -193,7 +193,10 @@ export class PlaywrightEngine implements IEngine {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(originalHtml);
           // Inject source URL directly under the first H1 for traceability
-          finalContent = this._injectSourceUnderH1(finalContent, response.request?.res?.responseUrl || response.config.url || url);
+          finalContent = this._injectSourceUnderH1(
+            finalContent,
+            response.request?.res?.responseUrl || response.config.url || url
+          );
           finalContentType = "markdown";
         } catch (conversionError) {
           console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
