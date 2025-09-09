@@ -75,7 +75,8 @@ export class MarkdownConverter {
                 // Node.ELEMENT_NODE is 1
                 if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
                     const htmlElement = node;
-                    if (htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
+                    if (htmlElement.tagName === "TABLE" ||
+                        htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
                         htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS)) {
                         return htmlElement.outerHTML;
                     }
