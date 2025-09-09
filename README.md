@@ -172,15 +172,18 @@ async function login() {
     password: "password123",
   });
 
-  // postHTML sends the form data using the same stealthy session as fetchHTML
-  const result = await engine.postHTML("https://example.com/login", body, {
-    contentType: "application/x-www-form-urlencoded",
-  });
+  try {
+    // postHTML sends the form data using the same stealthy session as fetchHTML
+    const result = await engine.postHTML("https://example.com/login", body, {
+      contentType: "application/x-www-form-urlencoded",
+    });
 
-  console.log(`Login response status: ${result.statusCode}`);
-  await engine.cleanup();
+    console.log(`Login response status: ${result.statusCode}`);
+  } finally {
+    await engine.cleanup();
+  }
 }
-login();
+login().catch(console.error);
 ```
 
 ### Raw Content Fetching

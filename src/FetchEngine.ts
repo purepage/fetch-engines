@@ -10,6 +10,7 @@ import type { IEngine } from "./IEngine.js"; // Added .js extension
 
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
 import { FetchError } from "./errors.js"; // Only import FetchError
+import { DEFAULT_USER_AGENT } from "./constants.js";
 
 /**
  * Custom error class for HTTP errors from FetchEngine.
@@ -59,8 +60,7 @@ export class FetchEngine implements IEngine {
     let response: Response;
     try {
       const baseHeaders = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       };
@@ -146,8 +146,7 @@ export class FetchEngine implements IEngine {
     let response: Response;
     try {
       const baseHeaders = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
         Accept: "*/*", // Accept any content type for raw content fetching
       };
 
@@ -236,8 +235,7 @@ export class FetchEngine implements IEngine {
     let response: Response;
     try {
       const baseHeaders = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       };
@@ -251,7 +249,11 @@ export class FetchEngine implements IEngine {
         ...callSpecificHeaders,
       };
 
-      if (!finalHeaders["Content-Type"] && body instanceof URLSearchParams) {
+      if (body instanceof FormData) {
+        delete finalHeaders["Content-Type"];
+      } else if (options.contentType) {
+        finalHeaders["Content-Type"] = options.contentType;
+      } else if (!finalHeaders["Content-Type"] && body instanceof URLSearchParams) {
         finalHeaders["Content-Type"] = "application/x-www-form-urlencoded";
       }
 
