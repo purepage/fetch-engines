@@ -141,6 +141,29 @@ export class HybridEngine {
         }
     }
     /**
+     * Sends a POST request expecting HTML in response.
+     * Attempts FetchEngine first then falls back to PlaywrightEngine.
+     */
+    async postHTML(url, body, options = {}) {
+        const constructorHeaders = this.config.headers || {};
+        const requestHeaders = options.headers || {};
+        const mergedHeadersForPlaywright = { ...constructorHeaders, ...requestHeaders };
+        try {
+            const fetchResult = await this.fetchEngine.postHTML(url, body, {
+                headers: requestHeaders,
+                markdown: options.markdown,
+            });
+            return fetchResult;
+        }
+        catch (fetchError) {
+            console.warn(`HybridEngine: FetchEngine POST failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
+            return this.playwrightEngine.postHTML(url, body, {
+                ...options,
+                headers: mergedHeadersForPlaywright,
+            });
+        }
+    }
+    /**
      * Delegates getMetrics to the PlaywrightEngine.
      */
     getMetrics() {

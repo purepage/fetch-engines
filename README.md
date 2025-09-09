@@ -174,7 +174,7 @@ async function login() {
 
   // postHTML sends the form data using the same stealthy session as fetchHTML
   const result = await engine.postHTML("https://example.com/login", body, {
-    contentType: "application/x-www-form-urlencoded",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
   console.log(`Login response status: ${result.statusCode}`);
@@ -436,12 +436,11 @@ Fetches content, returning HTML or Markdown based on configuration/options in `r
 - `url` (`string`): URL to POST to.
 - `body` (`string | URLSearchParams | FormData`): Form data or payload to send.
 - `options?` (`PostOptions`): Optional overrides.
-  - `headers?: Record<string, string>`: Custom headers for this request.
-  - `contentType?: string`: Explicit `Content-Type` header for the POST body.
+  - `headers?: Record<string, string>`: Custom headers for this request (use `headers["Content-Type"]` to specify the body type).
   - Other `FetchOptions` like `markdown`, `fastMode`, `spaMode`.
 - **Returns:** `Promise<HTMLFetchResult>`
 
-Sends a POST request while preserving cookies and stealth behavior. Useful for login flows or form submissions that need a browser-like session. When passing a plain string as the body, provide `contentType` so the server interprets it correctly.
+Sends a POST request while preserving cookies and stealth behavior. Useful for login flows or form submissions that need a browser-like session. When passing a plain string as the body, set an appropriate `Content-Type` header so the server interprets it correctly.
 
 ### `engine.fetchContent(url, options?)`
 

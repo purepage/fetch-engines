@@ -229,12 +229,9 @@ export interface FetchOptions {
 
 /**
  * Options for POST-based requests such as postHTML.
- * Extends FetchOptions with explicit content type handling.
+ * Use the `headers["Content-Type"]` field to specify the body type.
  */
-export interface PostOptions extends FetchOptions {
-  /** Explicit content type for the POST body. */
-  contentType?: string;
-}
+export interface PostOptions extends FetchOptions {}
 
 /**
  * Options that can be passed per-request to engine.fetchContent().
