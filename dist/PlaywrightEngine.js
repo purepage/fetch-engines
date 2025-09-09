@@ -141,6 +141,8 @@ export class PlaywrightEngine {
                 try {
                     const converter = new MarkdownConverter();
                     finalContent = converter.convert(originalHtml);
+                    // Inject source URL directly under the first H1 for traceability
+                    finalContent = this._injectSourceUnderH1(finalContent, response.request?.res?.responseUrl || response.config.url || url);
                     finalContentType = "markdown";
                 }
                 catch (conversionError) {
@@ -295,9 +297,10 @@ export class PlaywrightEngine {
                     const converter = new MarkdownConverter();
                     // Convert a copy, do not mutate the cached object directly
                     const convertedContent = converter.convert(cachedResult.content);
+                    const withSource = this._injectSourceUnderH1(convertedContent, url);
                     return {
                         ...cachedResult,
-                        content: convertedContent,
+                        content: withSource,
                         contentType: "markdown",
                     };
                 }
@@ -576,6 +579,7 @@ export class PlaywrightEngine {
                     try {
                         const converter = new MarkdownConverter();
                         finalContent = converter.convert(html);
+                        finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
                         finalContentType = "markdown";
                     }
                     catch (conversionError) {
@@ -635,6 +639,16 @@ export class PlaywrightEngine {
                 console.debug(`Error setting up Playwright routing rules: ${message}`, routingError instanceof Error ? routingError : undefined);
             }
         }
+    }
+    // Insert a "Source: <url>" line immediately below the first H1.
+    _injectSourceUnderH1(markdown, sourceUrl) {
+        if (!markdown || !sourceUrl)
+            return markdown;
+        const head = markdown.split("\n").slice(0, 50).join("\n");
+        if (/^Source:\s+/m.test(head))
+            return markdown;
+        const safeUrl = sourceUrl.trim();
+        return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
     }
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.

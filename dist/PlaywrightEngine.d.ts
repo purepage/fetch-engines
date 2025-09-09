@@ -102,6 +102,7 @@ export declare class PlaywrightEngine implements IEngine {
      */
     private fetchWithPlaywright;
     private applyBlockingRules;
+    private _injectSourceUnderH1;
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.
      *

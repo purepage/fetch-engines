@@ -31,6 +31,7 @@ export declare class FetchEngine implements IEngine {
      * @throws {Error} If the content type is not HTML or for other network errors.
      */
     fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult>;
+    private _injectSourceUnderH1;
     /**
      * Fetches raw content from the specified URL (mimics standard fetch API).
      *

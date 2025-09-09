@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
-  it("retains tables without explicit header rows", () => {
+  it("converts tables without explicit header rows to GFM with promoted headers", () => {
     const html = `<table>
 <tbody>
 <tr>
@@ -21,7 +21,11 @@ describe("MarkdownConverter", () => {
 </table>`;
     const converter = new MarkdownConverter();
     const markdown = converter.convert(html);
-    expect(markdown).toContain("<table>");
+    // Should not preserve raw HTML table anymore
+    expect(markdown).not.toContain("<table>");
+    // Should include a GFM table header row
+    expect(markdown).toContain("| **Position** | **Weekly Pay Rate**");
+    // Should include data row content
     expect(markdown).toContain("Apprentice - under 18 years^");
   });
 });

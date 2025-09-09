@@ -77,6 +77,8 @@ export class FetchEngine {
                 try {
                     const converter = new MarkdownConverter();
                     finalContent = converter.convert(html);
+                    // Inject source URL directly under the first H1 for traceability
+                    finalContent = this._injectSourceUnderH1(finalContent, response.url || url);
                     finalContentType = "markdown";
                 }
                 catch (conversionError) {
@@ -104,6 +106,17 @@ export class FetchEngine {
             const message = error instanceof Error ? error.message : "Unknown fetch error";
             throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
         }
+    }
+    // Insert a "Source: <url>" line immediately below the first H1.
+    _injectSourceUnderH1(markdown, sourceUrl) {
+        if (!markdown || !sourceUrl)
+            return markdown;
+        // Avoid duplicate insertion if already present near the top
+        const head = markdown.split("\n").slice(0, 50).join("\n");
+        if (/^Source:\s+/m.test(head))
+            return markdown;
+        const safeUrl = sourceUrl.trim();
+        return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
     }
     /**
      * Fetches raw content from the specified URL (mimics standard fetch API).

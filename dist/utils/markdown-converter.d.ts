@@ -18,10 +18,18 @@ export declare class MarkdownConverter {
     private addBlockRules;
     private addInlineRules;
     private preprocessHTML;
+    /**
+     * Ensures simple data tables are convertible to GFM by promoting the first row to headers
+     * when no <th> exists. Skips layout tables marked with role="presentation".
+     */
+    private normalizeTablesForMarkdown;
+    private removeBreadcrumbs;
+    private ensurePrimaryHeading;
+    private flattenTableToSimpleGfm;
+    private sanitizeCellContentForTable;
     private cleanupHtml;
     private cleanupContentHtml;
     private removeHighLinkDensityElements;
-    private extractDocumentMetadata;
     private detectForumPage;
     /**
      * Calculates a score for a given HTML element to determine if it's likely the main content.

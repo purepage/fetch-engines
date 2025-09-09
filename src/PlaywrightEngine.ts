@@ -192,6 +192,8 @@ export class PlaywrightEngine implements IEngine {
         try {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(originalHtml);
+          // Inject source URL directly under the first H1 for traceability
+          finalContent = this._injectSourceUnderH1(finalContent, response.request?.res?.responseUrl || response.config.url || url);
           finalContentType = "markdown";
         } catch (conversionError) {
           console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
@@ -374,9 +376,10 @@ export class PlaywrightEngine implements IEngine {
           const converter = new MarkdownConverter();
           // Convert a copy, do not mutate the cached object directly
           const convertedContent = converter.convert(cachedResult.content);
+          const withSource = this._injectSourceUnderH1(convertedContent, url);
           return {
             ...cachedResult,
-            content: convertedContent,
+            content: withSource,
             contentType: "markdown",
           };
         } catch (e) {
@@ -750,6 +753,7 @@ export class PlaywrightEngine implements IEngine {
           try {
             const converter = new MarkdownConverter();
             finalContent = converter.convert(html);
+            finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
             finalContentType = "markdown";
           } catch (conversionError: unknown) {
             console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
@@ -821,6 +825,15 @@ export class PlaywrightEngine implements IEngine {
         );
       }
     }
+  }
+
+  // Insert a "Source: <url>" line immediately below the first H1.
+  private _injectSourceUnderH1(markdown: string, sourceUrl: string): string {
+    if (!markdown || !sourceUrl) return markdown;
+    const head = markdown.split("\n").slice(0, 50).join("\n");
+    if (/^Source:\s+/m.test(head)) return markdown;
+    const safeUrl = sourceUrl.trim();
+    return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
   }
 
   /**
