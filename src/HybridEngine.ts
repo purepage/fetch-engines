@@ -193,7 +193,6 @@ export class HybridEngine implements IEngine {
       const fetchResult = await this.fetchEngine.postHTML(url, body, {
         headers: requestHeaders,
         markdown: options.markdown,
-        contentType: options.contentType,
       });
       return fetchResult;
     } catch (fetchError: any) {
