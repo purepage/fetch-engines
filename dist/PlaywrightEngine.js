@@ -787,7 +787,8 @@ export class PlaywrightEngine {
                 }
                 catch (httpError) {
                     // Log but don't throw - will try Playwright next
-                    console.warn(`HTTP fallback failed for ${url}, trying Playwright:`, httpError);
+                    const msg = httpError instanceof Error ? httpError.message : String(httpError);
+                    console.warn(`HTTP fallback failed for ${url}: ${msg}. Trying Playwright.`);
                 }
             }
             // Initialize browser pool

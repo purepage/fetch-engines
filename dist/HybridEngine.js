@@ -1,4 +1,4 @@
-import { FetchEngine } from "./FetchEngine.js";
+import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
@@ -88,6 +88,11 @@ export class HybridEngine {
             return fetchResult;
         }
         catch (fetchError) {
+            // If FetchEngine returned a 404, do not attempt Playwright fallback
+            if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+                console.warn(`HybridEngine: FetchEngine returned 404 for ${url}. Not falling back.`);
+                throw fetchError;
+            }
             const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
             console.warn(`HybridEngine: FetchEngine failed for ${url}: ${message}. Falling back to PlaywrightEngine.`);
             try {
@@ -130,6 +135,11 @@ export class HybridEngine {
             return fetchResult;
         }
         catch (fetchError) {
+            // If FetchEngine returned a 404, do not attempt Playwright fallback
+            if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+                console.warn(`HybridEngine: FetchEngine returned 404 for content fetch ${url}. Not falling back.`);
+                throw fetchError;
+            }
             const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
             console.warn(`HybridEngine: FetchEngine failed for content fetch ${url}: ${message}. Falling back to PlaywrightEngine.`);
             try {

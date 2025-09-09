@@ -1,4 +1,4 @@
-import { FetchEngine } from "./FetchEngine.js";
+import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
 import type {
@@ -114,6 +114,11 @@ export class HybridEngine implements IEngine {
       // If not spaMode, or if spaMode but content is not a shell, return FetchEngine's result
       return fetchResult;
     } catch (fetchError: unknown) {
+      // If FetchEngine returned a 404, do not attempt Playwright fallback
+      if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+        console.warn(`HybridEngine: FetchEngine returned 404 for ${url}. Not falling back.`);
+        throw fetchError;
+      }
       const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
       console.warn(`HybridEngine: FetchEngine failed for ${url}: ${message}. Falling back to PlaywrightEngine.`);
       try {
@@ -159,6 +164,11 @@ export class HybridEngine implements IEngine {
       const fetchResult = await this.fetchEngine.fetchContent(url, options);
       return fetchResult;
     } catch (fetchError: unknown) {
+      // If FetchEngine returned a 404, do not attempt Playwright fallback
+      if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+        console.warn(`HybridEngine: FetchEngine returned 404 for content fetch ${url}. Not falling back.`);
+        throw fetchError;
+      }
       const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
       console.warn(
         `HybridEngine: FetchEngine failed for content fetch ${url}: ${message}. Falling back to PlaywrightEngine.`

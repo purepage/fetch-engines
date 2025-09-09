@@ -446,7 +446,7 @@ export class MarkdownConverter {
                 "";
             // Drop <head> from the DOM so we don't leak <title> etc. into content
             try {
-                rootElement.querySelector('head')?.remove();
+                rootElement.querySelector("head")?.remove();
             }
             catch { }
             const isForum = this.detectForumPage(rootElement);
@@ -467,9 +467,8 @@ export class MarkdownConverter {
                 }
             }
             // Ensure we don't include <head> if extraction returned <html>
-            if (contentElement instanceof NHPHTMLElement &&
-                contentElement.tagName === 'HTML') {
-                const body = rootElement.querySelector('body');
+            if (contentElement instanceof NHPHTMLElement && contentElement.tagName === "HTML") {
+                const body = rootElement.querySelector("body");
                 if (body)
                     contentElement = body;
             }
@@ -549,7 +548,7 @@ export class MarkdownConverter {
             try {
                 root.querySelectorAll(sel).forEach((el) => {
                     // Remove the element; if it's inside a <nav>, remove the nav container
-                    const nav = el.closest && el.closest('nav');
+                    const nav = el.closest && el.closest("nav");
                     (nav || el).remove();
                 });
             }
@@ -572,14 +571,16 @@ export class MarkdownConverter {
             root.querySelector("title")?.textContent ||
             "";
         // Find existing headings in content
-        const firstH1 = content.querySelector('h1');
-        const firstHeading = content.querySelector('h1, h2, h3, h4, h5, h6');
-        const normalize = (s) => (s || '').trim().replace(/\s+/g, ' ');
+        const firstH1 = content.querySelector("h1");
+        const firstHeading = content.querySelector("h1, h2, h3, h4, h5, h6");
+        const normalize = (s) => (s || "").trim().replace(/\s+/g, " ");
         const titleNorm = normalize(bestTitle);
-        const h1Text = normalize(firstH1?.textContent || '');
+        const h1Text = normalize(firstH1?.textContent || "");
         if (firstH1) {
             // If document title is longer and contains the existing H1, replace H1 with the document title
-            if (titleNorm && titleNorm.length > h1Text.length && (titleNorm.includes(h1Text) || h1Text.includes(titleNorm.split('|')[0].trim()))) {
+            if (titleNorm &&
+                titleNorm.length > h1Text.length &&
+                (titleNorm.includes(h1Text) || h1Text.includes(titleNorm.split("|")[0].trim()))) {
                 firstH1.set_content(bestTitle);
             }
             return;
@@ -592,7 +593,7 @@ export class MarkdownConverter {
         }
         // Otherwise, promote the first heading to H1
         if (firstHeading) {
-            firstHeading.tagName = 'H1';
+            firstHeading.tagName = "H1";
         }
     }
     // Attempt to flatten a table with colspans/rowspans into a simple table
