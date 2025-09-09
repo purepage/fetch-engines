@@ -17,12 +17,14 @@ describe("HybridEngine - Headers Propagation", () => {
 
     mockFetchEngineInstance = {
       fetchHTML: vi.fn().mockResolvedValue({ content: "fetch-html", title: "Test", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
+      postHTML: vi.fn().mockResolvedValue({ content: "fetch-post", title: "Post", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
       cleanup: vi.fn().mockResolvedValue(undefined),
     };
     mockPlaywrightEngineInstance = {
       fetchHTML: vi.fn().mockResolvedValue({ content: "playwright-html", title: "Test", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
-      cleanup: vi.fn().mockResolvedValue(undefined),
-      getMetrics: vi.fn().mockReturnValue([]),
+       postHTML: vi.fn().mockResolvedValue({ content: "playwright-post", title: "Post", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
+       cleanup: vi.fn().mockResolvedValue(undefined),
+       getMetrics: vi.fn().mockReturnValue([]),
     };
 
     (FetchEngine as any as SpyInstance).mockImplementation(() => mockFetchEngineInstance);
@@ -183,5 +185,54 @@ describe("HybridEngine - Headers Propagation", () => {
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
     const actualOptionsUndefinedFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
     expect(actualOptionsUndefinedFailure.headers).toEqual({});
+  });
+
+  describe("postHTML", () => {
+    const POST_BODY = "a=1";
+
+    it("should fall back to PlaywrightEngine when FetchEngine.postHTML fails", async () => {
+      mockFetchEngineInstance.postHTML.mockRejectedValueOnce(new Error("fail"));
+      const engine = new HybridEngine();
+      await engine.postHTML(MOCK_URL, POST_BODY);
+      expect(mockFetchEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ headers: {} })
+      );
+      expect(mockPlaywrightEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ headers: {} })
+      );
+    });
+
+    it("should merge headers for PlaywrightEngine.postHTML", async () => {
+      mockFetchEngineInstance.postHTML.mockRejectedValueOnce(new Error("fail"));
+      const engine = new HybridEngine({ headers: { A: "1" } });
+      await engine.postHTML(MOCK_URL, POST_BODY, { headers: { B: "2" } });
+      const passed = mockPlaywrightEngineInstance.postHTML.mock.calls[0][2];
+      expect(passed.headers).toEqual({ A: "1", B: "2" });
+    });
+
+    it("should use config markdown when option is undefined", async () => {
+      const engine = new HybridEngine({ markdown: true });
+      await engine.postHTML(MOCK_URL, POST_BODY);
+      expect(mockFetchEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ markdown: true })
+      );
+    });
+
+    it("should respect playwrightOnlyPatterns for postHTML", async () => {
+      const engine = new HybridEngine({ playwrightOnlyPatterns: [MOCK_URL] });
+      await engine.postHTML(MOCK_URL, POST_BODY);
+      expect(mockFetchEngineInstance.postHTML).not.toHaveBeenCalled();
+      expect(mockPlaywrightEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ headers: {} })
+      );
+    });
   });
 });

@@ -228,6 +228,15 @@ export interface FetchOptions {
 }
 
 /**
+ * Options for POST-based requests such as postHTML.
+ * Currently identical to FetchOptions.
+ */
+export interface PostOptions extends FetchOptions {
+  /** Explicit Content-Type for POST requests. */
+  contentType?: string;
+}
+
+/**
  * Options that can be passed per-request to engine.fetchContent().
  * Mimics standard fetch behavior with minimal processing.
  */

@@ -1,4 +1,4 @@
-import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, FetchEngineOptions } from "./types.js";
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, FetchEngineOptions, PostOptions } from "./types.js";
 import type { IEngine } from "./IEngine.js";
 import { FetchError } from "./errors.js";
 /**
@@ -41,6 +41,14 @@ export declare class FetchEngine implements IEngine {
      * @throws {Error} For network errors or other fetch failures.
      */
     fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
+    /**
+     * Performs a POST request expecting HTML in response.
+     *
+     * @param url The URL to send the POST request to.
+     * @param body The body to send.
+     * @param options Optional post options including headers and markdown.
+     */
+    postHTML(url: string, body: string | URLSearchParams | FormData, options?: PostOptions): Promise<HTMLFetchResult>;
     /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.

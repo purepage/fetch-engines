@@ -1,4 +1,4 @@
-import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, PlaywrightEngineConfig, FetchOptions } from "./types.js";
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics, PlaywrightEngineConfig, FetchOptions, PostOptions } from "./types.js";
 import type { IEngine } from "./IEngine.js";
 /**
  * PlaywrightEngine - Fetches HTML using a managed pool of headless Playwright browser instances.
@@ -125,6 +125,11 @@ export declare class PlaywrightEngine implements IEngine {
      * @throws {FetchError} If the fetch operation fails after all retries.
      */
     fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
+    /**
+     * Sends a POST request using the browser context and returns HTML content.
+     */
+    postHTML(url: string, body: string | URLSearchParams | FormData, options?: PostOptions): Promise<HTMLFetchResult>;
+    private postWithPlaywright;
     /**
      * Check cache for content fetch results.
      */

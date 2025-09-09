@@ -179,6 +179,79 @@ export class FetchEngine {
         }
     }
     /**
+     * Performs a POST request expecting HTML in response.
+     *
+     * @param url The URL to send the POST request to.
+     * @param body The body to send.
+     * @param options Optional post options including headers and markdown.
+     */
+    async postHTML(url, body, options = {}) {
+        const effectiveOptions = { ...this.options, ...options };
+        let response;
+        try {
+            const baseHeaders = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            };
+            const constructorHeaders = this.options.headers || {};
+            const callSpecificHeaders = options.headers || {};
+            const finalHeaders = {
+                ...baseHeaders,
+                ...constructorHeaders,
+                ...callSpecificHeaders,
+            };
+            if (!finalHeaders["Content-Type"] && body instanceof URLSearchParams) {
+                finalHeaders["Content-Type"] = "application/x-www-form-urlencoded";
+            }
+            response = await fetch(url, {
+                method: "POST",
+                redirect: "follow",
+                headers: finalHeaders,
+                body: body instanceof URLSearchParams ? body.toString() : body,
+            });
+            if (!response.ok) {
+                throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
+            }
+            const contentTypeHeader = response.headers.get("content-type");
+            if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
+                throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
+            }
+            const html = await response.text();
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : null;
+            let finalContent = html;
+            let finalContentType = "html";
+            if (effectiveOptions.markdown) {
+                try {
+                    const converter = new MarkdownConverter();
+                    finalContent = converter.convert(html);
+                    finalContentType = "markdown";
+                }
+                catch (conversionError) {
+                    console.error(`Markdown conversion failed for ${url} (FetchEngine POST):`, conversionError);
+                }
+            }
+            return {
+                content: finalContent,
+                contentType: finalContentType,
+                title: title,
+                url: response.url,
+                isFromCache: false,
+                statusCode: response.status,
+                error: undefined,
+            };
+        }
+        catch (error) {
+            if (error instanceof FetchEngineHttpError ||
+                (error instanceof FetchError && error.code === "ERR_NON_HTML_CONTENT")) {
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : "Unknown fetch error";
+            throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
+        }
+    }
+    /**
      * Cleans up resources used by the engine.
      * For FetchEngine, this is a no-op as it doesn't manage persistent resources.
      * @returns A Promise that resolves when cleanup is complete.
