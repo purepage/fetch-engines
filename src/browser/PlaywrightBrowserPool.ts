@@ -159,10 +159,11 @@ class ManagedBrowserInstance {
         } else {
           await route.continue();
         }
-      } catch (routeError: any) {
+      } catch (routeError: unknown) {
+        const message = routeError instanceof Error ? routeError.message : String(routeError);
         console.debug(
-          `Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${routeError?.message}. Request continued.`,
-          routeError
+          `Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${message}. Request continued.`,
+          routeError instanceof Error ? routeError : undefined
         );
         await route.continue();
       }
@@ -212,13 +213,14 @@ class ManagedBrowserInstance {
       });
 
       return page;
-    } catch (error: any) {
-      console.error(`Failed to create new page in instance ${this.id}: ${error.message}`, error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to create new page in instance ${this.id}: ${message}`, error);
       this.metrics.errors++;
       this.isHealthy = false;
       this.metrics.isHealthy = false;
       this.onDisconnect(this.id);
-      throw new Error(`Failed to create new page in instance ${this.id}: ${error.message}`);
+      throw new Error(`Failed to create new page in instance ${this.id}: ${message}`);
     }
   }
 
@@ -226,8 +228,9 @@ class ManagedBrowserInstance {
     if (this.pages.has(page) && !page.isClosed()) {
       try {
         await page.close();
-      } catch (error: any) {
-        console.warn(`Error closing page in instance ${this.id}: ${error.message}`, error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Error closing page in instance ${this.id}: ${message}`, error);
         this.metrics.errors++;
         // If page close fails, instance might still be usable, but flag it as potentially problematic
         // Consider if this should mark instance unhealthy immediately
@@ -262,13 +265,15 @@ class ManagedBrowserInstance {
       this.browser.off("disconnected", this.disconnectedHandler); // Important to remove listener
       try {
         await this.context.close();
-      } catch (error: any) {
-        console.warn(`Error closing context for instance ${this.id}: ${error.message}`, error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
       }
       try {
         await this.browser.close();
-      } catch (error: any) {
-        console.warn(`Error closing browser for instance ${this.id}: ${error.message}`, error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
       }
     }
   }
@@ -375,10 +380,11 @@ export class PlaywrightBrowserPool {
     }
     if (this.healthCheckInterval > 0) {
       this.healthCheckTimer = setTimeout(() => {
-        this.healthCheck().catch((err: any) => {
+        this.healthCheck().catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
           console.warn(
-            `Scheduled PlaywrightBrowserPool health check process encountered an error: ${err?.message}`,
-            err
+            `Scheduled PlaywrightBrowserPool health check process encountered an error: ${message}`,
+            err instanceof Error ? err : undefined
           );
         });
       }, this.healthCheckInterval);
@@ -390,7 +396,7 @@ export class PlaywrightBrowserPool {
     while (this.pool.size < this.maxBrowsers) {
       try {
         await this.createBrowserInstance();
-      } catch (error) {
+      } catch {
         break;
       }
     }
@@ -452,8 +458,9 @@ export class PlaywrightBrowserPool {
       if (!bestInstance && this.pool.size < this.maxBrowsers) {
         try {
           bestInstance = await this.createBrowserInstance();
-        } catch (error: any) {
-          console.error(`Failed to create new browser instance during page acquisition: ${error.message}`, error);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`Failed to create new browser instance during page acquisition: ${message}`, error);
           // Don't re-throw immediately, try checking existing pool members again in case one became available
         }
       }
@@ -480,14 +487,15 @@ export class PlaywrightBrowserPool {
         const page = await bestInstance.acquirePage();
         // page.on('close') and page.on('crash') are handled within ManagedBrowserInstance.acquirePage()
         return page;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If page acquisition from the chosen instance fails, that instance would have marked itself unhealthy
         // and called onDisconnect, which triggers the pool to re-evaluate. We should throw here.
+        const message = error instanceof Error ? error.message : String(error);
         console.error(
-          `Failed to acquire page from instance ${bestInstance.id} (it might have become unhealthy): ${error.message}`,
+          `Failed to acquire page from instance ${bestInstance.id} (it might have become unhealthy): ${message}`,
           error
         );
-        throw new Error(`Failed to acquire page from instance ${bestInstance.id}: ${error.message}`); // Re-throw to signal failure to the caller
+        throw new Error(`Failed to acquire page from instance ${bestInstance.id}: ${message}`); // Re-throw to signal failure to the caller
       }
     }) as Promise<Page>;
   }
@@ -522,8 +530,9 @@ export class PlaywrightBrowserPool {
 
     try {
       await this.ensureMinimumInstances(); // Ensure minimum instances after potential removals
-    } catch (error: any) {
-      console.error(`Error ensuring minimum instances during health check: ${error.message}`, error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error ensuring minimum instances during health check: ${message}`, error);
     }
     this.scheduleHealthCheck(); // Reschedule the next health check
   }
@@ -551,11 +560,12 @@ export class PlaywrightBrowserPool {
       try {
         // ManagedBrowserInstance.releasePage will handle closing the page and updating its own metrics.
         await ownerInstance.releasePage(page);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If releasePage in ManagedBrowserInstance itself throws (e.g., error during page.close()),
         // that method should handle marking the instance as unhealthy if necessary.
         // Log here for pool-level visibility.
-        console.warn(`Error while instance ${ownerInstance.id} was releasing page: ${error.message}`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Error while instance ${ownerInstance.id} was releasing page: ${message}`, error);
         // The instance's own error handling (e.g. in acquirePage or crash handler) should trigger onDisconnect
         // if the instance becomes critically unhealthy.
       }
@@ -563,8 +573,9 @@ export class PlaywrightBrowserPool {
       // Page not found in any managed instance, try to close it as a orphaned page.
       try {
         await page.close();
-      } catch (error: any) {
-        console.warn(`Error closing an orphaned page (not found in any pool instance): ${error.message}`, error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Error closing an orphaned page (not found in any pool instance): ${message}`, error);
       }
     }
   }

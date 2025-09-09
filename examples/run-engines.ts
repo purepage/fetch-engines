@@ -26,7 +26,7 @@ async function runEngine(
       console.log(`[${engineName}] SUCCESS: ${result.url} - Title: ${result.title}`);
       console.log(`[${engineName}] Content Type: ${result.contentType}`);
       console.log(`[${engineName}] Content (Markdown):\n${result.content.substring(0, 500)}...`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${engineName}] FAILED: ${url} - Full Error:`, error);
     }
   }
@@ -55,7 +55,7 @@ async function main() {
 }
 
 main()
-  .catch((err) => {
+  .catch((err: unknown) => {
     console.error("Unhandled error during example execution:", err);
     process.exit(1);
   })
