@@ -152,16 +152,15 @@ describe("Content Fetch Tests", () => {
     }, 15000); // Reduced timeout since we're using fewer retries
 
     it("should handle non-HTML content differently", async () => {
-      // fetchHTML might succeed for JSON due to Playwright fallback converting to markdown
-      // Let's test with a clearer non-HTML content type
+      // fetchHTML will return raw content for non-HTML types
       const contentResult = await hybridEngine.fetchContent("https://httpbin.org/json");
       expect(contentResult.content).toBeDefined();
       expect(contentResult.contentType).toContain("application/json");
 
-      // Test that fetchHTML returns different content format
+      // fetchHTML falls back and returns the same raw content
       const htmlResult = await hybridEngine.fetchHTML("https://httpbin.org/json");
-      expect(htmlResult.contentType).toBe("markdown"); // PlaywrightEngine converts to markdown
-      expect(htmlResult.content).not.toBe(contentResult.content); // Different processing
+      expect(htmlResult.contentType).toBe("html");
+      expect(htmlResult.content).toBe(contentResult.content); // Same processing
     });
   });
 
@@ -184,16 +183,15 @@ describe("Content Fetch Tests", () => {
     });
 
     it("should handle non-HTML content differently", async () => {
-      // fetchHTML might succeed for JSON due to Playwright fallback converting to markdown
-      // Let's test with a clearer non-HTML content type
+      // fetchHTML will return raw content for non-HTML types
       const contentResult = await hybridEngine.fetchContent("https://httpbin.org/json");
       expect(contentResult.content).toBeDefined();
       expect(contentResult.contentType).toContain("application/json");
 
-      // Test that fetchHTML returns different content format
+      // fetchHTML falls back and returns the same raw content
       const htmlResult = await hybridEngine.fetchHTML("https://httpbin.org/json");
-      expect(htmlResult.contentType).toBe("markdown"); // PlaywrightEngine converts to markdown
-      expect(htmlResult.content).not.toBe(contentResult.content); // Different processing
+      expect(htmlResult.contentType).toBe("html");
+      expect(htmlResult.content).toBe(contentResult.content); // Same processing
     });
   });
 });
