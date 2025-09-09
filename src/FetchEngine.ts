@@ -251,9 +251,7 @@ export class FetchEngine implements IEngine {
         ...callSpecificHeaders,
       };
 
-      if (options.contentType) {
-        finalHeaders["Content-Type"] = options.contentType;
-      } else if (body instanceof URLSearchParams) {
+      if (!finalHeaders["Content-Type"] && body instanceof URLSearchParams) {
         finalHeaders["Content-Type"] = "application/x-www-form-urlencoded";
       }
 

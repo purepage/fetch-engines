@@ -211,6 +211,12 @@ export interface FetchOptions {
     headers?: Record<string, string>;
 }
 /**
+ * Options for POST-based requests such as postHTML.
+ * Currently identical to FetchOptions.
+ */
+export interface PostOptions extends FetchOptions {
+}
+/**
  * Options that can be passed per-request to engine.fetchContent().
  * Mimics standard fetch behavior with minimal processing.
  */

@@ -141,6 +141,50 @@ export class HybridEngine {
         }
     }
     /**
+     * Sends a POST request expecting HTML in response.
+     * Attempts FetchEngine first then falls back to PlaywrightEngine.
+     */
+    async postHTML(url, body, options = {}) {
+        const constructorHeaders = this.config.headers || {};
+        const requestHeaders = options.headers || {};
+        const mergedHeadersForPlaywright = { ...constructorHeaders, ...requestHeaders };
+        const effectiveMarkdown = options.markdown ?? this.config.markdown ?? false;
+        // Check playwrightOnlyPatterns first
+        for (const pattern of this.playwrightOnlyPatterns) {
+            if (typeof pattern === "string" && url.includes(pattern)) {
+                console.warn(`HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly for POST.`);
+                return this.playwrightEngine.postHTML(url, body, {
+                    ...options,
+                    headers: mergedHeadersForPlaywright,
+                    markdown: effectiveMarkdown,
+                });
+            }
+            else if (pattern instanceof RegExp && pattern.test(url)) {
+                console.warn(`HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly for POST.`);
+                return this.playwrightEngine.postHTML(url, body, {
+                    ...options,
+                    headers: mergedHeadersForPlaywright,
+                    markdown: effectiveMarkdown,
+                });
+            }
+        }
+        try {
+            const fetchResult = await this.fetchEngine.postHTML(url, body, {
+                headers: requestHeaders,
+                markdown: effectiveMarkdown,
+            });
+            return fetchResult;
+        }
+        catch (fetchError) {
+            console.warn(`HybridEngine: FetchEngine POST failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
+            return this.playwrightEngine.postHTML(url, body, {
+                ...options,
+                headers: mergedHeadersForPlaywright,
+                markdown: effectiveMarkdown,
+            });
+        }
+    }
+    /**
      * Delegates getMetrics to the PlaywrightEngine.
      */
     getMetrics() {

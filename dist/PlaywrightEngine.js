@@ -720,10 +720,7 @@ export class PlaywrightEngine {
      */
     async postHTML(url, body, options = {}) {
         const headers = { ...this.config.headers, ...(options.headers || {}) };
-        if (options.contentType && !(body instanceof FormData)) {
-            headers["Content-Type"] = options.contentType;
-        }
-        else if (body instanceof URLSearchParams) {
+        if (!headers["Content-Type"] && body instanceof URLSearchParams) {
             headers["Content-Type"] = "application/x-www-form-urlencoded";
         }
         const convertToMarkdown = options.markdown !== undefined ? options.markdown : this.config.markdown;

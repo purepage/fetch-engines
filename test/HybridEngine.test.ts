@@ -213,5 +213,26 @@ describe("HybridEngine - Headers Propagation", () => {
       const passed = mockPlaywrightEngineInstance.postHTML.mock.calls[0][2];
       expect(passed.headers).toEqual({ A: "1", B: "2" });
     });
+
+    it("should use config markdown when option is undefined", async () => {
+      const engine = new HybridEngine({ markdown: true });
+      await engine.postHTML(MOCK_URL, POST_BODY);
+      expect(mockFetchEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ markdown: true })
+      );
+    });
+
+    it("should respect playwrightOnlyPatterns for postHTML", async () => {
+      const engine = new HybridEngine({ playwrightOnlyPatterns: [MOCK_URL] });
+      await engine.postHTML(MOCK_URL, POST_BODY);
+      expect(mockFetchEngineInstance.postHTML).not.toHaveBeenCalled();
+      expect(mockPlaywrightEngineInstance.postHTML).toHaveBeenCalledWith(
+        MOCK_URL,
+        POST_BODY,
+        expect.objectContaining({ headers: {} })
+      );
+    });
   });
 });

@@ -188,12 +188,35 @@ export class HybridEngine implements IEngine {
     const constructorHeaders = this.config.headers || {};
     const requestHeaders = options.headers || {};
     const mergedHeadersForPlaywright = { ...constructorHeaders, ...requestHeaders };
+    const effectiveMarkdown = options.markdown ?? this.config.markdown ?? false;
+
+    // Check playwrightOnlyPatterns first
+    for (const pattern of this.playwrightOnlyPatterns) {
+      if (typeof pattern === "string" && url.includes(pattern)) {
+        console.warn(
+          `HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly for POST.`
+        );
+        return this.playwrightEngine.postHTML(url, body, {
+          ...options,
+          headers: mergedHeadersForPlaywright,
+          markdown: effectiveMarkdown,
+        });
+      } else if (pattern instanceof RegExp && pattern.test(url)) {
+        console.warn(
+          `HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly for POST.`
+        );
+        return this.playwrightEngine.postHTML(url, body, {
+          ...options,
+          headers: mergedHeadersForPlaywright,
+          markdown: effectiveMarkdown,
+        });
+      }
+    }
 
     try {
       const fetchResult = await this.fetchEngine.postHTML(url, body, {
         headers: requestHeaders,
-        markdown: options.markdown,
-        contentType: options.contentType,
+        markdown: effectiveMarkdown,
       });
       return fetchResult;
     } catch (fetchError: any) {
@@ -203,6 +226,7 @@ export class HybridEngine implements IEngine {
       return this.playwrightEngine.postHTML(url, body, {
         ...options,
         headers: mergedHeadersForPlaywright,
+        markdown: effectiveMarkdown,
       });
     }
   }
