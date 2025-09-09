@@ -8,6 +8,7 @@ import type {
   PlaywrightEngineConfig,
   FetchOptions,
   BrowserMetrics,
+  PostOptions,
 } from "./types.js";
 
 /**
@@ -172,6 +173,37 @@ export class HybridEngine implements IEngine {
         );
         throw playwrightError; // Throw the Playwright error as it's the last one encountered
       }
+    }
+  }
+
+  /**
+   * Sends a POST request expecting HTML in response.
+   * Attempts FetchEngine first then falls back to PlaywrightEngine.
+   */
+  async postHTML(
+    url: string,
+    body: string | URLSearchParams | FormData,
+    options: PostOptions = {}
+  ): Promise<HTMLFetchResult> {
+    const constructorHeaders = this.config.headers || {};
+    const requestHeaders = options.headers || {};
+    const mergedHeadersForPlaywright = { ...constructorHeaders, ...requestHeaders };
+
+    try {
+      const fetchResult = await this.fetchEngine.postHTML(url, body, {
+        headers: requestHeaders,
+        markdown: options.markdown,
+        contentType: options.contentType,
+      });
+      return fetchResult;
+    } catch (fetchError: any) {
+      console.warn(
+        `HybridEngine: FetchEngine POST failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`
+      );
+      return this.playwrightEngine.postHTML(url, body, {
+        ...options,
+        headers: mergedHeadersForPlaywright,
+      });
     }
   }
 
