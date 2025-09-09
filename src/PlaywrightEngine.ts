@@ -150,7 +150,11 @@ export class PlaywrightEngine implements IEngine {
    * Fallback method using simple HTTP requests via Axios.
    * Ensures return type matches HTMLFetchResult.
    */
-  private async fetchHTMLWithHttpFallback(url: string, headers: Record<string, string> = {}): Promise<HTMLFetchResult> {
+  private async fetchHTMLWithHttpFallback(
+    url: string,
+    headers: Record<string, string> = {},
+    markdown: boolean = this.config.markdown
+  ): Promise<HTMLFetchResult> {
     try {
       const response = await axios.get(url, {
         headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
@@ -183,12 +187,16 @@ export class PlaywrightEngine implements IEngine {
       let finalContent = originalHtml;
       let finalContentType: "html" | "markdown" = "html";
 
-      // Apply markdown conversion here if the *engine config* option is set
-      // NOTE: This currently uses engine config, not per-request. Could be refined.
-      if (this.config.markdown) {
+      // Apply markdown conversion based on resolved option
+      if (markdown) {
         try {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(originalHtml);
+          // Inject source URL directly under the first H1 for traceability
+          finalContent = this._injectSourceUnderH1(
+            finalContent,
+            response.request?.res?.responseUrl || response.config.url || url
+          );
           finalContentType = "markdown";
         } catch (conversionError) {
           console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
@@ -239,7 +247,7 @@ export class PlaywrightEngine implements IEngine {
       // Try a simple operation that throws if the page is crashed/detached
       await page.evaluate("1 + 1", { timeout: EVALUATION_TIMEOUT_MS });
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -330,7 +338,7 @@ export class PlaywrightEngine implements IEngine {
     };
     // The type of fetchConfig will need to accommodate 'headers'.
     // ResolvedPlaywrightEngineConfig already has 'headers', so this should be fine if fetchConfig is typed as such.
-    return this._fetchRecursive(url, fetchConfig as any, 0); // Using 'as any' for now, will refine if needed
+    return this._fetchRecursive(url, fetchConfig as Parameters<typeof this._fetchRecursive>[1], 0);
   }
 
   /**
@@ -371,9 +379,10 @@ export class PlaywrightEngine implements IEngine {
           const converter = new MarkdownConverter();
           // Convert a copy, do not mutate the cached object directly
           const convertedContent = converter.convert(cachedResult.content);
+          const withSource = this._injectSourceUnderH1(convertedContent, url);
           return {
             ...cachedResult,
-            content: convertedContent,
+            content: withSource,
             contentType: "markdown",
           };
         } catch (e) {
@@ -417,11 +426,11 @@ export class PlaywrightEngine implements IEngine {
     }
 
     try {
-      const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers); // Pass headers
+      const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers, currentConfig.markdown);
       // If successful, cache it (addToCache handles TTL check)
       this.addToCache(url, httpResult);
       return httpResult;
-    } catch (httpError: any) {
+    } catch (httpError: unknown) {
       if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
         // Log or specific handling for challenge page if needed, then signal to proceed with Playwright
         console.warn(`HTTP fallback for ${url} resulted in a challenge page. Proceeding with Playwright.`);
@@ -429,7 +438,8 @@ export class PlaywrightEngine implements IEngine {
       } else {
         // For other HTTP fallback errors, log them but still allow proceeding to Playwright
         // as per original logic (empty catch block).
-        console.warn(`HTTP fallback for ${url} failed: ${httpError.message}. Proceeding with Playwright.`);
+        const message = httpError instanceof Error ? httpError.message : String(httpError);
+        console.warn(`HTTP fallback for ${url} failed: ${message}. Proceeding with Playwright.`);
         return null;
       }
     }
@@ -618,12 +628,13 @@ export class PlaywrightEngine implements IEngine {
     try {
       try {
         page = await pool.acquirePage();
-      } catch (acquireError: any) {
+      } catch (acquireError: unknown) {
         if (acquireError instanceof FetchError) throw acquireError;
+        const message = acquireError instanceof Error ? acquireError.message : String(acquireError);
         throw new FetchError(
-          `Playwright page acquisition failed: ${acquireError.message}`,
+          `Playwright page acquisition failed: ${message}`,
           "ERR_PLAYWRIGHT_OPERATION", // Specific code for acquisition failure
-          acquireError
+          acquireError instanceof Error ? acquireError : undefined
         );
       }
 
@@ -645,13 +656,14 @@ export class PlaywrightEngine implements IEngine {
       try {
         response = await page.goto(url, {
           waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
-          timeout: isSpaMode ? 90000 : 60000, // Longer timeout for SPA mode
+          timeout: isSpaMode ? 20000 : 12000, // Keep under typical test timeouts
         });
-      } catch (navigationError: any) {
+      } catch (navigationError: unknown) {
+        const message = navigationError instanceof Error ? navigationError.message : String(navigationError);
         throw new FetchError(
-          `Playwright navigation failed: ${navigationError.message}`,
+          `Playwright navigation failed: ${message}`,
           "ERR_NAVIGATION",
-          navigationError
+          navigationError instanceof Error ? navigationError : undefined
         );
       }
 
@@ -744,8 +756,9 @@ export class PlaywrightEngine implements IEngine {
           try {
             const converter = new MarkdownConverter();
             finalContent = converter.convert(html);
+            finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
             finalContentType = "markdown";
-          } catch (conversionError: any) {
+          } catch (conversionError: unknown) {
             console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
             // Fallback to original HTML on conversion error
             finalContent = html;
@@ -815,6 +828,15 @@ export class PlaywrightEngine implements IEngine {
         );
       }
     }
+  }
+
+  // Insert a "Source: <url>" line immediately below the first H1.
+  private _injectSourceUnderH1(markdown: string, sourceUrl: string): string {
+    if (!markdown || !sourceUrl) return markdown;
+    const head = markdown.split("\n").slice(0, 50).join("\n");
+    if (/^Source:\s+/m.test(head)) return markdown;
+    const safeUrl = sourceUrl.trim();
+    return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
   }
 
   /**
@@ -987,7 +1009,8 @@ export class PlaywrightEngine implements IEngine {
           }
         } catch (httpError) {
           // Log but don't throw - will try Playwright next
-          console.warn(`HTTP fallback failed for ${url}, trying Playwright:`, httpError);
+          const msg = httpError instanceof Error ? httpError.message : String(httpError);
+          console.warn(`HTTP fallback failed for ${url}: ${msg}. Trying Playwright.`);
         }
       }
 
@@ -1006,7 +1029,7 @@ export class PlaywrightEngine implements IEngine {
         currentConfig.fastMode,
         currentConfig.headers
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle retry logic
       if (retryAttempt < currentConfig.maxRetries) {
         console.warn(`Content fetch attempt ${retryAttempt + 1} failed for ${url}, retrying...`);
@@ -1071,9 +1094,14 @@ export class PlaywrightEngine implements IEngine {
         statusCode: response.status,
         error: undefined,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Let caller handle fallback to Playwright
-      throw new FetchError(`HTTP content fetch failed: ${error.message}`, "ERR_HTTP_FALLBACK", error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new FetchError(
+        `HTTP content fetch failed: ${message}`,
+        "ERR_HTTP_FALLBACK",
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -1103,7 +1131,7 @@ export class PlaywrightEngine implements IEngine {
       // Navigate to the page
       const response = await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 30000,
+        timeout: 10000,
       });
 
       if (!response) {

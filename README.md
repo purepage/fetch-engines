@@ -48,7 +48,7 @@ This package provides a high-level abstraction, letting you focus on using the w
 - **Playwright Stealth:** When `HybridEngine` utilizes its browser capabilities, it automatically integrates `playwright-extra` and stealth plugins to bypass common bot detection.
 - **Managed Browser Pooling:** Efficient resource management for `HybridEngine`'s browser mode with configurable browser/context limits and lifecycles.
 - **Smart Fallbacks:** `HybridEngine` uses `FetchEngine` first, falling back to its internal browser engine only when needed. The internal browser engine can also optionally use a fast HTTP fetch before launching a full browser.
-- **Content Conversion:** Optionally convert fetched HTML directly to Markdown.
+- **Content Conversion:** Optionally convert fetched HTML directly to Markdown, preserving `<table>` elements even without header rows.
 - **Standardized Errors:** Custom `FetchError` classes provide context on failures.
 - **TypeScript Ready:** Fully typed codebase for enhanced developer experience.
 
@@ -527,6 +527,18 @@ runExamples();
 ## Logging
 
 Currently, the library uses `console.warn` and `console.error` for internal warnings (like fallback events) and critical errors. More sophisticated logging options may be added in the future.
+
+## Testing
+
+To run the test suite locally:
+
+```bash
+pnpm install
+pnpm exec playwright install
+pnpm test
+```
+
+The `pnpm exec playwright install` step downloads the required browser binaries for Playwright.
 
 ## Contributing
 

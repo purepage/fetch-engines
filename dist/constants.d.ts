@@ -1,4 +1,4 @@
-export declare const DEFAULT_HTTP_TIMEOUT = 30000;
+export declare const DEFAULT_HTTP_TIMEOUT = 10000;
 export declare const SHORT_DELAY_MS = 100;
 export declare const EVALUATION_TIMEOUT_MS = 1000;
 export declare const COMMON_HEADERS: {

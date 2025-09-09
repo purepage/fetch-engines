@@ -4,7 +4,7 @@ import { parse, HTMLElement as NHPHTMLElement } from "node-html-parser";
 // --- Constants ---
 // Preprocessing - Selectors for removal (balanced approach)
 const PREPROCESSING_REMOVE_SELECTORS = [
-    "script:not([type='application/ld+json'])", // Keep JSON-LD
+    "script", // Remove all scripts, including JSON-LD
     "style",
     "noscript",
     "iframe:not([title])", // Keep iframes with titles (potential embeds)
@@ -71,12 +71,15 @@ export class MarkdownConverter {
             emDelimiter: "*",
             hr: "---",
             // Use nodeType check instead of window.HTMLElement
+            // Important: Do NOT blanket-preserve <table> elements here — let the GFM plugin
+            // convert them to Markdown. Only preserve explicitly marked layout/preserved elements.
             keepReplacement: ((_content, node) => {
                 // Node.ELEMENT_NODE is 1
                 if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
                     const htmlElement = node;
-                    if (htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
-                        htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS)) {
+                    const role = htmlElement.getAttribute("role");
+                    const preserve = htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS);
+                    if (role === TURNDOWN_PRESENTATION_ROLE || preserve) {
                         return htmlElement.outerHTML;
                     }
                 }
@@ -430,8 +433,22 @@ export class MarkdownConverter {
                     console.warn(`Skipping invalid selector during preprocessing: ${selector}`, e);
                 }
             });
+            // Remove breadcrumb UI blocks explicitly (often low link density)
+            this.removeBreadcrumbs(rootElement);
             this.removeHighLinkDensityElements(rootElement, DEFAULT_LINK_DENSITY_THRESHOLD);
-            const metadata = this.extractDocumentMetadata(rootElement);
+            // Normalize simple data tables so GFM can convert them (e.g., first row headers using <td>)
+            this.normalizeTablesForMarkdown(rootElement);
+            // Capture best title BEFORE removing head
+            const bestTitle = rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ||
+                rootElement.querySelector("meta[name='twitter:title']")?.getAttribute("content") ||
+                rootElement.querySelector("meta[name='DC.title']")?.getAttribute("content") ||
+                rootElement.querySelector("title")?.textContent ||
+                "";
+            // Drop <head> from the DOM so we don't leak <title> etc. into content
+            try {
+                rootElement.querySelector("head")?.remove();
+            }
+            catch { }
             const isForum = this.detectForumPage(rootElement);
             let contentElement = rootElement;
             if (isForum) {
@@ -445,19 +462,260 @@ export class MarkdownConverter {
                     const message = e instanceof Error ? e.message : String(e);
                     console.error(`MarkdownConverter: Error during main content extraction, falling back to full body: ${message}`, e instanceof Error ? e : undefined);
                     // Fallback to the original root (full body) if extraction fails
-                    contentElement = rootElement;
+                    const body = rootElement.querySelector("body");
+                    contentElement = body || rootElement;
                 }
             }
+            // Ensure we don't include <head> if extraction returned <html>
+            if (contentElement instanceof NHPHTMLElement && contentElement.tagName === "HTML") {
+                const body = rootElement.querySelector("body");
+                if (body)
+                    contentElement = body;
+            }
+            // Ensure main page title is rendered as H1 in content
+            this.ensurePrimaryHeading(rootElement, contentElement, bestTitle);
             let contentHtml = contentElement instanceof NHPHTMLElement ? contentElement.outerHTML : contentElement.textContent;
             contentHtml = this.cleanupContentHtml(contentHtml || "");
-            const metadataString = metadata.length > 0 ? metadata.join("\n\n") + "\n\n---\n\n" : "";
-            return metadataString + contentHtml;
+            return contentHtml;
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`HTML preprocessing failed: ${message}`, error instanceof Error ? error : undefined);
             return this.cleanupHtml(html); // Return original (but cleaned) HTML on failure
         }
+    }
+    /**
+     * Ensures simple data tables are convertible to GFM by promoting the first row to headers
+     * when no <th> exists. Skips layout tables marked with role="presentation".
+     */
+    normalizeTablesForMarkdown(root) {
+        const tables = root.querySelectorAll("table");
+        for (const table of tables) {
+            if (!(table instanceof NHPHTMLElement))
+                continue;
+            const role = table.getAttribute("role");
+            if (role && role.toLowerCase() === "presentation")
+                continue; // skip layout tables
+            // Lossy-flatten complex tables to be GFM-compatible (best-effort). If flattening
+            // fails (unexpected markup), fall back to preserving the original.
+            const hasSpans = table.querySelector("[colspan], [rowspan]") !== null;
+            if (hasSpans) {
+                const ok = this.flattenTableToSimpleGfm(table);
+                if (!ok) {
+                    const existing = table.getAttribute("class");
+                    const newClass = existing ? `${existing} ${TURNDOWN_PRESERVE_CLASS}` : TURNDOWN_PRESERVE_CLASS;
+                    table.setAttribute("class", newClass);
+                }
+                continue;
+            }
+            // If table already has headers, leave as-is
+            if (table.querySelector("th"))
+                continue;
+            const firstRow = table.querySelector("tr");
+            if (!firstRow || !(firstRow instanceof NHPHTMLElement))
+                continue;
+            // Promote all cells in the first row to header cells
+            const cells = firstRow.querySelectorAll("td");
+            if (!cells || cells.length === 0)
+                continue;
+            for (const cell of cells) {
+                if (cell instanceof NHPHTMLElement && cell.tagName === "TD") {
+                    // Switch tag to TH so GFM plugin recognizes header row
+                    // node-html-parser allows mutating tagName directly
+                    cell.tagName = "TH";
+                }
+            }
+        }
+    }
+    // Remove common breadcrumb containers explicitly, regardless of link density
+    removeBreadcrumbs(root) {
+        const selectors = [
+            "nav[aria-label='breadcrumb']",
+            "nav[aria-label='Breadcrumb']",
+            "[aria-label='breadcrumbs']",
+            "[aria-label='Breadcrumbs']",
+            "nav.breadcrumb",
+            "nav.breadcrumbs",
+            "ol.breadcrumb",
+            "ul.breadcrumb",
+            ".breadcrumb",
+            ".breadcrumbs",
+            "[itemtype*='Breadcrumb']",
+            "[itemtype*='breadcrumb']",
+            "[typeof*='BreadcrumbList']",
+        ];
+        for (const sel of selectors) {
+            try {
+                root.querySelectorAll(sel).forEach((el) => {
+                    // Remove the element; if it's inside a <nav>, remove the nav container
+                    const nav = el.closest && el.closest("nav");
+                    (nav || el).remove();
+                });
+            }
+            catch (e) {
+                // Ignore selector errors
+            }
+        }
+    }
+    // Render metadata items to HTML so Turndown can convert cleanly to Markdown
+    // (metadata rendering removed – we no longer inject metadata into output)
+    // Promote or inject a primary H1 heading using best available title.
+    ensurePrimaryHeading(root, content, providedTitle) {
+        if (!(content instanceof NHPHTMLElement))
+            return;
+        // Determine best title from metadata sources
+        const bestTitle = providedTitle ||
+            root.querySelector("meta[property='og:title']")?.getAttribute("content") ||
+            root.querySelector("meta[name='twitter:title']")?.getAttribute("content") ||
+            root.querySelector("meta[name='DC.title']")?.getAttribute("content") ||
+            root.querySelector("title")?.textContent ||
+            "";
+        // Find existing headings in content
+        const firstH1 = content.querySelector("h1");
+        const firstHeading = content.querySelector("h1, h2, h3, h4, h5, h6");
+        const normalize = (s) => (s || "").trim().replace(/\s+/g, " ");
+        const titleNorm = normalize(bestTitle);
+        const h1Text = normalize(firstH1?.textContent || "");
+        if (firstH1) {
+            // If document title is longer and contains the existing H1, replace H1 with the document title
+            if (titleNorm &&
+                titleNorm.length > h1Text.length &&
+                (titleNorm.includes(h1Text) || h1Text.includes(titleNorm.split("|")[0].trim()))) {
+                firstH1.set_content(bestTitle);
+            }
+            return;
+        }
+        // No H1 present: prefer document title if available
+        if (titleNorm) {
+            const h1 = parse(`<h1>${bestTitle}</h1>`).firstChild;
+            content.prepend(h1);
+            return;
+        }
+        // Otherwise, promote the first heading to H1
+        if (firstHeading) {
+            firstHeading.tagName = "H1";
+        }
+    }
+    // Attempt to flatten a table with colspans/rowspans into a simple table
+    // with no spans so GFM can convert it. Returns true on success.
+    flattenTableToSimpleGfm(table) {
+        try {
+            const rows = table.querySelectorAll("tr");
+            if (!rows || rows.length === 0)
+                return false;
+            let spanMap = {};
+            const grid = [];
+            let maxCols = 0;
+            for (const tr of rows) {
+                if (!(tr instanceof NHPHTMLElement))
+                    continue;
+                // Pre-fill from active rowspans
+                const nextSpanMap = {};
+                const currentRow = [];
+                // Place carried-over cells first
+                const spanCols = Object.keys(spanMap)
+                    .map((k) => Number(k))
+                    .sort((a, b) => a - b);
+                for (const colIdx of spanCols) {
+                    const sc = spanMap[colIdx];
+                    currentRow[colIdx] = sc.content;
+                    if (sc.remaining - 1 > 0) {
+                        nextSpanMap[colIdx] = { content: sc.content, remaining: sc.remaining - 1 };
+                    }
+                }
+                // Place actual cells of the row, respecting existing occupied columns
+                const cells = tr.querySelectorAll("th, td");
+                let insertCol = 0;
+                for (const cell of cells) {
+                    if (!(cell instanceof NHPHTMLElement))
+                        continue;
+                    // Find next free column
+                    while (currentRow[insertCol] !== undefined)
+                        insertCol++;
+                    const colSpan = Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
+                    const rowSpan = Math.max(1, parseInt(cell.getAttribute("rowspan") || "1", 10) || 1);
+                    const content = this.sanitizeCellContentForTable(cell.innerHTML || "");
+                    for (let i = 0; i < colSpan; i++) {
+                        const col = insertCol + i;
+                        currentRow[col] = content;
+                        if (rowSpan > 1) {
+                            const existing = nextSpanMap[col];
+                            nextSpanMap[col] = { content, remaining: Math.max(existing?.remaining || 0, rowSpan - 1) };
+                        }
+                    }
+                    insertCol += colSpan;
+                }
+                // Normalize row
+                const length = currentRow.length;
+                maxCols = Math.max(maxCols, length);
+                grid.push(currentRow);
+                spanMap = nextSpanMap;
+            }
+            // Drop leading fully-empty rows (often style-only)
+            while (grid.length && grid[0].every((c) => !c || !c.trim())) {
+                grid.shift();
+            }
+            // Ensure all rows have equal length
+            for (const row of grid) {
+                for (let i = 0; i < maxCols; i++) {
+                    if (row[i] === undefined)
+                        row[i] = "";
+                }
+            }
+            // Pick a header row: first non-empty row (after dropping empties)
+            const headerRowIndex = 0;
+            // Build a simple table HTML without spans
+            let html = "<table><tbody>";
+            for (let r = 0; r < grid.length; r++) {
+                const row = grid[r];
+                html += "<tr>";
+                for (const cellContent of row) {
+                    if (r === headerRowIndex) {
+                        html += `<th>${cellContent}</th>`;
+                    }
+                    else {
+                        html += `<td>${cellContent}</td>`;
+                    }
+                }
+                html += "</tr>";
+            }
+            html += "</tbody></table>";
+            // Replace original table with the flattened one
+            const replacementRoot = parse(html);
+            const newTable = replacementRoot.querySelector("table");
+            if (!newTable)
+                return false;
+            table.replaceWith(newTable);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    // Reduce blocky/complex markup inside table cells to inline-friendly HTML so Turndown
+    // does not break the table structure. Joins list items with " | ", removes outer divs,
+    // flattens paragraphs and <br> to spaces, and trims whitespace.
+    sanitizeCellContentForTable(content) {
+        if (!content)
+            return "";
+        let c = content;
+        // Normalize lists: turn <li> items into inline separated values
+        c = c.replace(/<li[^>]*>/gi, "").replace(/<\/li>/gi, " • ");
+        c = c.replace(/<\/(ul|ol)>/gi, "").replace(/<(ul|ol)[^>]*>/gi, "");
+        // Remove outer div/span wrappers but keep inner content
+        c = c.replace(/<div[^>]*>/gi, "").replace(/<\/div>/gi, " ");
+        c = c.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
+        // Flatten paragraphs and line breaks
+        c = c.replace(/<p[^>]*>/gi, "").replace(/<\/p>/gi, " ");
+        c = c.replace(/<br\s*\/?>(\s*)/gi, " ");
+        // Normalize bullet separators spacing
+        c = c.replace(/\s*•\s*/g, " • ");
+        c = c.replace(/(\s*•\s*)+$/g, "");
+        // Avoid Markdown table column separators inside cells
+        c = c.replace(/\|/g, " • ");
+        // Collapse multiple whitespace and trim
+        c = c.replace(/\s+/g, " ").trim();
+        return c;
     }
     cleanupHtml(html) {
         // Remove specific non-standard characters/patterns observed in the wild
@@ -536,78 +794,97 @@ export class MarkdownConverter {
             }
         }
     }
-    extractDocumentMetadata(root) {
-        const metadata = [];
-        const addedMeta = new Set(); // Track added keys to avoid duplicates
-        // Helper to add metadata if value exists and key hasn't been added
-        const addMeta = (key, value, isTitle = false) => {
-            const cleanedValue = value?.trim();
-            if (cleanedValue && !addedMeta.has(key.toLowerCase())) {
-                if (isTitle) {
-                    metadata.unshift(`# ${cleanedValue}`); // Main title as H1 at the beginning
-                }
-                else {
-                    metadata.push(`**${key}:** ${cleanedValue}`);
-                }
-                addedMeta.add(key.toLowerCase());
-            }
-        };
-        // 1. Title (Prioritize specific ones, fallback to <title>)
-        addMeta("Title", root.querySelector("meta[property='og:title']")?.getAttribute("content"), true);
-        addMeta("Title", root.querySelector("meta[name='twitter:title']")?.getAttribute("content"), true);
-        addMeta("Title", root.querySelector("meta[name='DC.title']")?.getAttribute("content"), true);
-        addMeta("Title", root.querySelector("title")?.textContent, true);
-        // 2. Description
-        addMeta("Description", root.querySelector("meta[property='og:description']")?.getAttribute("content"));
-        addMeta("Description", root.querySelector("meta[name='twitter:description']")?.getAttribute("content"));
-        addMeta("Description", root.querySelector("meta[name='description']")?.getAttribute("content"));
-        addMeta("Description", root.querySelector("meta[name='DC.description']")?.getAttribute("content"));
-        // 3. Author
-        addMeta("Author", root.querySelector("meta[name='author']")?.getAttribute("content"));
-        addMeta("Author", root.querySelector("meta[property='article:author']")?.getAttribute("content"));
-        addMeta("Author", root.querySelector("[rel='author']")?.textContent);
-        // 4. Publication Date
-        addMeta("Published", root.querySelector("meta[property='article:published_time']")?.getAttribute("content"));
-        addMeta("Published", root.querySelector("meta[name='publish-date']")?.getAttribute("content"));
-        addMeta("Published", root.querySelector("time[itemprop='datePublished']")?.getAttribute("datetime"));
-        addMeta("Published", root.querySelector("time")?.getAttribute("datetime")); // Generic time tag
-        // 5. Canonical URL
-        addMeta("URL", root.querySelector("link[rel='canonical']")?.getAttribute("href"));
-        addMeta("URL", root.querySelector("meta[property='og:url']")?.getAttribute("content"));
-        // 6. Extract JSON-LD
-        const jsonLdScripts = root.querySelectorAll("script[type='application/ld+json']");
-        if (jsonLdScripts.length > 0) {
-            const jsonLdData = Array.from(jsonLdScripts)
-                .map((script) => {
-                try {
-                    // Ensure script content exists before parsing
-                    const textContent = script.textContent;
-                    return textContent ? JSON.parse(textContent) : null;
-                }
-                catch (e) {
-                    const message = e instanceof Error ? e.message : String(e);
-                    console.warn(`Failed to parse JSON-LD content: ${message}`, e instanceof Error ? e : undefined);
-                    return null;
-                }
-            })
-                .filter((item) => item !== null); // Type guard for filter
-            if (jsonLdData.length > 0 && !addedMeta.has("json-ld")) {
-                // Use details/summary for collapsibility
-                metadata.push("<details><summary>JSON-LD Metadata</summary>\n");
-                metadata.push("```json", JSON.stringify(jsonLdData, null, 2), "```");
-                metadata.push("</details>");
-                addedMeta.add("json-ld");
-                // Add other relevant fields like 'author', 'datePublished', etc.
-                jsonLdData.forEach((jsonData) => {
-                    if (typeof jsonData === "object" && jsonData !== null) {
-                        // jsonData is already type 'object' here
-                        addMeta("Organization", jsonData.publisher?.name);
-                    }
-                });
-            }
+    /*
+    private extractDocumentMetadata(root: NHPHTMLElement): string[] {
+      const metadata: string[] = [];
+      const addedMeta: Set<string> = new Set(); // Track added keys to avoid duplicates
+  
+      // Helper to add metadata if value exists and key hasn't been added
+      const addMeta = (key: string, value: string | null | undefined, isTitle = false) => {
+        const cleanedValue = value?.trim();
+        if (cleanedValue && !addedMeta.has(key.toLowerCase())) {
+          // Skip injecting title as Markdown to avoid duplicating content H1
+          if (!isTitle) {
+            metadata.push(`${key}: ${cleanedValue}`);
+          }
+          addedMeta.add(key.toLowerCase());
         }
-        return metadata;
+      };
+  
+      // 1. Title (Prioritize specific ones, fallback to <title>)
+      addMeta("Title", root.querySelector("meta[property='og:title']")?.getAttribute("content"), true);
+      addMeta("Title", root.querySelector("meta[name='twitter:title']")?.getAttribute("content"), true);
+      addMeta("Title", root.querySelector("meta[name='DC.title']")?.getAttribute("content"), true);
+      addMeta("Title", root.querySelector("title")?.textContent, true);
+  
+      // 2. Description
+      addMeta("Description", root.querySelector("meta[property='og:description']")?.getAttribute("content"));
+      addMeta("Description", root.querySelector("meta[name='twitter:description']")?.getAttribute("content"));
+      addMeta("Description", root.querySelector("meta[name='description']")?.getAttribute("content"));
+      addMeta("Description", root.querySelector("meta[name='DC.description']")?.getAttribute("content"));
+  
+      // 3. Author
+      addMeta("Author", root.querySelector("meta[name='author']")?.getAttribute("content"));
+      addMeta("Author", root.querySelector("meta[property='article:author']")?.getAttribute("content"));
+      addMeta("Author", root.querySelector("[rel='author']")?.textContent);
+  
+      // 4. Publication Date
+      addMeta("Published", root.querySelector("meta[property='article:published_time']")?.getAttribute("content"));
+      addMeta("Published", root.querySelector("meta[name='publish-date']")?.getAttribute("content"));
+      addMeta("Published", root.querySelector("time[itemprop='datePublished']")?.getAttribute("datetime"));
+      addMeta("Published", root.querySelector("time")?.getAttribute("datetime")); // Generic time tag
+  
+      // 5. Canonical URL
+      addMeta("URL", root.querySelector("link[rel='canonical']")?.getAttribute("href"));
+      addMeta("URL", root.querySelector("meta[property='og:url']")?.getAttribute("content"));
+  
+      // 6. Extract JSON-LD
+      const jsonLdScripts = root.querySelectorAll("script[type='application/ld+json']");
+      if (jsonLdScripts.length > 0) {
+        const jsonLdData = Array.from(jsonLdScripts)
+          .map((script) => {
+            try {
+              // Ensure script content exists before parsing
+              const textContent = script.textContent;
+              return textContent ? JSON.parse(textContent) : null;
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              console.warn(`Failed to parse JSON-LD content: ${message}`, e instanceof Error ? e : undefined);
+              return null;
+            }
+          })
+          .filter((item): item is object => item !== null); // Type guard for filter
+  
+        if (jsonLdData.length > 0 && !addedMeta.has("json-ld")) {
+          // Keep JSON-LD as a single block; will be injected as HTML later
+          metadata.push(`<details><summary>JSON-LD Metadata</summary>\n<pre><code class="language-json">${
+            JSON.stringify(jsonLdData, null, 2)
+          }</code></pre>\n</details>`);
+          addedMeta.add("json-ld");
+  
+          // Add other relevant fields like 'author', 'datePublished', etc.
+          jsonLdData.forEach((jsonData) => {
+            if (typeof jsonData === "object" && jsonData !== null) {
+              // Safely extract publisher name from JSON-LD object
+              const publisher = (jsonData as Record<string, unknown>).publisher as unknown;
+              let orgName: string | undefined;
+              if (publisher && typeof publisher === "object") {
+                const name = (publisher as Record<string, unknown>).name;
+                if (typeof name === "string") {
+                  orgName = name;
+                }
+              } else if (typeof publisher === "string") {
+                orgName = publisher; // Some JSON-LD use a string for publisher
+              }
+              addMeta("Organization", orgName);
+            }
+          });
+        }
+      }
+  
+      return metadata;
     }
+    */
     detectForumPage(root) {
         // Count indicators across different selector groups
         const countMatches = (selectors) => {

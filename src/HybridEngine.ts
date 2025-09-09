@@ -1,4 +1,4 @@
-import { FetchEngine } from "./FetchEngine.js";
+import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
 import type {
@@ -113,16 +113,21 @@ export class HybridEngine implements IEngine {
       }
       // If not spaMode, or if spaMode but content is not a shell, return FetchEngine's result
       return fetchResult;
-    } catch (fetchError: any) {
-      console.warn(
-        `HybridEngine: FetchEngine failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`
-      );
+    } catch (fetchError: unknown) {
+      // If FetchEngine returned a 404, do not attempt Playwright fallback
+      if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+        console.warn(`HybridEngine: FetchEngine returned 404 for ${url}. Not falling back.`);
+        throw fetchError;
+      }
+      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      console.warn(`HybridEngine: FetchEngine failed for ${url}: ${message}. Falling back to PlaywrightEngine.`);
       try {
         // Fallback to PlaywrightEngine, passing the determined effective options
         const playwrightResult = await this.playwrightEngine.fetchHTML(url, playwrightOptions);
         return playwrightResult;
-      } catch (playwrightError: any) {
-        console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${playwrightError.message}`);
+      } catch (playwrightError: unknown) {
+        const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
+        console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${pwMessage}`);
         throw playwrightError; // Throw the Playwright error as it's the last one encountered
       }
     }
@@ -158,18 +163,23 @@ export class HybridEngine implements IEngine {
       // Try FetchEngine first
       const fetchResult = await this.fetchEngine.fetchContent(url, options);
       return fetchResult;
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
+      // If FetchEngine returned a 404, do not attempt Playwright fallback
+      if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
+        console.warn(`HybridEngine: FetchEngine returned 404 for content fetch ${url}. Not falling back.`);
+        throw fetchError;
+      }
+      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
       console.warn(
-        `HybridEngine: FetchEngine failed for content fetch ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`
+        `HybridEngine: FetchEngine failed for content fetch ${url}: ${message}. Falling back to PlaywrightEngine.`
       );
       try {
         // Fallback to PlaywrightEngine
         const playwrightResult = await this.playwrightEngine.fetchContent(url, options);
         return playwrightResult;
-      } catch (playwrightError: any) {
-        console.error(
-          `HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${playwrightError.message}`
-        );
+      } catch (playwrightError: unknown) {
+        const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
+        console.error(`HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${pwMessage}`);
         throw playwrightError; // Throw the Playwright error as it's the last one encountered
       }
     }

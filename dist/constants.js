@@ -1,4 +1,5 @@
-export const DEFAULT_HTTP_TIMEOUT = 30000;
+// Keep HTTP fallback snappy to avoid test timeouts and long waits
+export const DEFAULT_HTTP_TIMEOUT = 10000;
 export const SHORT_DELAY_MS = 100;
 export const EVALUATION_TIMEOUT_MS = 1000;
 export const COMMON_HEADERS = {

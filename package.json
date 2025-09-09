@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.5.0",
+  "version": "0.5.1-rc.0",
   "type": "module",
   "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
   "main": "dist/index.js",
@@ -16,7 +16,10 @@
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\" \"*.{js,cjs,json,md}\"",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run",
-    "prepare": "husky"
+    "test:unit": "vitest run",
+    "test:live": "LIVE_NETWORK=1 vitest run test/live/*.test.ts",
+    "prepare": "husky",
+    "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs"
   },
   "dependencies": {
     "axios": "^1.6.8",
