@@ -100,6 +100,7 @@ export class MarkdownConverter {
         if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
           const htmlElement = node as TurndownHTMLElement;
           if (
+            htmlElement.tagName === "TABLE" ||
             htmlElement.getAttribute("role") === TURNDOWN_PRESENTATION_ROLE ||
             htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS)
           ) {
