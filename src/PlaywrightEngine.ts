@@ -926,7 +926,14 @@ export class PlaywrightEngine implements IEngine {
     options: PostOptions = {}
   ): Promise<HTMLFetchResult> {
     const headers = { ...this.config.headers, ...(options.headers || {}) };
-    if (!headers["Content-Type"] && body instanceof URLSearchParams) {
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+    const isURLSearchParams = typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
+
+    if (isFormData && headers["Content-Type"]) {
+      delete headers["Content-Type"];
+    } else if (options.contentType) {
+      headers["Content-Type"] = options.contentType;
+    } else if (!headers["Content-Type"] && isURLSearchParams) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
 
@@ -956,11 +963,11 @@ export class PlaywrightEngine implements IEngine {
       const requestOptions: Record<string, any> = { headers };
 
       if (isFormData) {
-        const formObj: Record<string, string> = {};
+        const multipart: Record<string, any> = {};
         for (const [k, v] of (body as any).entries()) {
-          formObj[k as string] = v as string;
+          multipart[k as string] = v;
         }
-        requestOptions.form = formObj;
+        requestOptions.multipart = multipart;
       } else if (isURLSearchParams) {
         requestOptions.data = body.toString();
       } else {
@@ -972,18 +979,16 @@ export class PlaywrightEngine implements IEngine {
       const text = await response.text();
 
       if (status >= 400) {
-        throw new FetchError(
-          `HTTP error! status: ${status}`,
-          "ERR_HTTP_ERROR",
-          undefined,
-          status
-        );
+        throw new FetchError(`HTTP error! status: ${status}`, "ERR_HTTP_ERROR", undefined, status);
       }
+
+      const responseHeaders = response.headers();
+      const contentTypeHeader = (responseHeaders["content-type"] || "").toLowerCase();
 
       let finalContent = text;
       let finalContentType: "html" | "markdown" = "html";
 
-      if (convertToMarkdown) {
+      if (convertToMarkdown && contentTypeHeader.includes("html")) {
         try {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(text);
@@ -993,7 +998,7 @@ export class PlaywrightEngine implements IEngine {
         }
       }
 
-      const titleMatch = text.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const titleMatch = contentTypeHeader.includes("html") ? text.match(/<title[^>]*>([^<]+)<\/title>/i) : null;
       const title = titleMatch ? titleMatch[1].trim() : null;
 
       return {
