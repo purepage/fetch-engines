@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MarkdownConverter } from "../src/utils/markdown-converter";
+import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
   it("retains tables without explicit header rows", () => {
