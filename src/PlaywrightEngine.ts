@@ -5,6 +5,7 @@ import type {
   BrowserMetrics,
   PlaywrightEngineConfig,
   FetchOptions,
+  PostOptions,
 } from "./types.js";
 import type { IEngine } from "./IEngine.js";
 import { PlaywrightBrowserPool } from "./browser/PlaywrightBrowserPool.js";
@@ -914,6 +915,103 @@ export class PlaywrightEngine implements IEngine {
     }
 
     return result;
+  }
+
+  /**
+   * Sends a POST request using the browser context and returns HTML content.
+   */
+  async postHTML(
+    url: string,
+    body: string | URLSearchParams | FormData,
+    options: PostOptions = {}
+  ): Promise<HTMLFetchResult> {
+    const headers = { ...this.config.headers, ...(options.headers || {}) };
+    if (options.contentType && !(body instanceof FormData)) {
+      headers["Content-Type"] = options.contentType;
+    } else if (body instanceof URLSearchParams) {
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
+    }
+
+    const convertToMarkdown = options.markdown !== undefined ? options.markdown : this.config.markdown;
+
+    await this._ensureBrowserPoolInitialized(this.config.useHeadedMode, { retryDelay: this.config.retryDelay });
+
+    return (await this.queue.add(() =>
+      this.postWithPlaywright(url, body, headers, convertToMarkdown)
+    )) as HTMLFetchResult;
+  }
+
+  private async postWithPlaywright(
+    url: string,
+    body: string | URLSearchParams | FormData,
+    headers: Record<string, string>,
+    convertToMarkdown: boolean
+  ): Promise<HTMLFetchResult> {
+    const pool = this.browserPool!;
+    let page: Page | null = null;
+    try {
+      page = await pool.acquirePage();
+
+      const context = page.context();
+      const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+      const isURLSearchParams = typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
+      const requestOptions: Record<string, any> = { headers };
+
+      if (isFormData) {
+        const formObj: Record<string, string> = {};
+        for (const [k, v] of (body as any).entries()) {
+          formObj[k as string] = v as string;
+        }
+        requestOptions.form = formObj;
+      } else if (isURLSearchParams) {
+        requestOptions.data = body.toString();
+      } else {
+        requestOptions.data = body;
+      }
+
+      const response = await context.request.post(url, requestOptions);
+      const status = response.status();
+      const text = await response.text();
+
+      if (status >= 400) {
+        throw new FetchError(
+          `HTTP error! status: ${status}`,
+          "ERR_HTTP_ERROR",
+          undefined,
+          status
+        );
+      }
+
+      let finalContent = text;
+      let finalContentType: "html" | "markdown" = "html";
+
+      if (convertToMarkdown) {
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(text);
+          finalContentType = "markdown";
+        } catch (conversionError: any) {
+          console.error(`Markdown conversion failed for ${url} (Playwright POST):`, conversionError);
+        }
+      }
+
+      const titleMatch = text.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : null;
+
+      return {
+        content: finalContent,
+        contentType: finalContentType,
+        title,
+        url,
+        isFromCache: false,
+        statusCode: status,
+        error: undefined,
+      };
+    } finally {
+      if (page) {
+        await pool.releasePage(page);
+      }
+    }
   }
 
   /**

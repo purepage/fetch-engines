@@ -4,6 +4,7 @@ import type {
   ContentFetchOptions,
   BrowserMetrics,
   FetchEngineOptions,
+  PostOptions,
 } from "./types.js"; // Added .js extension
 import type { IEngine } from "./IEngine.js"; // Added .js extension
 
@@ -216,6 +217,97 @@ export class FetchEngine implements IEngine {
         "ERR_FETCH_FAILED",
         error instanceof Error ? error : undefined
       );
+    }
+  }
+
+  /**
+   * Performs a POST request expecting HTML in response.
+   *
+   * @param url The URL to send the POST request to.
+   * @param body The body to send.
+   * @param options Optional post options including headers and markdown.
+   */
+  async postHTML(
+    url: string,
+    body: string | URLSearchParams | FormData,
+    options: PostOptions = {}
+  ): Promise<HTMLFetchResult> {
+    const effectiveOptions = { ...this.options, ...options };
+    let response: Response;
+    try {
+      const baseHeaders = {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      };
+
+      const constructorHeaders = this.options.headers || {};
+      const callSpecificHeaders = options.headers || {};
+
+      const finalHeaders: Record<string, string> = {
+        ...baseHeaders,
+        ...constructorHeaders,
+        ...callSpecificHeaders,
+      };
+
+      if (options.contentType) {
+        finalHeaders["Content-Type"] = options.contentType;
+      } else if (body instanceof URLSearchParams) {
+        finalHeaders["Content-Type"] = "application/x-www-form-urlencoded";
+      }
+
+      response = await fetch(url, {
+        method: "POST",
+        redirect: "follow",
+        headers: finalHeaders,
+        body: body instanceof URLSearchParams ? body.toString() : body,
+      });
+
+      if (!response.ok) {
+        throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
+      }
+
+      const contentTypeHeader = response.headers.get("content-type");
+      if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
+        throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
+      }
+
+      const html = await response.text();
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : null;
+
+      let finalContent = html;
+      let finalContentType: "html" | "markdown" = "html";
+
+      if (effectiveOptions.markdown) {
+        try {
+          const converter = new MarkdownConverter();
+          finalContent = converter.convert(html);
+          finalContentType = "markdown";
+        } catch (conversionError: any) {
+          console.error(`Markdown conversion failed for ${url} (FetchEngine POST):`, conversionError);
+        }
+      }
+
+      return {
+        content: finalContent,
+        contentType: finalContentType,
+        title: title,
+        url: response.url,
+        isFromCache: false,
+        statusCode: response.status,
+        error: undefined,
+      };
+    } catch (error: any) {
+      if (
+        error instanceof FetchEngineHttpError ||
+        (error instanceof FetchError && error.code === "ERR_NON_HTML_CONTENT")
+      ) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : "Unknown fetch error";
+      throw new FetchError(`Fetch failed: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
     }
   }
 

@@ -158,6 +158,31 @@ async function main() {
 main();
 ```
 
+#### POST form submission
+
+```typescript
+import { HybridEngine } from "@purepageio/fetch-engines";
+
+const engine = new HybridEngine();
+
+async function login() {
+  // Example login form
+  const body = new URLSearchParams({
+    username: "user@example.com",
+    password: "password123",
+  });
+
+  // postHTML sends the form data using the same stealthy session as fetchHTML
+  const result = await engine.postHTML("https://example.com/login", body, {
+    contentType: "application/x-www-form-urlencoded",
+  });
+
+  console.log(`Login response status: ${result.statusCode}`);
+  await engine.cleanup();
+}
+login();
+```
+
 ### Raw Content Fetching
 
 ```typescript
@@ -405,6 +430,18 @@ All `fetchContent()` methods return a Promise that resolves to a `ContentFetchRe
 - **Returns:** `Promise<HTMLFetchResult>`
 
 Fetches content, returning HTML or Markdown based on configuration/options in `result.content` with `result.contentType` indicating the format.
+
+### `engine.postHTML(url, body, options?)`
+
+- `url` (`string`): URL to POST to.
+- `body` (`string | URLSearchParams | FormData`): Form data or payload to send.
+- `options?` (`PostOptions`): Optional overrides.
+  - `headers?: Record<string, string>`: Custom headers for this request.
+  - `contentType?: string`: Explicit `Content-Type` header for the POST body.
+  - Other `FetchOptions` like `markdown`, `fastMode`, `spaMode`.
+- **Returns:** `Promise<HTMLFetchResult>`
+
+Sends a POST request while preserving cookies and stealth behavior. Useful for login flows or form submissions that need a browser-like session. When passing a plain string as the body, provide `contentType` so the server interprets it correctly.
 
 ### `engine.fetchContent(url, options?)`
 
