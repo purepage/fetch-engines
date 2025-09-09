@@ -88,14 +88,16 @@ export class HybridEngine {
             return fetchResult;
         }
         catch (fetchError) {
-            console.warn(`HybridEngine: FetchEngine failed for ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
+            const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+            console.warn(`HybridEngine: FetchEngine failed for ${url}: ${message}. Falling back to PlaywrightEngine.`);
             try {
                 // Fallback to PlaywrightEngine, passing the determined effective options
                 const playwrightResult = await this.playwrightEngine.fetchHTML(url, playwrightOptions);
                 return playwrightResult;
             }
             catch (playwrightError) {
-                console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${playwrightError.message}`);
+                const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
+                console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${pwMessage}`);
                 throw playwrightError; // Throw the Playwright error as it's the last one encountered
             }
         }
@@ -128,14 +130,16 @@ export class HybridEngine {
             return fetchResult;
         }
         catch (fetchError) {
-            console.warn(`HybridEngine: FetchEngine failed for content fetch ${url}: ${fetchError.message}. Falling back to PlaywrightEngine.`);
+            const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+            console.warn(`HybridEngine: FetchEngine failed for content fetch ${url}: ${message}. Falling back to PlaywrightEngine.`);
             try {
                 // Fallback to PlaywrightEngine
                 const playwrightResult = await this.playwrightEngine.fetchContent(url, options);
                 return playwrightResult;
             }
             catch (playwrightError) {
-                console.error(`HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${playwrightError.message}`);
+                const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
+                console.error(`HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${pwMessage}`);
                 throw playwrightError; // Throw the Playwright error as it's the last one encountered
             }
         }

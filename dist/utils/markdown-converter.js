@@ -601,8 +601,19 @@ export class MarkdownConverter {
                 // Add other relevant fields like 'author', 'datePublished', etc.
                 jsonLdData.forEach((jsonData) => {
                     if (typeof jsonData === "object" && jsonData !== null) {
-                        // jsonData is already type 'object' here
-                        addMeta("Organization", jsonData.publisher?.name);
+                        // Safely extract publisher name from JSON-LD object
+                        const publisher = jsonData.publisher;
+                        let orgName;
+                        if (publisher && typeof publisher === "object") {
+                            const name = publisher.name;
+                            if (typeof name === "string") {
+                                orgName = name;
+                            }
+                        }
+                        else if (typeof publisher === "string") {
+                            orgName = publisher; // Some JSON-LD use a string for publisher
+                        }
+                        addMeta("Organization", orgName);
                     }
                 });
             }

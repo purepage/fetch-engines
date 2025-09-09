@@ -108,7 +108,7 @@ export class PlaywrightEngine {
      * Fallback method using simple HTTP requests via Axios.
      * Ensures return type matches HTMLFetchResult.
      */
-    async fetchHTMLWithHttpFallback(url, headers = {}) {
+    async fetchHTMLWithHttpFallback(url, headers = {}, markdown = this.config.markdown) {
         try {
             const response = await axios.get(url, {
                 headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
@@ -136,9 +136,8 @@ export class PlaywrightEngine {
             const originalHtml = response.data;
             let finalContent = originalHtml;
             let finalContentType = "html";
-            // Apply markdown conversion here if the *engine config* option is set
-            // NOTE: This currently uses engine config, not per-request. Could be refined.
-            if (this.config.markdown) {
+            // Apply markdown conversion based on resolved option
+            if (markdown) {
                 try {
                     const converter = new MarkdownConverter();
                     finalContent = converter.convert(originalHtml);
@@ -194,7 +193,7 @@ export class PlaywrightEngine {
             await page.evaluate("1 + 1", { timeout: EVALUATION_TIMEOUT_MS });
             return true;
         }
-        catch (error) {
+        catch {
             return false;
         }
     }
@@ -272,7 +271,7 @@ export class PlaywrightEngine {
         };
         // The type of fetchConfig will need to accommodate 'headers'.
         // ResolvedPlaywrightEngineConfig already has 'headers', so this should be fine if fetchConfig is typed as such.
-        return this._fetchRecursive(url, fetchConfig, 0); // Using 'as any' for now, will refine if needed
+        return this._fetchRecursive(url, fetchConfig, 0);
     }
     /**
      * Helper to check cache and potentially return a cached result.
@@ -332,7 +331,7 @@ export class PlaywrightEngine {
             return null;
         }
         try {
-            const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers); // Pass headers
+            const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers, currentConfig.markdown);
             // If successful, cache it (addToCache handles TTL check)
             this.addToCache(url, httpResult);
             return httpResult;
@@ -346,7 +345,8 @@ export class PlaywrightEngine {
             else {
                 // For other HTTP fallback errors, log them but still allow proceeding to Playwright
                 // as per original logic (empty catch block).
-                console.warn(`HTTP fallback for ${url} failed: ${httpError.message}. Proceeding with Playwright.`);
+                const message = httpError instanceof Error ? httpError.message : String(httpError);
+                console.warn(`HTTP fallback for ${url} failed: ${message}. Proceeding with Playwright.`);
                 return null;
             }
         }
@@ -480,8 +480,9 @@ export class PlaywrightEngine {
             catch (acquireError) {
                 if (acquireError instanceof FetchError)
                     throw acquireError;
-                throw new FetchError(`Playwright page acquisition failed: ${acquireError.message}`, "ERR_PLAYWRIGHT_OPERATION", // Specific code for acquisition failure
-                acquireError);
+                const message = acquireError instanceof Error ? acquireError.message : String(acquireError);
+                throw new FetchError(`Playwright page acquisition failed: ${message}`, "ERR_PLAYWRIGHT_OPERATION", // Specific code for acquisition failure
+                acquireError instanceof Error ? acquireError : undefined);
             }
             // If SPA mode is active, force fastMode to false to ensure all resources load
             const actualFastMode = isSpaMode ? false : fastMode;
@@ -502,7 +503,8 @@ export class PlaywrightEngine {
                 });
             }
             catch (navigationError) {
-                throw new FetchError(`Playwright navigation failed: ${navigationError.message}`, "ERR_NAVIGATION", navigationError);
+                const message = navigationError instanceof Error ? navigationError.message : String(navigationError);
+                throw new FetchError(`Playwright navigation failed: ${message}`, "ERR_NAVIGATION", navigationError instanceof Error ? navigationError : undefined);
             }
             if (!response) {
                 throw new FetchError("Playwright navigation did not return a response.", "ERR_NO_RESPONSE");
@@ -841,7 +843,8 @@ export class PlaywrightEngine {
         }
         catch (error) {
             // Let caller handle fallback to Playwright
-            throw new FetchError(`HTTP content fetch failed: ${error.message}`, "ERR_HTTP_FALLBACK", error);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new FetchError(`HTTP content fetch failed: ${message}`, "ERR_HTTP_FALLBACK", error instanceof Error ? error : undefined);
         }
     }
     /**
