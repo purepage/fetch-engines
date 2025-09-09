@@ -1,5 +1,5 @@
 import type { IEngine } from "./IEngine.js";
-import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, PlaywrightEngineConfig, FetchOptions, BrowserMetrics } from "./types.js";
+import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, PlaywrightEngineConfig, FetchOptions, BrowserMetrics, PostOptions } from "./types.js";
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
@@ -22,6 +22,11 @@ export declare class HybridEngine implements IEngine {
      * @throws {FetchError} If both engines fail to fetch the content.
      */
     fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult>;
+    /**
+     * Sends a POST request expecting HTML in response.
+     * Attempts FetchEngine first then falls back to PlaywrightEngine.
+     */
+    postHTML(url: string, body: string | URLSearchParams | FormData, options?: PostOptions): Promise<HTMLFetchResult>;
     /**
      * Delegates getMetrics to the PlaywrightEngine.
      */
