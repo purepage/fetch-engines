@@ -103,7 +103,7 @@ export class FetchEngine implements IEngine {
           const converter = new MarkdownConverter();
           finalContent = converter.convert(html);
           finalContentType = "markdown";
-        } catch (conversionError: any) {
+        } catch (conversionError: unknown) {
           console.error(`Markdown conversion failed for ${url} (FetchEngine):`, conversionError);
           // Fallback to original HTML on conversion error
         }
@@ -118,7 +118,7 @@ export class FetchEngine implements IEngine {
         statusCode: response.status,
         error: undefined,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Re-throw specific known errors directly
       if (
         error instanceof FetchEngineHttpError ||
@@ -204,7 +204,7 @@ export class FetchEngine implements IEngine {
         statusCode: response.status,
         error: undefined,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Re-throw specific known errors directly
       if (error instanceof FetchEngineHttpError) {
         throw error;

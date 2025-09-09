@@ -698,7 +698,7 @@ export class MarkdownConverter {
         jsonLdData.forEach((jsonData) => {
           if (typeof jsonData === "object" && jsonData !== null) {
             // jsonData is already type 'object' here
-            addMeta("Organization", (jsonData as Record<string, any>).publisher?.name);
+            addMeta("Organization", (jsonData as Record<string, unknown>).publisher?.name);
           }
         });
       }
