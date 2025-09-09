@@ -656,7 +656,7 @@ export class PlaywrightEngine implements IEngine {
       try {
         response = await page.goto(url, {
           waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
-          timeout: isSpaMode ? 90000 : 60000, // Longer timeout for SPA mode
+          timeout: isSpaMode ? 20000 : 12000, // Keep under typical test timeouts
         });
       } catch (navigationError: unknown) {
         const message = navigationError instanceof Error ? navigationError.message : String(navigationError);
@@ -1131,7 +1131,7 @@ export class PlaywrightEngine implements IEngine {
       // Navigate to the page
       const response = await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 30000,
+        timeout: 10000,
       });
 
       if (!response) {

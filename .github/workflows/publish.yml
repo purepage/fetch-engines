@@ -7,6 +7,15 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      run_live_tests:
+        description: "Run live network smoke tests"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily live smoke
 
 # Prevent multiple concurrent workflow runs on the same branch
 concurrency:
@@ -51,6 +60,12 @@ jobs:
 
       - name: Run Tests # Test on PRs and main
         run: pnpm test
+
+      - name: Run Live Network Smoke Tests (opt-in)
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_tests == true)
+        env:
+          LIVE_NETWORK: "1"
+        run: pnpm test:live
 
       # --- Publish Steps (only run on push to main branch) ---
 

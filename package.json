@@ -16,6 +16,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\" \"*.{js,cjs,json,md}\"",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:live": "LIVE_NETWORK=1 vitest run test/live/*.test.ts",
     "prepare": "husky",
     "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs"
   },

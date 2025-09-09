@@ -502,7 +502,7 @@ export class PlaywrightEngine {
             try {
                 response = await page.goto(url, {
                     waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
-                    timeout: isSpaMode ? 90000 : 60000, // Longer timeout for SPA mode
+                    timeout: isSpaMode ? 20000 : 12000, // Keep under typical test timeouts
                 });
             }
             catch (navigationError) {
@@ -880,7 +880,7 @@ export class PlaywrightEngine {
             // Navigate to the page
             const response = await page.goto(url, {
                 waitUntil: "domcontentloaded",
-                timeout: 30000,
+                timeout: 10000,
             });
             if (!response) {
                 throw new FetchError(`Failed to get response for ${url}`, "ERR_NAVIGATION");
