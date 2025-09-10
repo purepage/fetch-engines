@@ -526,7 +526,12 @@ runExamples();
 
 ## Logging
 
-Currently, the library uses `console.warn` and `console.error` for internal warnings (like fallback events) and critical errors. More sophisticated logging options may be added in the future.
+Currently, the library uses `console.warn` and `console.error` for internal warnings (like fallback events) and critical errors.
+More sophisticated logging options may be added in the future.
+
+Previous versions emitted repeated warnings such as
+`MarkdownConverter: Error matching selector in _calculateElementScore: element.matches is not a function`
+when converting HTML to Markdown. This log noise has been removed.
 
 ## Testing
 

@@ -962,10 +962,30 @@ export class MarkdownConverter {
         if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName))
             score *= 0.3;
         try {
-            const BOILERPLATE_SELECTORS_FOR_PENALTY = '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]';
-            /* @ts-expect-error TODO: fix this (existing issue with NHPHTMLElement and matches) */
-            if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
+            const classList = element.classList || [];
+            const role = element.getAttribute("role") || "";
+            const BOILERPLATE_CLASSES = [
+                "sidebar",
+                "widget",
+                "menu",
+                "nav",
+                "header",
+                "footer",
+            ];
+            const BOILERPLATE_ROLES = [
+                "navigation",
+                "complementary",
+                "banner",
+            ];
+            if (BOILERPLATE_CLASSES.some((cls) => classList.contains?.(cls)) ||
+                BOILERPLATE_ROLES.includes(role)) {
                 score *= 0.2;
+            }
+            else if (typeof element.matches === "function") {
+                const BOILERPLATE_SELECTORS_FOR_PENALTY = '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]';
+                if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
+                    score *= 0.2;
+                }
             }
         }
         catch (e) {
