@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
@@ -27,5 +27,18 @@ describe("MarkdownConverter", () => {
     expect(markdown).toContain("| **Position** | **Weekly Pay Rate**");
     // Should include data row content
     expect(markdown).toContain("Apprentice - under 18 years^");
+  });
+
+  it("does not warn about missing element.matches when scoring elements", () => {
+    const html = `<div><p>Content</p></div>`;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const converter = new MarkdownConverter();
+    converter.convert(html);
+    expect(
+      warnSpy.mock.calls.find((c) =>
+        c[0]?.toString().includes("Error matching selector in _calculateElementScore"),
+      ),
+    ).toBeUndefined();
+    warnSpy.mockRestore();
   });
 });
