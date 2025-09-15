@@ -5,7 +5,7 @@
 
 Web scraping requires handling static HTML, JavaScript-heavy sites, network errors, retries, caching, and bot detection. Managing browser automation tools like Playwright adds complexity with resource pooling and stealth configurations.
 
-`@purepageio/fetch-engines` provides three engines for retrieving web content through a unified API.
+`@purepageio/fetch-engines` provides engines for retrieving web content through a unified API.
 
 **Key Benefits:**
 
@@ -44,11 +44,13 @@ For `HybridEngine` (uses Playwright), install browser binaries:
 pnpm exec playwright install
 ```
 
-## Engine
+## Engines
 
 **`HybridEngine`** (recommended): Attempts fast HTTP fetch first, falls back to Playwright browser on failure or when SPA shell detected. Handles both simple and complex sites automatically.
 
-*Also available: `FetchEngine` for HTTP-only scenarios without browser fallback.*
+**`FetchEngine`**: Lightweight HTTP-only engine for basic sites without browser fallback.
+
+**`StructuredContentEngine`**: AI-powered engine that combines HybridEngine with OpenAI for structured data extraction.
 
 ## Basic Usage
 
@@ -66,7 +68,7 @@ console.log(`Title: ${simple.title}`);
 // Complex sites automatically use browser
 const complex = await engine.fetchHTML("https://spa-site.com", {
   markdown: true,
-  spaMode: true
+  spaMode: true,
 });
 
 await engine.cleanup(); // Important: releases browser resources
@@ -76,11 +78,11 @@ await engine.cleanup(); // Important: releases browser resources
 
 ```typescript
 const engine = new HybridEngine({
-  headers: { "X-Custom-Header": "value" }
+  headers: { "X-Custom-Header": "value" },
 });
 
 const result = await engine.fetchHTML("https://example.com", {
-  headers: { "X-Request-Header": "value" }
+  headers: { "X-Request-Header": "value" },
 });
 ```
 
@@ -95,7 +97,7 @@ console.log(`PDF size: ${pdf.content.length} bytes`);
 
 // Fetch JSON API with auth
 const api = await engine.fetchContent("https://api.example.com/data", {
-  headers: { "Authorization": "Bearer token" }
+  headers: { Authorization: "Bearer token" },
 });
 
 await engine.cleanup();
@@ -167,7 +169,7 @@ const articleSchema = z.object({
 
 const result = await fetchStructuredContent("https://example.com/article", articleSchema, {
   model: "gpt-4.1-mini",
-  customPrompt: "Extract main article information"
+  customPrompt: "Extract main article information",
 });
 
 console.log("Extracted:", result.data);
@@ -198,44 +200,45 @@ await engine.cleanup();
 
 ### Supported Models
 
-- `'gpt-4.1-mini'` - Fast and cost-effective (default for most use cases)
-- `'gpt-4.1'` - More capable version
-- `'gpt-5-mini'` - Latest model, mini version (default)
+- `'gpt-5-mini'` - Latest model, mini version **(default)**
 - `'gpt-5'` - Most capable model
+- `'gpt-4.1-mini'` - Fast and cost-effective
+- `'gpt-4.1'` - More capable GPT-4.1 version
 
 ## Configuration
 
 ### FetchEngine Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `markdown` | `boolean` | `false` | Convert HTML to Markdown |
-| `headers` | `Record<string, string>` | `{}` | Custom HTTP headers |
+| Option     | Type                     | Default | Description              |
+| ---------- | ------------------------ | ------- | ------------------------ |
+| `markdown` | `boolean`                | `false` | Convert HTML to Markdown |
+| `headers`  | `Record<string, string>` | `{}`    | Custom HTTP headers      |
 
 ### HybridEngine Configuration
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `headers` | `Record<string, string>` | `{}` | Default headers for both engines |
-| `markdown` | `boolean` | `false` | Default Markdown conversion |
-| `useHttpFallback` | `boolean` | `true` | Try HTTP before Playwright |
-| `spaMode` | `boolean` | `false` | Enable SPA mode with patient load conditions |
-| `spaRenderDelayMs` | `number` | `0` | Delay after page load in SPA mode |
-| `maxRetries` | `number` | `3` | Max retry attempts |
-| `cacheTTL` | `number` | `900000` | Cache TTL in ms (15 min default) |
-| `concurrentPages` | `number` | `3` | Max concurrent pages |
+| Option             | Type                     | Default  | Description                                  |
+| ------------------ | ------------------------ | -------- | -------------------------------------------- |
+| `headers`          | `Record<string, string>` | `{}`     | Default headers for both engines             |
+| `markdown`         | `boolean`                | `false`  | Default Markdown conversion                  |
+| `useHttpFallback`  | `boolean`                | `true`   | Try HTTP before Playwright                   |
+| `spaMode`          | `boolean`                | `false`  | Enable SPA mode with patient load conditions |
+| `spaRenderDelayMs` | `number`                 | `0`      | Delay after page load in SPA mode            |
+| `maxRetries`       | `number`                 | `3`      | Max retry attempts                           |
+| `cacheTTL`         | `number`                 | `900000` | Cache TTL in ms (15 min default)             |
+| `concurrentPages`  | `number`                 | `3`      | Max concurrent pages                         |
 
 ### Browser Pool Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `maxBrowsers` | `number` | `2` | Max browser instances |
-| `maxPagesPerContext` | `number` | `6` | Pages per context before recycling |
-| `maxBrowserAge` | `number` | `1200000` | Browser lifetime (20 min) |
+| Option               | Type     | Default   | Description                        |
+| -------------------- | -------- | --------- | ---------------------------------- |
+| `maxBrowsers`        | `number` | `2`       | Max browser instances              |
+| `maxPagesPerContext` | `number` | `6`       | Pages per context before recycling |
+| `maxBrowserAge`      | `number` | `1200000` | Browser lifetime (20 min)          |
 
 ### Header Precedence
 
 Headers merge in this order (highest precedence first):
+
 1. Request-specific headers in `fetchHTML(url, { headers })`
 2. Engine constructor headers
 3. Engine default headers
@@ -312,20 +315,23 @@ Common error codes:
 
 - `ERR_HTTP_ERROR`: HTTP status >= 400
 - `ERR_NON_HTML_CONTENT`: Non-HTML content for HTML request
+- `ERR_FETCH_FAILED`: General fetch operation failure
 - `ERR_PLAYWRIGHT_OPERATION`: Playwright operation failure
 - `ERR_NAVIGATION`: Navigation timeout or failure
 - `ERR_BROWSER_POOL_EXHAUSTED`: No available browser resources
+- `ERR_MAX_RETRIES_REACHED`: All retry attempts exhausted
+- `ERR_MARKDOWN_CONVERSION_NON_HTML`: Markdown conversion on non-HTML content
 
 ```typescript
-import { HybridEngine, FetchError } from "@purepageio/fetch-engines";
+import { HybridEngine } from "@purepageio/fetch-engines";
+
+const engine = new HybridEngine();
 
 try {
   const result = await engine.fetchHTML(url);
-} catch (error) {
-  if (error instanceof FetchError) {
-    console.error(`Error: ${error.code} - ${error.message}`);
-    if (error.statusCode) console.error(`Status: ${error.statusCode}`);
-  }
+} catch (error: any) {
+  console.error(`Error: ${error.code || 'Unknown'} - ${error.message}`);
+  if (error.statusCode) console.error(`Status: ${error.statusCode}`);
 }
 ```
 
