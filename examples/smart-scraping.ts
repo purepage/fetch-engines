@@ -8,7 +8,10 @@ import { HybridEngine } from "../src/index.js";
  */
 
 async function main() {
-  const engine = new HybridEngine({ markdown: true });
+  const engine = new HybridEngine({
+    markdown: true,
+    spaMode: true, // Enable SPA mode for JavaScript-heavy sites
+  });
 
   try {
     console.log("🌐 Scraping a modern web app...");

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { z } from "zod";
-import { StructuredContentEngine, fetchStructuredContent } from "../src/StructuredContentEngine.js";
 
-// Mock AI SDK
+// Mock AI SDK BEFORE importing the module under test
 vi.mock("ai", () => ({
   generateObject: vi.fn(),
 }));
@@ -11,13 +10,15 @@ vi.mock("@ai-sdk/openai", () => ({
   openai: vi.fn(() => "mocked-model"),
 }));
 
-// Mock HybridEngine
+// Mock HybridEngine BEFORE importing the module under test
 vi.mock("../src/HybridEngine.js", () => ({
   HybridEngine: vi.fn().mockImplementation(() => ({
     fetchHTML: vi.fn(),
     cleanup: vi.fn(),
   })),
 }));
+
+import { StructuredContentEngine, fetchStructuredContent } from "../src/StructuredContentEngine.js";
 
 describe("StructuredContentEngine", () => {
   let engine: StructuredContentEngine;
@@ -97,7 +98,7 @@ describe("StructuredContentEngine", () => {
       delete process.env.OPENAI_API_KEY;
 
       await expect(engine.fetchStructuredContent("https://example.com", testSchema)).rejects.toThrow(
-        "OPENAI_API_KEY environment variable is required"
+        "OPENAI_API_KEY environment variable is required for structured content extraction"
       );
     });
 
