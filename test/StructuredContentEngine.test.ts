@@ -21,13 +21,18 @@ vi.mock("../src/HybridEngine.js", () => ({
 
 describe("StructuredContentEngine", () => {
   let engine: StructuredContentEngine;
-  const mockGenerateObject = vi.mocked(await import("ai")).generateObject;
-  const mockHybridEngine = vi.mocked(await import("../src/HybridEngine.js")).HybridEngine;
+  let mockGenerateObject: any;
+  let mockHybridEngine: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     // Set up environment variable
     process.env.OPENAI_API_KEY = "test-api-key";
+
+    // Initialize mocks
+    mockGenerateObject = vi.mocked(await import("ai")).generateObject;
+    mockHybridEngine = vi.mocked(await import("../src/HybridEngine.js")).HybridEngine;
+
     engine = new StructuredContentEngine();
   });
 
@@ -252,10 +257,12 @@ describe("fetchStructuredContent convenience function", () => {
       cleanup: vi.fn(),
     };
 
-    const mockGenerateObject = vi.mocked(await import("ai")).generateObject;
+    const { generateObject } = await import("ai");
+    const mockGenerateObject = vi.mocked(generateObject);
     mockGenerateObject.mockResolvedValue(mockAiResult);
 
-    const mockHybridEngine = vi.mocked(await import("../src/HybridEngine.js")).HybridEngine;
+    const { HybridEngine } = await import("../src/HybridEngine.js");
+    const mockHybridEngine = vi.mocked(HybridEngine);
     mockHybridEngine.mockImplementation(() => mockInstance as any);
 
     const result = await fetchStructuredContent("https://example.com", testSchema);

@@ -107,9 +107,9 @@ ${result.content}`;
         url: result.url,
         title: result.title,
         usage: {
-          promptTokens: (aiResult.usage as any).promptTokens ?? 0,
-          completionTokens: (aiResult.usage as any).completionTokens ?? 0,
-          totalTokens: aiResult.usage.totalTokens ?? 0,
+          promptTokens: (aiResult.usage as any)?.promptTokens ?? 0,
+          completionTokens: (aiResult.usage as any)?.completionTokens ?? 0,
+          totalTokens: (aiResult.usage as any)?.totalTokens ?? 0,
         },
       };
     } catch (error) {

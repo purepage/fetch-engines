@@ -59,9 +59,9 @@ ${result.content}`;
                 url: result.url,
                 title: result.title,
                 usage: {
-                    promptTokens: aiResult.usage.promptTokens ?? 0,
-                    completionTokens: aiResult.usage.completionTokens ?? 0,
-                    totalTokens: aiResult.usage.totalTokens ?? 0,
+                    promptTokens: aiResult.usage?.promptTokens ?? 0,
+                    completionTokens: aiResult.usage?.completionTokens ?? 0,
+                    totalTokens: aiResult.usage?.totalTokens ?? 0,
                 },
             };
         }
