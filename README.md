@@ -330,7 +330,7 @@ const engine = new HybridEngine();
 try {
   const result = await engine.fetchHTML(url);
 } catch (error: any) {
-  console.error(`Error: ${error.code || 'Unknown'} - ${error.message}`);
+  console.error(`Error: ${error.code || "Unknown"} - ${error.message}`);
   if (error.statusCode) console.error(`Status: ${error.statusCode}`);
 }
 ```
