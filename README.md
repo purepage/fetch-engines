@@ -294,20 +294,16 @@ const articleSchema = z.object({
 
 async function extractArticleData() {
   try {
-    const result = await fetchStructuredContent(
-      "https://example.com/article",
-      articleSchema,
-      {
-        model: 'gpt-4.1-mini', // Optional: specify model (default: 'gpt-5-mini')
-        customPrompt: 'Extract the main article information, focusing on accuracy',
-      }
-    );
+    const result = await fetchStructuredContent("https://example.com/article", articleSchema, {
+      model: "gpt-4.1-mini", // Optional: specify model (default: 'gpt-5-mini')
+      customPrompt: "Extract the main article information, focusing on accuracy",
+    });
 
-    console.log('Extracted data:', result.data);
-    console.log('Page title:', result.title);
-    console.log('Token usage:', result.usage);
+    console.log("Extracted data:", result.data);
+    console.log("Page title:", result.title);
+    console.log("Token usage:", result.usage);
   } catch (error) {
-    console.error('Extraction failed:', error);
+    console.error("Extraction failed:", error);
   }
 }
 ```
@@ -336,20 +332,16 @@ const engine = new StructuredContentEngine({
 
 async function extractProducts() {
   try {
-    const result = await engine.fetchStructuredContent(
-      "https://shop.example.com/product/123",
-      productSchema,
-      {
-        model: 'gpt-4.1',
-        customPrompt: 'Focus on extracting accurate pricing and availability',
-      }
-    );
+    const result = await engine.fetchStructuredContent("https://shop.example.com/product/123", productSchema, {
+      model: "gpt-4.1",
+      customPrompt: "Focus on extracting accurate pricing and availability",
+    });
 
-    console.log('Product data:', result.data);
+    console.log("Product data:", result.data);
     // result.data is fully typed according to your schema
     console.log(`${result.data.name} costs $${result.data.price}`);
   } catch (error) {
-    console.error('Failed to extract product data:', error);
+    console.error("Failed to extract product data:", error);
   } finally {
     await engine.cleanup(); // Important: clean up resources
   }
@@ -367,8 +359,8 @@ You can specify which OpenAI model to use:
 
 ```typescript
 // Example with different models
-const result1 = await fetchStructuredContent(url, schema, { model: 'gpt-4.1-mini' });
-const result2 = await fetchStructuredContent(url, schema, { model: 'gpt-5' });
+const result1 = await fetchStructuredContent(url, schema, { model: "gpt-4.1-mini" });
+const result2 = await fetchStructuredContent(url, schema, { model: "gpt-5" });
 ```
 
 ### Complex Schema Example
@@ -381,21 +373,25 @@ const restaurantSchema = z.object({
   name: z.string(),
   cuisine: z.string(),
   rating: z.number().min(0).max(5),
-  priceRange: z.enum(['$', '$$', '$$$', '$$$$']),
+  priceRange: z.enum(["$", "$$", "$$$", "$$$$"]),
   address: z.object({
     street: z.string(),
     city: z.string(),
     state: z.string(),
     zipCode: z.string(),
   }),
-  menu: z.array(z.object({
-    category: z.string(),
-    items: z.array(z.object({
-      name: z.string(),
-      price: z.number(),
-      description: z.string().optional(),
-    })),
-  })),
+  menu: z.array(
+    z.object({
+      category: z.string(),
+      items: z.array(
+        z.object({
+          name: z.string(),
+          price: z.number(),
+          description: z.string().optional(),
+        })
+      ),
+    })
+  ),
   hours: z.record(z.string()), // day -> hours
   contact: z.object({
     phone: z.string().optional(),
@@ -405,25 +401,22 @@ const restaurantSchema = z.object({
 });
 
 async function extractRestaurantInfo() {
-  const result = await fetchStructuredContent(
-    "https://restaurant.example.com",
-    restaurantSchema,
-    {
-      model: 'gpt-4.1',
-      customPrompt: 'Extract comprehensive restaurant information including full menu details',
-    }
-  );
+  const result = await fetchStructuredContent("https://restaurant.example.com", restaurantSchema, {
+    model: "gpt-4.1",
+    customPrompt: "Extract comprehensive restaurant information including full menu details",
+  });
 
   // Fully typed result
   console.log(`${result.data.name} - ${result.data.cuisine} cuisine`);
   console.log(`Rating: ${result.data.rating}/5, Price: ${result.data.priceRange}`);
-  console.log(`Menu categories: ${result.data.menu.map(cat => cat.category).join(', ')}`);
+  console.log(`Menu categories: ${result.data.menu.map((cat) => cat.category).join(", ")}`);
 }
 ```
 
 ### Error Handling
 
 The function throws an error if:
+
 - `OPENAI_API_KEY` is not set
 - The URL cannot be fetched
 - Content cannot be converted to markdown
@@ -437,12 +430,12 @@ try {
   const result = await fetchStructuredContent(url, schema);
   // Use result.data
 } catch (error) {
-  if (error.message.includes('OPENAI_API_KEY')) {
-    console.error('Please set your OpenAI API key');
-  } else if (error.message.includes('Failed to extract structured data')) {
-    console.error('AI extraction failed:', error.message);
+  if (error.message.includes("OPENAI_API_KEY")) {
+    console.error("Please set your OpenAI API key");
+  } else if (error.message.includes("Failed to extract structured data")) {
+    console.error("AI extraction failed:", error.message);
   } else {
-    console.error('Unexpected error:', error);
+    console.error("Unexpected error:", error);
   }
 }
 ```
