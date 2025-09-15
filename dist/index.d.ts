@@ -4,4 +4,5 @@ import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserM
 export type { IEngine, HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics };
 export { FetchEngine };
 export * from "./HybridEngine.js";
+export * from "./StructuredContentEngine.js";
 //# sourceMappingURL=index.d.ts.map

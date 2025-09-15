@@ -6,3 +6,4 @@ import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserM
 export type { IEngine, HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics }; // Export types
 export { FetchEngine };
 export * from "./HybridEngine.js"; // Export the new engine
+export * from "./StructuredContentEngine.js"; // Export structured content functionality

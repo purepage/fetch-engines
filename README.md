@@ -28,6 +28,7 @@ This package provides a high-level abstraction, letting you focus on using the w
 - [Engines](#engines)
 - [Basic Usage](#basic-usage)
 - [fetchHTML vs fetchContent](#fetchhtml-vs-fetchcontent)
+- [Structured Content Extraction](#structured-content-extraction)
 - [Configuration](#configuration)
 - [Return Value](#return-value)
 - [API Reference](#api-reference)
@@ -42,6 +43,7 @@ This package provides a high-level abstraction, letting you focus on using the w
 - **Multiple Fetching Strategies:** Choose between `FetchEngine` (lightweight `fetch`) or `HybridEngine` (smart fallback to a full browser engine).
 - **Unified API:** Simple `fetchHTML(url, options?)` interface for processed content and `fetchContent(url, options?)` for raw content across both primary engines.
 - **Raw Content Fetching:** Use `fetchContent()` to retrieve any type of content (PDFs, images, JSON, XML, etc.) without HTML processing or content-type restrictions.
+- **AI-Powered Structured Data Extraction:** Use `fetchStructuredContent()` to automatically extract structured data from web pages using AI and Zod schemas.
 - **Custom Headers:** Easily provide custom HTTP headers for requests in both `FetchEngine` and `HybridEngine`.
 - **Configurable Retries:** Automatic retries on failure with customizable attempts and delays.
 - **Built-in Caching:** In-memory caching with configurable TTL to reduce redundant fetches.
@@ -263,6 +265,188 @@ console.log(pdfResult.contentType); // "application/pdf"
 console.log(Buffer.isBuffer(pdfResult.content)); // true (binary content)
 ```
 
+## Structured Content Extraction
+
+The `fetchStructuredContent` function combines web scraping with AI-powered data extraction. It fetches content from a URL, converts it to markdown, and then uses OpenAI's models to extract structured data according to a Zod schema.
+
+### Prerequisites
+
+You need to set the `OPENAI_API_KEY` environment variable:
+
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+```
+
+### Basic Usage
+
+```typescript
+import { fetchStructuredContent } from "@purepageio/fetch-engines";
+import { z } from "zod";
+
+// Define the structure you want to extract
+const articleSchema = z.object({
+  title: z.string(),
+  author: z.string().optional(),
+  publishDate: z.string().optional(),
+  summary: z.string(),
+  tags: z.array(z.string()),
+});
+
+async function extractArticleData() {
+  try {
+    const result = await fetchStructuredContent(
+      "https://example.com/article",
+      articleSchema,
+      {
+        model: 'gpt-4.1-mini', // Optional: specify model (default: 'gpt-5-mini')
+        customPrompt: 'Extract the main article information, focusing on accuracy',
+      }
+    );
+
+    console.log('Extracted data:', result.data);
+    console.log('Page title:', result.title);
+    console.log('Token usage:', result.usage);
+  } catch (error) {
+    console.error('Extraction failed:', error);
+  }
+}
+```
+
+### Using StructuredContentEngine Class
+
+For more control and reuse, use the `StructuredContentEngine` class:
+
+```typescript
+import { StructuredContentEngine } from "@purepageio/fetch-engines";
+import { z } from "zod";
+
+const productSchema = z.object({
+  name: z.string(),
+  price: z.number(),
+  description: z.string(),
+  inStock: z.boolean(),
+  specifications: z.record(z.string()),
+});
+
+const engine = new StructuredContentEngine({
+  // HybridEngine configuration options
+  spaMode: true,
+  spaRenderDelayMs: 2000,
+});
+
+async function extractProducts() {
+  try {
+    const result = await engine.fetchStructuredContent(
+      "https://shop.example.com/product/123",
+      productSchema,
+      {
+        model: 'gpt-4.1',
+        customPrompt: 'Focus on extracting accurate pricing and availability',
+      }
+    );
+
+    console.log('Product data:', result.data);
+    // result.data is fully typed according to your schema
+    console.log(`${result.data.name} costs $${result.data.price}`);
+  } catch (error) {
+    console.error('Failed to extract product data:', error);
+  } finally {
+    await engine.cleanup(); // Important: clean up resources
+  }
+}
+```
+
+### Supported Models
+
+You can specify which OpenAI model to use:
+
+- `'gpt-4.1-mini'` - Fast and cost-effective (uses `temperature: 0`)
+- `'gpt-4.1'` - More capable version (uses `temperature: 0`)
+- `'gpt-5-mini'` - Latest model, mini version (uses `reasoning_effort: 'low'`) **[Default]**
+- `'gpt-5'` - Most capable model (uses `reasoning_effort: 'low'`)
+
+```typescript
+// Example with different models
+const result1 = await fetchStructuredContent(url, schema, { model: 'gpt-4.1-mini' });
+const result2 = await fetchStructuredContent(url, schema, { model: 'gpt-5' });
+```
+
+### Complex Schema Example
+
+```typescript
+import { fetchStructuredContent } from "@purepageio/fetch-engines";
+import { z } from "zod";
+
+const restaurantSchema = z.object({
+  name: z.string(),
+  cuisine: z.string(),
+  rating: z.number().min(0).max(5),
+  priceRange: z.enum(['$', '$$', '$$$', '$$$$']),
+  address: z.object({
+    street: z.string(),
+    city: z.string(),
+    state: z.string(),
+    zipCode: z.string(),
+  }),
+  menu: z.array(z.object({
+    category: z.string(),
+    items: z.array(z.object({
+      name: z.string(),
+      price: z.number(),
+      description: z.string().optional(),
+    })),
+  })),
+  hours: z.record(z.string()), // day -> hours
+  contact: z.object({
+    phone: z.string().optional(),
+    website: z.string().optional(),
+    email: z.string().optional(),
+  }),
+});
+
+async function extractRestaurantInfo() {
+  const result = await fetchStructuredContent(
+    "https://restaurant.example.com",
+    restaurantSchema,
+    {
+      model: 'gpt-4.1',
+      customPrompt: 'Extract comprehensive restaurant information including full menu details',
+    }
+  );
+
+  // Fully typed result
+  console.log(`${result.data.name} - ${result.data.cuisine} cuisine`);
+  console.log(`Rating: ${result.data.rating}/5, Price: ${result.data.priceRange}`);
+  console.log(`Menu categories: ${result.data.menu.map(cat => cat.category).join(', ')}`);
+}
+```
+
+### Error Handling
+
+The function throws an error if:
+- `OPENAI_API_KEY` is not set
+- The URL cannot be fetched
+- Content cannot be converted to markdown
+- AI fails to extract structured data
+- The extracted data doesn't match the schema
+
+```typescript
+import { fetchStructuredContent } from "@purepageio/fetch-engines";
+
+try {
+  const result = await fetchStructuredContent(url, schema);
+  // Use result.data
+} catch (error) {
+  if (error.message.includes('OPENAI_API_KEY')) {
+    console.error('Please set your OpenAI API key');
+  } else if (error.message.includes('Failed to extract structured data')) {
+    console.error('AI extraction failed:', error.message);
+  } else {
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
 ## Configuration
 
 Engines accept an optional configuration object in their constructor to customise behavior.
@@ -415,11 +599,32 @@ Fetches content, returning HTML or Markdown based on configuration/options in `r
 
 Fetches raw content without processing, mimicking standard `fetch()` behavior. Returns binary content as `Buffer` and text content as `string`. Supports any content type (PDFs, images, JSON, XML, etc.) and uses the same smart fallback logic as `fetchHTML()` but without HTML-specific processing or content-type restrictions.
 
-### `engine.cleanup()` (`HybridEngine` and direct `FetchEngine` if no cleanup needed)
+### `fetchStructuredContent(url, schema, options?)`
+
+- `url` (`string`): URL to fetch and extract data from.
+- `schema` (`z.ZodSchema<T>`): Zod schema defining the structure of data to extract.
+- `options?` (`StructuredContentOptions`): Optional configuration.
+  - `model?: 'gpt-4.1-mini' | 'gpt-4.1' | 'gpt-5' | 'gpt-5-mini'`: OpenAI model to use (default: `'gpt-5-mini'`).
+  - `customPrompt?: string`: Additional context for the AI extraction.
+  - `engineConfig?: PlaywrightEngineConfig`: Configuration for the underlying HybridEngine.
+- **Returns:** `Promise<StructuredContentResult<T>>`
+
+Convenience function for one-off structured content extraction. Fetches content, converts to markdown, and uses AI to extract structured data according to the provided schema. Requires `OPENAI_API_KEY` environment variable.
+
+### `StructuredContentEngine.fetchStructuredContent(url, schema, options?)`
+
+- `url` (`string`): URL to fetch and extract data from.
+- `schema` (`z.ZodSchema<T>`): Zod schema defining the structure of data to extract.
+- `options?` (`StructuredContentOptions`): Optional configuration (same as above).
+- **Returns:** `Promise<StructuredContentResult<T>>`
+
+Instance method for structured content extraction with reusable engine. More efficient for multiple extractions as it reuses the underlying HybridEngine instance.
+
+### `engine.cleanup()` (`HybridEngine`, `StructuredContentEngine`, and `FetchEngine`)
 
 - **Returns:** `Promise<void>`
 
-For `HybridEngine`, this gracefully shuts down all browser instances managed by its internal `PlaywrightEngine`. **It is crucial to call `await engine.cleanup()` when you are finished using `HybridEngine`** to release system resources.
+For `HybridEngine` and `StructuredContentEngine`, this gracefully shuts down all browser instances managed by the internal `PlaywrightEngine`. **It is crucial to call `await engine.cleanup()` when you are finished using these engines** to release system resources.
 `FetchEngine` has a `cleanup` method for API consistency, but it's a no-op as `FetchEngine` doesn't manage persistent resources.
 
 ## Stealth / Anti-Detection (via `HybridEngine`)
