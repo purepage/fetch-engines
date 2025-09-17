@@ -1,5 +1,6 @@
 import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
+import { FetchError } from "./errors.js";
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
@@ -103,7 +104,10 @@ export class HybridEngine {
             catch (playwrightError) {
                 const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
                 console.error(`HybridEngine: PlaywrightEngine fallback also failed for ${url}: ${pwMessage}`);
-                throw playwrightError; // Throw the Playwright error as it's the last one encountered
+                if (playwrightError instanceof FetchError) {
+                    throw playwrightError;
+                }
+                throw new FetchError(`PlaywrightEngine fallback also failed for ${url}: ${pwMessage}`, "ERR_PLAYWRIGHT_FALLBACK", playwrightError instanceof Error ? playwrightError : undefined);
             }
         }
     }
@@ -150,7 +154,10 @@ export class HybridEngine {
             catch (playwrightError) {
                 const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
                 console.error(`HybridEngine: PlaywrightEngine fallback also failed for content fetch ${url}: ${pwMessage}`);
-                throw playwrightError; // Throw the Playwright error as it's the last one encountered
+                if (playwrightError instanceof FetchError) {
+                    throw playwrightError;
+                }
+                throw new FetchError(`PlaywrightEngine content fallback failed for ${url}: ${pwMessage}`, "ERR_PLAYWRIGHT_FALLBACK", playwrightError instanceof Error ? playwrightError : undefined);
             }
         }
     }

@@ -98,7 +98,11 @@ export class PlaywrightEngine {
         catch (error) {
             this.browserPool = null;
             this.isUsingHeadedMode = false;
-            throw error;
+            if (error instanceof FetchError) {
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            throw new FetchError(`Failed to initialize Playwright browser pool: ${message}`, "ERR_PLAYWRIGHT_INIT", error instanceof Error ? error : undefined);
         }
         finally {
             this.initializingBrowserPool = false;
@@ -808,7 +812,11 @@ export class PlaywrightEngine {
                 return this._fetchContentRecursive(url, currentConfig, retryAttempt + 1);
             }
             // All retries exhausted
-            throw error;
+            if (error instanceof FetchError) {
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            throw new FetchError(`Content fetch failed for ${url}: ${message}`, "ERR_FETCH_FAILED", error instanceof Error ? error : undefined);
         }
     }
     /**

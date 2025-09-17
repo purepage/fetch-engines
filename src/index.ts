@@ -5,4 +5,6 @@ import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserM
 
 export type { IEngine, HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics }; // Export types
 export { FetchEngine };
+export { FetchError } from "./errors.js";
+export type { FetchErrorDetails } from "./errors.js";
 export * from "./HybridEngine.js"; // Export the new engine

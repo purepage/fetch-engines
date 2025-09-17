@@ -1,3 +1,11 @@
+import { inspect } from "node:util";
+export interface FetchErrorDetails {
+    name: string;
+    message: string;
+    code?: string | number;
+    statusCode?: number;
+    originalError?: FetchErrorDetails;
+}
 /**
  * Custom error class for fetch-related errors.
  */
@@ -16,5 +24,17 @@ export declare class FetchError extends Error {
      * @param statusCode Optional HTTP status code.
      */
     constructor(message: string, code?: string, originalError?: Error, statusCode?: number);
+    /**
+     * Returns a plain object representation with only useful metadata for responses/logging.
+     */
+    toObject(): FetchErrorDetails;
+    /**
+     * Ensures JSON serialisation exposes only clean error metadata.
+     */
+    toJSON(): FetchErrorDetails;
+    /**
+     * Makes console output (`console.error`) display the cleaned error payload without stack noise.
+     */
+    [inspect.custom](): FetchErrorDetails;
 }
 //# sourceMappingURL=errors.d.ts.map

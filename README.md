@@ -440,11 +440,17 @@ Errors during fetching are typically thrown as instances of `FetchError` (or its
   - `originalError` (`Error | undefined`): The underlying error that caused this fetch error (e.g., a Playwright error object).
   - `statusCode` (`number | undefined`): The HTTP status code, if relevant (especially for `FetchEngineHttpError`).
 
+`FetchError` instances (and subclasses) now serialize cleanly. Logging them or returning them in an API response will produce a
+minimal object that keeps the important fields (`name`, `message`, `code`, `statusCode`, and a sanitized `originalError` chain)
+without the noisy stack traces. The exported `FetchErrorDetails` type represents this plain-object shape for typed consumers.
+
 Common `FetchError` codes and scenarios:
 
 - **`ERR_HTTP_ERROR`**: Thrown by `FetchEngine` for HTTP status codes >= 400. `error.statusCode` will be set.
 - **`ERR_NON_HTML_CONTENT`**: Thrown by `FetchEngine` if the content type is not HTML and `markdown` conversion is not requested. **Note:** `fetchContent()` does not throw this error as it supports all content types.
 - **`ERR_PLAYWRIGHT_OPERATION`**: A general error from `HybridEngine`'s browser mode indicating a failure during a Playwright operation (e.g., page acquisition, navigation, interaction). The `originalError` property will often contain the specific Playwright error.
+- **`ERR_PLAYWRIGHT_INIT`**: Indicates a failure to initialise the Playwright browser pool even after retrying.
+- **`ERR_PLAYWRIGHT_FALLBACK`**: Raised when the HybridEngine's Playwright fallback cannot recover from a FetchEngine failure.
 - **`ERR_NAVIGATION`**: Often seen as part of `ERR_PLAYWRIGHT_OPERATION`'s message or in `originalError` when a Playwright navigation (in `HybridEngine`'s browser mode) fails (e.g., timeout, SSL error).
 - **`ERR_MARKDOWN_CONVERSION_NON_HTML`**: Thrown by `HybridEngine` (when its Playwright part is active) if `markdown: true` is requested for a non-HTML content type (e.g., XML, JSON). **Note:** Only applies to `fetchHTML()` as `fetchContent()` doesn't perform markdown conversion.
 - **`ERR_CACHE_ERROR`**: Indicates an issue with cache read/write operations.
