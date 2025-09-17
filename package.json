@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.5.1-rc.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
   "main": "dist/index.js",
@@ -19,9 +19,14 @@
     "test:unit": "vitest run",
     "test:live": "LIVE_NETWORK=1 vitest run test/live/*.test.ts",
     "prepare": "husky",
-    "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs"
+    "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs",
+    "simple-scraping": "tsx examples/simple-scraping.ts",
+    "smart-scraping": "tsx examples/smart-scraping.ts",
+    "ai-extraction": "tsx examples/ai-extraction.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.30",
+    "ai": "^5.0.44",
     "axios": "^1.6.8",
     "node-html-parser": "^7.0.1",
     "p-queue": "^7.4.1",
@@ -32,7 +37,8 @@
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2",
     "user-agents": "^1.1.208",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@types/axios": "^0.14.0",
