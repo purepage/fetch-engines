@@ -26,13 +26,15 @@ jobs:
   build-test-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Changed: Only needs read access now
+      contents: write # Needs write to push version bump commit and tags
       id-token: write # Optional: If using OIDC for authentication instead of token
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # No fetch-depth needed anymore as we don't modify history
+        with:
+          fetch-depth: 0 # Fetch tags/history for version bump + tagging
+
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -71,6 +73,19 @@ jobs:
 
       # REMOVED: Configure Git step
       # REMOVED: Bump version step
+
+      - name: Automated version bump
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: phips28/gh-action-bump-version@v10
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag-prefix: 'v'
+          # Optional inputs (uncomment to customize):
+          # default: 'patch'      # Fallback bump when no keyword found
+          commit-message: 'ci: bump version to {{version}} [skip ci]'
+          # skip-commit: false
+          # skip-tag: false
 
       - name: Build project
         # Build runs after tests pass on the main branch commit (post-merge)
