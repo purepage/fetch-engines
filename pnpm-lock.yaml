@@ -15,7 +15,7 @@ importers:
         specifier: ^5.0.44
         version: 5.0.44(zod@4.1.8)
       axios:
-        specifier: ^1.6.8
+        specifier: ^1.12.0
         version: 1.12.0
       node-html-parser:
         specifier: ^7.0.1

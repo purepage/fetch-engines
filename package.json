@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
   "main": "dist/index.js",
@@ -27,7 +27,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^2.0.30",
     "ai": "^5.0.44",
-    "axios": "^1.6.8",
+    "axios": "^1.12.0",
     "node-html-parser": "^7.0.1",
     "p-queue": "^7.4.1",
     "playwright": "^1.43.0",
