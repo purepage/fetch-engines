@@ -10,16 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0] - 2024-12-XX
 
 ### Added
+
 - Support for OpenAI-compatible APIs (OpenRouter, etc.) via new `apiConfig` option in `StructuredContentOptions`
 - `ApiConfig` interface with `apiKey`, `baseURL`, and `headers` options for custom API providers
 - Flexible model names - `model` parameter now accepts any string (not just predefined OpenAI models)
 
 ### Changed
+
 - Error message for missing API key now mentions both `apiConfig.apiKey` and `OPENAI_API_KEY` environment variable
 
 ## [0.6.2] - YYYY-MM-DD
 
 ### Fixed
+
 - (Previous releases - add as needed)
 
 [Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.7.0...HEAD

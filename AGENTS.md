@@ -17,10 +17,12 @@ This document provides guidelines for AI agents working with this repository. Fo
 Always follow [Semantic Versioning](https://semver.org/) when bumping versions in `package.json`:
 
 - **MAJOR (x.0.0)**: Breaking changes that are incompatible with previous versions
+
   - Examples: Removing public APIs, changing function signatures, removing features
   - ⚠️ **Avoid breaking changes unless absolutely necessary**
 
 - **MINOR (0.x.0)**: New features added in a backward-compatible manner
+
   - Examples: Adding new methods, new options, new exports
   - ✅ **Default choice for new features**
 
@@ -47,11 +49,13 @@ Since this package is pre-1.0 (`0.x.x`), breaking changes are more acceptable bu
 ### Always Write/Update Tests
 
 1. **New features MUST include tests**
+
    - Add tests in the appropriate test file (e.g., `test/StructuredContentEngine.test.ts`)
    - Test both success and error cases
    - Test edge cases and boundary conditions
 
 2. **Bug fixes MUST include regression tests**
+
    - Add a test that reproduces the bug (should fail before fix)
    - Verify the test passes after the fix
 
@@ -87,6 +91,7 @@ pnpm test:live
 ### README.md
 
 **ALWAYS update README.md when:**
+
 - Adding new features or APIs
 - Changing existing APIs
 - Adding new configuration options
@@ -94,6 +99,7 @@ pnpm test:live
 - Adding new examples
 
 **Update sections:**
+
 - Usage examples (if applicable)
 - Configuration options table
 - Quick start examples
@@ -106,6 +112,7 @@ pnpm test:live
 1. **Add entry under `[Unreleased]`** for changes not yet released
 2. **When releasing**, move `[Unreleased]` to a new version section with date
 3. **Use proper categories**:
+
    - `### Added` - New features
    - `### Changed` - Changes in existing functionality
    - `### Deprecated` - Soon-to-be removed features
@@ -114,17 +121,21 @@ pnpm test:live
    - `### Security` - Security fixes
 
 4. **Format example**:
+
    ```markdown
    ## [0.7.0] - 2024-12-20
 
    ### Added
+
    - Support for OpenAI-compatible APIs via `apiConfig` option
    - New `ApiConfig` interface
 
    ### Changed
+
    - Error message for missing API key now mentions both options
 
    ### Fixed
+
    - Fixed issue with markdown conversion for nested lists
    ```
 
@@ -152,11 +163,13 @@ pnpm test:live
 ### Code Style
 
 1. **Format code** using Prettier:
+
    ```bash
    pnpm format
    ```
 
 2. **Lint code** using ESLint:
+
    ```bash
    pnpm lint
    ```
@@ -300,6 +313,7 @@ it("should handle edge case correctly", () => {
 ## Questions?
 
 When in doubt:
+
 1. Check existing code patterns
 2. Review similar changes in git history
 3. Follow the checklist above
