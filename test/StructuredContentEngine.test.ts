@@ -7,7 +7,7 @@ vi.mock("ai", () => ({
 }));
 
 vi.mock("@ai-sdk/openai", () => ({
-  openai: vi.fn(() => "mocked-model"),
+  createOpenAI: vi.fn(() => (model: string) => "mocked-model"),
 }));
 
 // Mock HybridEngine BEFORE importing the module under test
@@ -98,7 +98,7 @@ describe("StructuredContentEngine", () => {
       delete process.env.OPENAI_API_KEY;
 
       await expect(engine.fetchStructuredContent("https://example.com", testSchema)).rejects.toThrow(
-        "OPENAI_API_KEY environment variable is required for structured content extraction"
+        "API key is required for structured content extraction"
       );
     });
 

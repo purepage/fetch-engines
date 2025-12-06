@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { HybridEngine } from "./HybridEngine.js";
 /**
  * Engine for fetching web content and extracting structured data using AI
@@ -20,15 +20,14 @@ export class StructuredContentEngine {
      * @param schema Zod schema defining the structure of data to extract
      * @param options Additional options for the extraction process
      * @returns Promise resolving to structured data and metadata
-     * @throws Error if OPENAI_API_KEY is not set or if extraction fails
+     * @throws Error if API key is not set or if extraction fails
      */
     async fetchStructuredContent(url, schema, options = {}) {
-        // Check for OpenAI API key
-        if (!process.env.OPENAI_API_KEY) {
-            throw new Error("OPENAI_API_KEY environment variable is required for structured content extraction");
+        const { model = "gpt-5-mini", customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
+        const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            throw new Error("API key is required for structured content extraction. Provide it via apiConfig.apiKey or set OPENAI_API_KEY environment variable");
         }
-        const { model = "gpt-5-mini", customPrompt = "", engineConfig = {} } = options;
-        // Fetch content using HybridEngine with markdown enabled
         const result = await this.hybridEngine.fetchHTML(url, {
             markdown: true,
             ...engineConfig,
@@ -36,17 +35,19 @@ export class StructuredContentEngine {
         if (result.contentType !== "markdown") {
             throw new Error("Failed to convert content to markdown");
         }
-        // Prepare the prompt for the LLM
         const systemPrompt = `You are an expert at extracting structured data from web content. 
 Extract the requested information from the provided markdown content accurately and completely.
 ${customPrompt ? `\nAdditional context: ${customPrompt}` : ""}
 
 Content to analyze:
 ${result.content}`;
-        // Configure model-specific options
         const modelConfig = this.getModelConfig(model);
+        const openai = createOpenAI({
+            apiKey,
+            ...(apiConfig.baseURL && { baseURL: apiConfig.baseURL }),
+            ...(apiConfig.headers && { headers: apiConfig.headers }),
+        });
         try {
-            // Generate structured object using AI SDK
             const aiResult = await generateObject({
                 model: openai(model),
                 schema,
