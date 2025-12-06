@@ -22,8 +22,8 @@ export class StructuredContentEngine {
      * @returns Promise resolving to structured data and metadata
      * @throws Error if API key is not set or if extraction fails
      */
-    async fetchStructuredContent(url, schema, options = {}) {
-        const { model = "gpt-5-mini", customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
+    async fetchStructuredContent(url, schema, options) {
+        const { model, customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
         const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
         if (!apiKey) {
             throw new Error("API key is required for structured content extraction. Provide it via apiConfig.apiKey or set OPENAI_API_KEY environment variable");
@@ -105,7 +105,7 @@ ${result.content}`;
  * @param options Additional options for the extraction process
  * @returns Promise resolving to structured data and metadata
  */
-export async function fetchStructuredContent(url, schema, options = {}) {
+export async function fetchStructuredContent(url, schema, options) {
     const engine = new StructuredContentEngine(options.engineConfig);
     try {
         return await engine.fetchStructuredContent(url, schema, options);

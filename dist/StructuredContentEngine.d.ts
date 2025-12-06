@@ -15,8 +15,8 @@ export interface ApiConfig {
  * Configuration options for structured content fetching
  */
 export interface StructuredContentOptions {
-    /** Model to use. Can be any model name supported by your API provider (e.g., 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5', 'gpt-5-mini', or OpenRouter model names) */
-    model?: string;
+    /** Model to use (required). Use any model name supported by your API provider (e.g., 'gpt-4.1-mini', 'anthropic/claude-3.5-sonnet' for OpenRouter) */
+    model: string;
     /** Custom prompt to provide additional context to the LLM */
     customPrompt?: string;
     /** HybridEngine configuration for content fetching */
@@ -58,7 +58,7 @@ export declare class StructuredContentEngine {
      * @returns Promise resolving to structured data and metadata
      * @throws Error if API key is not set or if extraction fails
      */
-    fetchStructuredContent<T>(url: string, schema: z.ZodSchema<T>, options?: StructuredContentOptions): Promise<StructuredContentResult<T>>;
+    fetchStructuredContent<T>(url: string, schema: z.ZodSchema<T>, options: StructuredContentOptions): Promise<StructuredContentResult<T>>;
     /**
      * Get model-specific configuration options
      */
@@ -76,5 +76,5 @@ export declare class StructuredContentEngine {
  * @param options Additional options for the extraction process
  * @returns Promise resolving to structured data and metadata
  */
-export declare function fetchStructuredContent<T>(url: string, schema: z.ZodSchema<T>, options?: StructuredContentOptions): Promise<StructuredContentResult<T>>;
+export declare function fetchStructuredContent<T>(url: string, schema: z.ZodSchema<T>, options: StructuredContentOptions): Promise<StructuredContentResult<T>>;
 //# sourceMappingURL=StructuredContentEngine.d.ts.map

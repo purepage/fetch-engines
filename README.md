@@ -65,16 +65,12 @@ await engine.cleanup();
 import { fetchStructuredContent } from "@purepageio/fetch-engines";
 import { z } from "zod";
 
-type Article = {
-  title: string;
-  summary: string;
-};
-
 const schema = z.object({
   title: z.string(),
   summary: z.string(),
 });
 
+// model is required - use any model supported by your API provider
 const result = await fetchStructuredContent("https://example.com/article", schema, { model: "gpt-4.1-mini" });
 
 console.log(result.data.summary);
