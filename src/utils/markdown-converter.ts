@@ -623,7 +623,7 @@ export class MarkdownConverter {
           const nav = el.closest && el.closest("nav");
           (nav || el).remove();
         });
-      } catch (e) {
+      } catch {
         // Ignore selector errors
       }
     }

@@ -8,13 +8,11 @@ import { FetchEngine } from "../src/index.js";
  */
 
 async function main() {
-  const engine = new FetchEngine();
-
   // Get a news article as clean markdown
-  const markdownEngine = new FetchEngine({ markdown: true });
+  const engine = new FetchEngine({ markdown: true });
 
   console.log("📰 Fetching news article as markdown...");
-  const article = await markdownEngine.fetchHTML("https://example.com/article");
+  const article = await engine.fetchHTML("https://example.com/article");
 
   console.log(`Title: ${article.title}`);
   console.log(`Content:\n${article.content}`);

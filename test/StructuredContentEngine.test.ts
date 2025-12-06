@@ -83,8 +83,8 @@ describe("StructuredContentEngine", () => {
         author: "John Doe",
       },
       usage: {
-        promptTokens: 100,
-        completionTokens: 50,
+        inputTokens: 100,
+        outputTokens: 50,
         totalTokens: 150,
       },
     };
@@ -114,7 +114,11 @@ describe("StructuredContentEngine", () => {
         markdown: mockHtmlResult.content,
         url: mockHtmlResult.url,
         title: mockHtmlResult.title,
-        usage: mockAiResult.usage,
+        usage: {
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
+        },
       });
     });
 
@@ -259,7 +263,7 @@ describe("fetchStructuredContent convenience function", () => {
 
     const mockAiResult = {
       object: { title: "Test Title" },
-      usage: { promptTokens: 50, completionTokens: 25, totalTokens: 75 },
+      usage: { inputTokens: 50, outputTokens: 25, totalTokens: 75 },
     };
 
     const mockInstance = {
