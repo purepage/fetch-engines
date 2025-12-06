@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING**: `model` is now required in `StructuredContentOptions` (no default model)
 - Error message for missing API key now mentions both `apiConfig.apiKey` and `OPENAI_API_KEY` environment variable
 
 ## [0.6.2] - YYYY-MM-DD

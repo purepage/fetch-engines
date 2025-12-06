@@ -20,8 +20,8 @@ export interface ApiConfig {
  * Configuration options for structured content fetching
  */
 export interface StructuredContentOptions {
-  /** Model to use. Can be any model name supported by your API provider (e.g., 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5', 'gpt-5-mini', or OpenRouter model names) */
-  model?: string;
+  /** Model to use (required). Use any model name supported by your API provider (e.g., 'gpt-4.1-mini', 'anthropic/claude-3.5-sonnet' for OpenRouter) */
+  model: string;
   /** Custom prompt to provide additional context to the LLM */
   customPrompt?: string;
   /** HybridEngine configuration for content fetching */
@@ -76,9 +76,9 @@ export class StructuredContentEngine {
   async fetchStructuredContent<T>(
     url: string,
     schema: z.ZodSchema<T>,
-    options: StructuredContentOptions = {}
+    options: StructuredContentOptions
   ): Promise<StructuredContentResult<T>> {
-    const { model = "gpt-5-mini", customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
+    const { model, customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
 
     const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -125,9 +125,9 @@ ${result.content}`;
         url: result.url,
         title: result.title,
         usage: {
-          promptTokens: (aiResult.usage as any)?.promptTokens ?? 0,
-          completionTokens: (aiResult.usage as any)?.completionTokens ?? 0,
-          totalTokens: (aiResult.usage as any)?.totalTokens ?? 0,
+          promptTokens: aiResult.usage?.inputTokens ?? 0,
+          completionTokens: aiResult.usage?.outputTokens ?? 0,
+          totalTokens: aiResult.usage?.totalTokens ?? 0,
         },
       };
     } catch (error) {
@@ -174,7 +174,7 @@ ${result.content}`;
 export async function fetchStructuredContent<T>(
   url: string,
   schema: z.ZodSchema<T>,
-  options: StructuredContentOptions = {}
+  options: StructuredContentOptions
 ): Promise<StructuredContentResult<T>> {
   const engine = new StructuredContentEngine(options.engineConfig);
   try {

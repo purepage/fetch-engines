@@ -552,7 +552,7 @@ export class MarkdownConverter {
                     (nav || el).remove();
                 });
             }
-            catch (e) {
+            catch {
                 // Ignore selector errors
             }
         }
