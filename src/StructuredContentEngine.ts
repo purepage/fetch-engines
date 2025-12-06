@@ -80,7 +80,6 @@ export class StructuredContentEngine {
   ): Promise<StructuredContentResult<T>> {
     const { model = "gpt-5-mini", customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
 
-    // Determine API key - use apiConfig.apiKey if provided, otherwise fall back to OPENAI_API_KEY env var
     const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error(
@@ -88,7 +87,6 @@ export class StructuredContentEngine {
       );
     }
 
-    // Fetch content using HybridEngine with markdown enabled
     const result = await this.hybridEngine.fetchHTML(url, {
       markdown: true,
       ...engineConfig,
@@ -98,7 +96,6 @@ export class StructuredContentEngine {
       throw new Error("Failed to convert content to markdown");
     }
 
-    // Prepare the prompt for the LLM
     const systemPrompt = `You are an expert at extracting structured data from web content. 
 Extract the requested information from the provided markdown content accurately and completely.
 ${customPrompt ? `\nAdditional context: ${customPrompt}` : ""}
@@ -106,31 +103,15 @@ ${customPrompt ? `\nAdditional context: ${customPrompt}` : ""}
 Content to analyze:
 ${result.content}`;
 
-    // Configure model-specific options
     const modelConfig = this.getModelConfig(model);
 
-    // Configure OpenAI-compatible API provider
-    const openaiConfig: {
-      apiKey: string;
-      baseURL?: string;
-      headers?: Record<string, string>;
-    } = {
+    const openai = createOpenAI({
       apiKey,
-    };
-
-    if (apiConfig.baseURL) {
-      openaiConfig.baseURL = apiConfig.baseURL;
-    }
-
-    if (apiConfig.headers) {
-      openaiConfig.headers = apiConfig.headers;
-    }
-
-    // Create OpenAI provider instance with custom configuration
-    const openai = createOpenAI(openaiConfig);
+      ...(apiConfig.baseURL && { baseURL: apiConfig.baseURL }),
+      ...(apiConfig.headers && { headers: apiConfig.headers }),
+    });
 
     try {
-      // Generate structured object using AI SDK
       const aiResult = await generateObject({
         model: openai(model),
         schema,
