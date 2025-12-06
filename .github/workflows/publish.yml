@@ -26,7 +26,7 @@ jobs:
   build-test-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Changed: Only needs read access now
+      contents: write # Needed to create GitHub releases and tags
       id-token: write # Optional: If using OIDC for authentication instead of token
 
     steps:

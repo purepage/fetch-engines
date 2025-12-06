@@ -31,6 +31,15 @@ async function main() {
     const result = await fetchStructuredContent("https://example.com/lasagna-recipe", recipeSchema, {
       model: "gpt-4.1-mini",
       customPrompt: "Extract complete recipe information",
+      // Optional: Use OpenRouter or other OpenAI-compatible APIs
+      // apiConfig: {
+      //   apiKey: process.env.OPENROUTER_API_KEY,
+      //   baseURL: "https://openrouter.ai/api/v1",
+      //   headers: {
+      //     "HTTP-Referer": "https://your-app.com",
+      //     "X-Title": "Your App Name",
+      //   },
+      // },
     });
 
     console.log("✅ Recipe extracted!");

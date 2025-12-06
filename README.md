@@ -25,7 +25,7 @@ Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-
 
 - **One API for multiple strategies** – Call `fetchHTML` for rendered pages or `fetchContent` for raw responses. The library handles HTTP shortcuts and Playwright fallbacks automatically.
 - **Production-minded defaults** – Retries, caching, and consistent telemetry are ready out of the box.
-- **Drop-in AI enrichment** – Provide a Zod schema and let OpenAI convert full pages into structured data.
+- **Drop-in AI enrichment** – Provide a Zod schema and let OpenAI (or any OpenAI-compatible API) convert full pages into structured data.
 - **Typed and tested** – Built in TypeScript with examples that mirror real-world scraping pipelines.
 
 ## Installation
@@ -80,7 +80,21 @@ const result = await fetchStructuredContent("https://example.com/article", schem
 console.log(result.data.summary);
 ```
 
-Set `OPENAI_API_KEY` before running structured helpers.
+Set `OPENAI_API_KEY` before running structured helpers, or use `apiConfig` to connect to OpenAI-compatible APIs like OpenRouter:
+
+```typescript
+const result = await fetchStructuredContent("https://example.com/article", schema, {
+  model: "anthropic/claude-3.5-sonnet",
+  apiConfig: {
+    apiKey: process.env.OPENROUTER_API_KEY,
+    baseURL: "https://openrouter.ai/api/v1",
+    headers: {
+      "HTTP-Referer": "https://your-app.com",
+      "X-Title": "Your App Name",
+    },
+  },
+});
+```
 
 ## Configuration
 

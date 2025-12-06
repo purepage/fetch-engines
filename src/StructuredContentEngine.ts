@@ -1,19 +1,33 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { z } from "zod";
 import { HybridEngine } from "./HybridEngine.js";
 import type { PlaywrightEngineConfig } from "./types.js";
 
 /**
+ * Configuration for OpenAI-compatible API providers
+ */
+export interface ApiConfig {
+  /** API key for the provider. Defaults to OPENAI_API_KEY environment variable */
+  apiKey?: string;
+  /** Base URL for the API. Use this for OpenAI-compatible APIs like OpenRouter */
+  baseURL?: string;
+  /** Custom headers to include in API requests */
+  headers?: Record<string, string>;
+}
+
+/**
  * Configuration options for structured content fetching
  */
 export interface StructuredContentOptions {
-  /** OpenAI model to use. Options: 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5', 'gpt-5-mini' */
-  model?: "gpt-4.1-mini" | "gpt-4.1" | "gpt-5" | "gpt-5-mini";
+  /** Model to use. Can be any model name supported by your API provider (e.g., 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5', 'gpt-5-mini', or OpenRouter model names) */
+  model?: string;
   /** Custom prompt to provide additional context to the LLM */
   customPrompt?: string;
   /** HybridEngine configuration for content fetching */
   engineConfig?: PlaywrightEngineConfig;
+  /** API configuration for OpenAI-compatible providers (OpenRouter, etc.) */
+  apiConfig?: ApiConfig;
 }
 
 /**
@@ -57,19 +71,22 @@ export class StructuredContentEngine {
    * @param schema Zod schema defining the structure of data to extract
    * @param options Additional options for the extraction process
    * @returns Promise resolving to structured data and metadata
-   * @throws Error if OPENAI_API_KEY is not set or if extraction fails
+   * @throws Error if API key is not set or if extraction fails
    */
   async fetchStructuredContent<T>(
     url: string,
     schema: z.ZodSchema<T>,
     options: StructuredContentOptions = {}
   ): Promise<StructuredContentResult<T>> {
-    // Check for OpenAI API key
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY environment variable is required for structured content extraction");
-    }
+    const { model = "gpt-5-mini", customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
 
-    const { model = "gpt-5-mini", customPrompt = "", engineConfig = {} } = options;
+    // Determine API key - use apiConfig.apiKey if provided, otherwise fall back to OPENAI_API_KEY env var
+    const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "API key is required for structured content extraction. Provide it via apiConfig.apiKey or set OPENAI_API_KEY environment variable"
+      );
+    }
 
     // Fetch content using HybridEngine with markdown enabled
     const result = await this.hybridEngine.fetchHTML(url, {
@@ -91,6 +108,26 @@ ${result.content}`;
 
     // Configure model-specific options
     const modelConfig = this.getModelConfig(model);
+
+    // Configure OpenAI-compatible API provider
+    const openaiConfig: {
+      apiKey: string;
+      baseURL?: string;
+      headers?: Record<string, string>;
+    } = {
+      apiKey,
+    };
+
+    if (apiConfig.baseURL) {
+      openaiConfig.baseURL = apiConfig.baseURL;
+    }
+
+    if (apiConfig.headers) {
+      openaiConfig.headers = apiConfig.headers;
+    }
+
+    // Create OpenAI provider instance with custom configuration
+    const openai = createOpenAI(openaiConfig);
 
     try {
       // Generate structured object using AI SDK
