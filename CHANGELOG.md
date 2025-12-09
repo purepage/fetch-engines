@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2025-01-XX
+## [0.8.1] - 2025-12-09
+
+### Fixed
+
+- Fixed "No cookie auth credentials found" error when using `apiConfig` with OpenAI-compatible APIs (OpenRouter, etc.) - the library now correctly lets `createOpenAICompatible` handle authentication via the `apiKey` parameter instead of manually adding Authorization headers
+
+## [0.8.0] - 2025-12-09
 
 ### Added
 
@@ -56,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/purepage/fetch-engines/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/purepage/fetch-engines/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/purepage/fetch-engines/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/purepage/fetch-engines/compare/v0.7.0...v0.7.2

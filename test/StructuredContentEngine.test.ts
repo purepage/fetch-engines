@@ -205,7 +205,7 @@ describe("StructuredContentEngine", () => {
       });
     });
 
-    it("should use OpenAI-compatible provider when baseURL is custom and inject Authorization header", async () => {
+    it("should use OpenAI-compatible provider when baseURL is custom and NOT inject Authorization header (let createOpenAICompatible handle it)", async () => {
       await engine.fetchStructuredContent("https://example.com", testSchema, {
         model: "gpt-4.1-mini",
         apiConfig: {
@@ -223,7 +223,8 @@ describe("StructuredContentEngine", () => {
         apiKey: "custom-key",
         baseURL: "https://openrouter.ai/api/v1",
         headers: {
-          Authorization: "Bearer custom-key",
+          // Authorization header is NOT added for OpenAI-compatible providers
+          // createOpenAICompatible handles auth via apiKey parameter
           "HTTP-Referer": "https://app.example",
           "X-Title": "Example App",
         },
