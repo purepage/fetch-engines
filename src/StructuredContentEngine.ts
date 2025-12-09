@@ -80,10 +80,11 @@ export class StructuredContentEngine {
   ): Promise<StructuredContentResult<T>> {
     const { model, customPrompt = "", engineConfig = {}, apiConfig = {} } = options;
 
-    const apiKey = apiConfig.apiKey ?? process.env.OPENAI_API_KEY;
+    const apiKey =
+      apiConfig.apiKey ?? process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       throw new Error(
-        "API key is required for structured content extraction. Provide it via apiConfig.apiKey or set OPENAI_API_KEY environment variable"
+        "API key is required for structured content extraction. Provide it via apiConfig.apiKey or set OPENAI_API_KEY or OPENROUTER_API_KEY environment variables"
       );
     }
 
@@ -105,10 +106,17 @@ ${result.content}`;
 
     const modelConfig = this.getModelConfig(model);
 
+    const headers = {
+      ...(apiConfig.headers ?? {}),
+      ...(apiConfig.headers?.Authorization
+        ? {}
+        : { Authorization: `Bearer ${apiKey}` }),
+    };
+
     const openai = createOpenAI({
       apiKey,
       ...(apiConfig.baseURL && { baseURL: apiConfig.baseURL }),
-      ...(apiConfig.headers && { headers: apiConfig.headers }),
+      headers,
     });
 
     try {
