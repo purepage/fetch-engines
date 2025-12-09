@@ -65,9 +65,10 @@ await engine.cleanup();
 import { fetchStructuredContent } from "@purepageio/fetch-engines";
 import { z } from "zod";
 
+// IMPORTANT: All schema fields must have .describe() calls to guide the AI model
 const schema = z.object({
-  title: z.string(),
-  summary: z.string(),
+  title: z.string().describe("The title of the article"),
+  summary: z.string().describe("A brief summary of the article content"),
 });
 
 // model is required - use any model supported by your API provider
@@ -91,6 +92,8 @@ const result = await fetchStructuredContent("https://example.com/article", schem
   },
 });
 ```
+
+When you supply a custom `baseURL`, the engine automatically switches to the Vercel AI SDK's `createOpenAICompatible` provider (instead of `createOpenAI`) so OpenAI-compatible services like OpenRouter receive the correct API-key auth flow.
 
 ## Configuration
 

@@ -1,5 +1,8 @@
-import { fetchStructuredContent } from "../src/index.js";
+import { fetchStructuredContent } from "../dist/index.js";
 import { z } from "zod";
+import { config } from "dotenv";
+config();
+// You'll need to set OPENAI_API_KEY in your environment variables
 
 /**
  * AI-Powered Data Extraction
@@ -9,12 +12,13 @@ import { z } from "zod";
  */
 
 // Define what data you want to extract
-const recipeSchema = z.object({
-  title: z.string(),
-  cookingTime: z.string(),
-  servings: z.number(),
-  ingredients: z.array(z.string()),
-  instructions: z.array(z.string()),
+// IMPORTANT: All fields must have .describe() calls to guide the AI model
+const productSchema = z.object({
+  title: z.string().describe("The product title or name"),
+  price: z
+    .number()
+    .describe("The product price as a numeric value (without currency symbols, e.g., 28.00 not '$28.00')"),
+  description: z.string().describe("A detailed description of the product"),
 });
 
 async function main() {
@@ -28,26 +32,28 @@ async function main() {
   console.log("🤖 Extracting recipe data with AI...");
 
   try {
-    const result = await fetchStructuredContent("https://example.com/lasagna-recipe", recipeSchema, {
-      model: "gpt-4.1-mini",
-      customPrompt: "Extract complete recipe information",
-      // Optional: Use OpenRouter or other OpenAI-compatible APIs
-      // apiConfig: {
-      //   apiKey: process.env.OPENROUTER_API_KEY,
-      //   baseURL: "https://openrouter.ai/api/v1",
-      //   headers: {
-      //     "HTTP-Referer": "https://your-app.com",
-      //     "X-Title": "Your App Name",
-      //   },
-      // },
-    });
+    const result = await fetchStructuredContent(
+      "https://vinylunderground.co.uk/products/jeroboam-night-away-dive-into-darkness",
+      productSchema,
+      {
+        model: "moonshotai/kimi-k2-0905",
+        customPrompt: "Extract the title, price and description of the product",
+        // Optional: Use OpenRouter or other OpenAI-compatible APIs
+        apiConfig: {
+          apiKey: process.env.OPENAI_API_KEY,
+          baseURL: "https://openrouter.ai/api/v1",
+          headers: {
+            "HTTP-Referer": "https://your-app.com",
+            "X-Title": "Your App Name",
+          },
+        },
+      }
+    );
 
     console.log("✅ Recipe extracted!");
     console.log(`📄 ${result.data.title}`);
-    console.log(`⏱️ Cooking time: ${result.data.cookingTime}`);
-    console.log(`👥 Serves: ${result.data.servings}`);
-    console.log(`🥕 Ingredients: ${result.data.ingredients.length} items`);
-    console.log(`📝 Steps: ${result.data.instructions.length} instructions`);
+    console.log(`💰 Price: ${result.data.price}`);
+    console.log(`� Description: ${result.data.description}`);
   } catch (error) {
     console.error("❌ Extraction failed:", error);
   }

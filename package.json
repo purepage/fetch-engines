@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "type": "module",
   "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
   "main": "dist/index.js",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.30",
+    "@ai-sdk/openai-compatible": "^1.0.28",
     "ai": "^5.0.44",
     "axios": "^1.12.0",
     "node-html-parser": "^7.0.1",
@@ -50,6 +51,7 @@
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
+    "dotenv": "^17.2.3",
     "eslint": "^9.23.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.5",

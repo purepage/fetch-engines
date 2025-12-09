@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { PlaywrightEngineConfig } from "./types.js";
 /**
  * Configuration for OpenAI-compatible API providers
@@ -50,15 +50,26 @@ export declare class StructuredContentEngine {
     private hybridEngine;
     constructor(config?: PlaywrightEngineConfig);
     /**
+     * Extracts field descriptions from a Zod object schema
+     * @private
+     */
+    private extractFieldDescriptions;
+    /**
+     * Validates that all fields in the schema have descriptions
+     * @private
+     */
+    private validateSchemaDescriptions;
+    /**
      * Fetches content from a URL and extracts structured data using AI
      *
      * @param url The URL to fetch content from
-     * @param schema Zod schema defining the structure of data to extract
+     * @param schema Zod schema defining the structure of data to extract (all fields must have .describe() calls)
      * @param options Additional options for the extraction process
      * @returns Promise resolving to structured data and metadata
-     * @throws Error if API key is not set or if extraction fails
+     * @throws Error if API key is not set, if schema fields lack descriptions, or if extraction fails
      */
     fetchStructuredContent<T>(url: string, schema: z.ZodSchema<T>, options: StructuredContentOptions): Promise<StructuredContentResult<T>>;
+    private getOpenAIProvider;
     /**
      * Get model-specific configuration options
      */
