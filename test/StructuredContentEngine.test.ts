@@ -25,6 +25,7 @@ describe("StructuredContentEngine", () => {
   let engine: StructuredContentEngine;
   let mockGenerateObject: Mock;
   let mockHybridEngine: Mock;
+  let mockCreateOpenAI: Mock;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -34,6 +35,7 @@ describe("StructuredContentEngine", () => {
     // Initialize mocks
     mockGenerateObject = vi.mocked(await import("ai")).generateObject as Mock;
     mockHybridEngine = vi.mocked(await import("../src/HybridEngine.js")).HybridEngine as unknown as Mock;
+    mockCreateOpenAI = vi.mocked(await import("@ai-sdk/openai")).createOpenAI as Mock;
 
     engine = new StructuredContentEngine();
   });
@@ -183,6 +185,49 @@ describe("StructuredContentEngine", () => {
           openai: {
             reasoning_effort: "low",
           },
+        },
+      });
+    });
+
+    it("should propagate apiConfig and inject Authorization header", async () => {
+      await engine.fetchStructuredContent("https://example.com", testSchema, {
+        model: "gpt-4.1-mini",
+        apiConfig: {
+          apiKey: "custom-key",
+          baseURL: "https://openrouter.ai/api/v1",
+          headers: {
+            "HTTP-Referer": "https://app.example",
+            "X-Title": "Example App",
+          },
+        },
+      });
+
+      expect(mockCreateOpenAI).toHaveBeenCalledWith({
+        apiKey: "custom-key",
+        baseURL: "https://openrouter.ai/api/v1",
+        headers: {
+          Authorization: "Bearer custom-key",
+          "HTTP-Referer": "https://app.example",
+          "X-Title": "Example App",
+        },
+      });
+    });
+
+    it("should preserve explicit Authorization header from apiConfig", async () => {
+      await engine.fetchStructuredContent("https://example.com", testSchema, {
+        model: "gpt-4.1-mini",
+        apiConfig: {
+          apiKey: "custom-key",
+          headers: {
+            Authorization: "Bearer override-key",
+          },
+        },
+      });
+
+      expect(mockCreateOpenAI).toHaveBeenCalledWith({
+        apiKey: "custom-key",
+        headers: {
+          Authorization: "Bearer override-key",
         },
       });
     });

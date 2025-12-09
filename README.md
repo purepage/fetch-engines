@@ -76,7 +76,7 @@ const result = await fetchStructuredContent("https://example.com/article", schem
 console.log(result.data.summary);
 ```
 
-Set `OPENAI_API_KEY` before running structured helpers, or use `apiConfig` to connect to OpenAI-compatible APIs like OpenRouter:
+Set `OPENAI_API_KEY` (or `OPENROUTER_API_KEY`) before running structured helpers, or use `apiConfig` to connect to OpenAI-compatible APIs like OpenRouter. The engine automatically adds the `Authorization` header when you provide an API key:
 
 ```typescript
 const result = await fetchStructuredContent("https://example.com/article", schema, {
