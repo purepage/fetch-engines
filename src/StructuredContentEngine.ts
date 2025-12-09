@@ -211,9 +211,17 @@ ${result.content}`;
 
     const modelConfig = this.getModelConfig(model);
 
+    // Build headers - for OpenAI-compatible providers, don't add Authorization header
+    // as createOpenAICompatible handles it via apiKey parameter
+    const normalizedBaseURL = apiConfig.baseURL?.replace(/\/+$/, "");
+    const defaultOpenAIBaseURL = "https://api.openai.com/v1";
+    const isOpenAICompatible = normalizedBaseURL && normalizedBaseURL !== defaultOpenAIBaseURL;
+
     const headers = {
       ...(apiConfig.headers ?? {}),
-      ...(apiConfig.headers?.Authorization ? {} : { Authorization: `Bearer ${apiKey}` }),
+      // Only add Authorization header for standard OpenAI API
+      // OpenAI-compatible providers handle auth via apiKey parameter in createOpenAICompatible
+      ...(!isOpenAICompatible && !apiConfig.headers?.Authorization ? { Authorization: `Bearer ${apiKey}` } : {}),
     };
 
     const openai = this.getOpenAIProvider({
