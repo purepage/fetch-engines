@@ -4,10 +4,24 @@ import { z } from "zod";
 // Mock AI SDK BEFORE importing the module under test
 vi.mock("ai", () => ({
   generateObject: vi.fn(),
+  NoObjectGeneratedError: class NoObjectGeneratedError extends Error {
+    static isInstance(error: unknown): error is NoObjectGeneratedError {
+      return error instanceof NoObjectGeneratedError;
+    }
+    text?: string;
+    finishReason?: string;
+    cause?: unknown;
+    response?: unknown;
+    usage?: unknown;
+  },
 }));
 
 vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(() => () => "mocked-model"),
+}));
+
+vi.mock("@ai-sdk/openai-compatible", () => ({
+  createOpenAICompatible: vi.fn(() => () => "compatible-model"),
 }));
 
 // Mock HybridEngine BEFORE importing the module under test
@@ -26,6 +40,7 @@ describe("StructuredContentEngine", () => {
   let mockGenerateObject: Mock;
   let mockHybridEngine: Mock;
   let mockCreateOpenAI: Mock;
+  let mockCreateOpenAICompatible: Mock;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -36,6 +51,7 @@ describe("StructuredContentEngine", () => {
     mockGenerateObject = vi.mocked(await import("ai")).generateObject as Mock;
     mockHybridEngine = vi.mocked(await import("../src/HybridEngine.js")).HybridEngine as unknown as Mock;
     mockCreateOpenAI = vi.mocked(await import("@ai-sdk/openai")).createOpenAI as Mock;
+    mockCreateOpenAICompatible = vi.mocked(await import("@ai-sdk/openai-compatible")).createOpenAICompatible as Mock;
 
     engine = new StructuredContentEngine();
   });
@@ -65,8 +81,8 @@ describe("StructuredContentEngine", () => {
 
   describe("fetchStructuredContent", () => {
     const testSchema = z.object({
-      title: z.string(),
-      author: z.string().optional(),
+      title: z.string().describe("The title of the content"),
+      author: z.string().describe("The author of the content").optional(),
     });
 
     const mockHtmlResult = {
@@ -189,7 +205,7 @@ describe("StructuredContentEngine", () => {
       });
     });
 
-    it("should propagate apiConfig and inject Authorization header", async () => {
+    it("should use OpenAI-compatible provider when baseURL is custom and inject Authorization header", async () => {
       await engine.fetchStructuredContent("https://example.com", testSchema, {
         model: "gpt-4.1-mini",
         apiConfig: {
@@ -202,7 +218,8 @@ describe("StructuredContentEngine", () => {
         },
       });
 
-      expect(mockCreateOpenAI).toHaveBeenCalledWith({
+      expect(mockCreateOpenAICompatible).toHaveBeenCalledWith({
+        name: "openai-compatible",
         apiKey: "custom-key",
         baseURL: "https://openrouter.ai/api/v1",
         headers: {
@@ -211,6 +228,8 @@ describe("StructuredContentEngine", () => {
           "X-Title": "Example App",
         },
       });
+
+      expect(mockCreateOpenAI).not.toHaveBeenCalled();
     });
 
     it("should preserve explicit Authorization header from apiConfig", async () => {
@@ -230,6 +249,26 @@ describe("StructuredContentEngine", () => {
           Authorization: "Bearer override-key",
         },
       });
+      expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to OpenAI provider when baseURL is default", async () => {
+      await engine.fetchStructuredContent("https://example.com", testSchema, {
+        model: "gpt-4.1-mini",
+        apiConfig: {
+          apiKey: "custom-key",
+          baseURL: "https://api.openai.com/v1/",
+        },
+      });
+
+      expect(mockCreateOpenAI).toHaveBeenCalledWith({
+        apiKey: "custom-key",
+        baseURL: "https://api.openai.com/v1",
+        headers: {
+          Authorization: "Bearer custom-key",
+        },
+      });
+      expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
     });
 
     it("should throw error if content is not markdown", async () => {
@@ -283,7 +322,7 @@ describe("StructuredContentEngine", () => {
 
 describe("fetchStructuredContent convenience function", () => {
   const testSchema = z.object({
-    title: z.string(),
+    title: z.string().describe("The title of the content"),
   });
 
   beforeEach(() => {
