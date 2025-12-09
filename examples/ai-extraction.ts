@@ -15,7 +15,9 @@ config();
 // IMPORTANT: All fields must have .describe() calls to guide the AI model
 const productSchema = z.object({
   title: z.string().describe("The product title or name"),
-  price: z.number().describe("The product price as a numeric value (without currency symbols, e.g., 28.00 not '$28.00')"),
+  price: z
+    .number()
+    .describe("The product price as a numeric value (without currency symbols, e.g., 28.00 not '$28.00')"),
   description: z.string().describe("A detailed description of the product"),
 });
 
