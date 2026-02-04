@@ -86,7 +86,7 @@ export class HybridEngine implements IEngine {
       const fetchResult = await this.fetchEngine.fetchHTML(url, fetchEngineCallSpecificOptions);
 
       // If FetchEngine succeeded AND SPA heuristics are active, check if it's just a shell
-      if ((effectiveSpaMode || shouldAutoDetectSpa) && fetchResult && fetchResult.content) {
+      if ((effectiveSpaMode || shouldAutoDetectSpa) && fetchResult && fetchResult.contentType === "html" && fetchResult.content) {
         if (isLikelySpaShell(fetchResult.content)) {
           console.warn(`HybridEngine: FetchEngine returned likely SPA shell for ${url}. Forcing PlaywrightEngine.`);
           // Fallback to PlaywrightEngine, passing the determined effective options
