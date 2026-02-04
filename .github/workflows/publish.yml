@@ -62,7 +62,7 @@ jobs:
         run: pnpm test
 
       - name: Run Live Network Smoke Tests (opt-in)
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_tests == true)
+        if: github.event_name == 'schedule' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_live_tests == true)
         env:
           LIVE_NETWORK: "1"
         run: pnpm test:live
