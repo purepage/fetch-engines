@@ -9,6 +9,7 @@ import type {
   FetchOptions,
   BrowserMetrics,
 } from "./types.js";
+import { isLikelySpaShell } from "./utils/spa-detection.js";
 
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
@@ -29,29 +30,12 @@ export class HybridEngine implements IEngine {
     this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
   }
 
-  private _isSpaShell(htmlContent: string): boolean {
-    if (!htmlContent || htmlContent.length < 150) {
-      // Very short content might be a shell or error
-      // Heuristic: if it's very short AND contains noscript, good chance it's a shell.
-      if (htmlContent.includes("<noscript>")) return true;
-    }
-    // Check for <noscript> tag
-    if (htmlContent.includes("<noscript>")) return true;
-
-    // Check for common empty root divs
-    if (/<div id=(?:"|')?(root|app)(?:"|')?[^>]*>\s*<\/div>/i.test(htmlContent)) return true;
-
-    // Check for empty title tag or no title tag at all
-    if (/<title>\s*<\/title>/i.test(htmlContent) || !/<title[^>]*>/i.test(htmlContent)) return true;
-
-    return false;
-  }
-
   async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
     // Determine effective SPA mode and markdown options
     // HybridEngine defaults to false for these if not otherwise specified in its own config or per-request options.
     const effectiveSpaMode =
       options.spaMode !== undefined ? options.spaMode : this.config.spaMode !== undefined ? this.config.spaMode : false;
+    const shouldAutoDetectSpa = this.config.autoDetectSpa ?? true;
     const effectiveMarkdown =
       options.markdown !== undefined
         ? options.markdown
@@ -101,14 +85,12 @@ export class HybridEngine implements IEngine {
       };
       const fetchResult = await this.fetchEngine.fetchHTML(url, fetchEngineCallSpecificOptions);
 
-      // If FetchEngine succeeded AND spaMode is active, check if it's just a shell
-      if (effectiveSpaMode && fetchResult && fetchResult.content) {
-        if (this._isSpaShell(fetchResult.content)) {
-          console.warn(
-            `HybridEngine: FetchEngine returned likely SPA shell for ${url} in spaMode. Forcing PlaywrightEngine.`
-          );
+      // If FetchEngine succeeded AND SPA heuristics are active, check if it's just a shell
+      if ((effectiveSpaMode || shouldAutoDetectSpa) && fetchResult && fetchResult.content) {
+        if (isLikelySpaShell(fetchResult.content)) {
+          console.warn(`HybridEngine: FetchEngine returned likely SPA shell for ${url}. Forcing PlaywrightEngine.`);
           // Fallback to PlaywrightEngine, passing the determined effective options
-          return this.playwrightEngine.fetchHTML(url, playwrightOptions);
+          return this.playwrightEngine.fetchHTML(url, { ...playwrightOptions, spaMode: true });
         }
       }
       // If not spaMode, or if spaMode but content is not a shell, return FetchEngine's result

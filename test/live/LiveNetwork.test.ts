@@ -44,5 +44,13 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
   it("HybridEngine returns 404 without Playwright fallback", async () => {
     await expect(hybrid.fetchContent("https://httpbin.org/status/404")).rejects.toHaveProperty("statusCode", 404);
   }, 30000);
-});
 
+  it("HybridEngine extracts H2 tags from SPA privacy policy", async () => {
+    const res = await hybrid.fetchHTML("https://store.fanatico.au/fanatico-records-privacy-policy", {
+      markdown: false,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.contentType).toBe("html");
+    expect(res.content).toMatch(/<h2\b[^>]*>/i);
+  }, 60000);
+});

@@ -3,7 +3,8 @@ import PQueue from "p-queue";
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
-import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_TITLE_TAG, REGEX_SIMPLE_HTML_TITLE_FALLBACK, REGEX_SANITIZE_HTML_TAGS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, } from "./constants.js"; // Corrected path
+import { isLikelySpaShell } from "./utils/spa-detection.js";
+import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_TITLE_TAG, REGEX_SIMPLE_HTML_TITLE_FALLBACK, REGEX_SANITIZE_HTML_TAGS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, AUTO_SPA_NETWORK_IDLE_TIMEOUT_MS, } from "./constants.js"; // Corrected path
 function delay(time) {
     // Added return type
     return new Promise((resolve) => setTimeout(resolve, time));
@@ -45,6 +46,7 @@ export class PlaywrightEngine {
         useHeadedMode: false,
         markdown: true,
         spaMode: false,
+        autoDetectSpa: true,
         spaRenderDelayMs: 0,
         playwrightOnlyPatterns: [],
         playwrightLaunchOptions: undefined,
@@ -519,6 +521,20 @@ export class PlaywrightEngine {
                 throw new FetchError(`HTTP error status received: ${response.status()}`, "ERR_HTTP_ERROR", undefined, response.status());
             }
             const actualContentTypeHeader = response.headers()["content-type"]?.toLowerCase() || "";
+            if (!isSpaMode && this.config.autoDetectSpa && actualContentTypeHeader.startsWith("text/html")) {
+                const initialHtml = await page.content();
+                if (isLikelySpaShell(initialHtml)) {
+                    try {
+                        await page.waitForLoadState("networkidle", { timeout: AUTO_SPA_NETWORK_IDLE_TIMEOUT_MS });
+                    }
+                    catch {
+                        // Best-effort wait; if networkidle times out, continue with whatever is rendered.
+                    }
+                    if (this.config.spaRenderDelayMs > 0) {
+                        await page.waitForTimeout(this.config.spaRenderDelayMs);
+                    }
+                }
+            }
             const title = await page.title();
             const finalUrl = page.url();
             const status = response.status();

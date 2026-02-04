@@ -26,4 +26,5 @@ export declare const HUMAN_SIMULATION_MIN_DELAY_MS = 150;
 export declare const HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS = 200;
 export declare const HUMAN_SIMULATION_SCROLL_DELAY_MS = 200;
 export declare const HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS = 300;
+export declare const AUTO_SPA_NETWORK_IDLE_TIMEOUT_MS = 10000;
 //# sourceMappingURL=constants.d.ts.map

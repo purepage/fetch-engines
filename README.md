@@ -102,7 +102,7 @@ When you supply a custom `baseURL`, the engine automatically switches to the Ver
 All engines accept familiar `fetch` options such as custom headers. Additional Hybrid/Playwright options you are likely to tweak:
 
 - `markdown` – return Markdown instead of HTML.
-- `spaMode` & `spaRenderDelayMs` – allow single-page apps to render before extraction.
+- `spaMode`, `autoDetectSpa`, & `spaRenderDelayMs` – let client-rendered pages finish before extraction.
 - `cacheTTL`, `maxRetries`, and browser pool sizes – control resilience and throughput.
 
 Check the inline TypeScript docs or the [`/examples`](./examples) directory for end-to-end flows.
@@ -132,7 +132,8 @@ Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with def
 | `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                          |
 | `markdown`                 | `true`      | Return Markdown (instead of HTML) when possible. Override per request with `markdown: false`. |
 | `spaMode`                  | `false`     | Enable SPA heuristics and allow additional waits for client rendering.                        |
-| `spaRenderDelayMs`         | `0`         | Extra delay after load when `spaMode` is `true`.                                              |
+| `autoDetectSpa`            | `true`      | Detect likely SPA shells automatically and retry with SPA-friendly waits.                     |
+| `spaRenderDelayMs`         | `0`         | Extra delay after load when `spaMode` is `true` (or auto-detection triggers).                 |
 | `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP fetches.              |
 | `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                 |
 

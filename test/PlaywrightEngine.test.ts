@@ -49,6 +49,7 @@ describe("PlaywrightEngine - Headers", () => {
     useHeadedMode: false,
     markdown: false, 
     spaMode: false,
+    autoDetectSpa: true,
     spaRenderDelayMs: 0,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,

@@ -175,9 +175,14 @@ export interface PlaywrightEngineConfig {
      */
     spaMode?: boolean;
     /**
+     * Automatically detect likely SPA shells and retry with SPA-friendly waits.
+     * @default true
+     */
+    autoDetectSpa?: boolean;
+    /**
      * Explicit delay in milliseconds to wait after initial page load events when spaMode is true,
      * allowing more time for client-side rendering and data fetching to complete.
-     * Only applies if `spaMode` is true.
+     * Also used when auto-detected SPA shells trigger additional waits.
      * @default 0 (no additional fixed delay beyond Playwright's own waits)
      */
     spaRenderDelayMs?: number;

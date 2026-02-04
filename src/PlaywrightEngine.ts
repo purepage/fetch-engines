@@ -13,6 +13,7 @@ import type { Route, Page, /* BrowserContext, */ Response as PlaywrightResponse 
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
 import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { isLikelySpaShell } from "./utils/spa-detection.js";
 import {
   DEFAULT_HTTP_TIMEOUT,
   SHORT_DELAY_MS,
@@ -27,6 +28,7 @@ import {
   HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS,
   HUMAN_SIMULATION_SCROLL_DELAY_MS,
   HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS,
+  AUTO_SPA_NETWORK_IDLE_TIMEOUT_MS,
 } from "./constants.js"; // Corrected path
 
 function delay(time: number): Promise<void> {
@@ -86,6 +88,7 @@ export class PlaywrightEngine implements IEngine {
     useHeadedMode: false,
     markdown: true,
     spaMode: false,
+    autoDetectSpa: true,
     spaRenderDelayMs: 0,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,
@@ -684,6 +687,21 @@ export class PlaywrightEngine implements IEngine {
       }
 
       const actualContentTypeHeader = response.headers()["content-type"]?.toLowerCase() || "";
+
+      if (!isSpaMode && this.config.autoDetectSpa && actualContentTypeHeader.startsWith("text/html")) {
+        const initialHtml = await page.content();
+        if (isLikelySpaShell(initialHtml)) {
+          try {
+            await page.waitForLoadState("networkidle", { timeout: AUTO_SPA_NETWORK_IDLE_TIMEOUT_MS });
+          } catch {
+            // Best-effort wait; if networkidle times out, continue with whatever is rendered.
+          }
+          if (this.config.spaRenderDelayMs > 0) {
+            await page.waitForTimeout(this.config.spaRenderDelayMs);
+          }
+        }
+      }
+
       const title = await page.title();
       const finalUrl = page.url();
       const status = response.status();

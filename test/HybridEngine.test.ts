@@ -185,3 +185,62 @@ describe("HybridEngine - Headers Propagation", () => {
     expect(actualOptionsUndefinedFailure.headers).toEqual({});
   });
 });
+
+describe("HybridEngine - SPA auto detection", () => {
+  const MOCK_URL = "http://example.com";
+  let mockFetchEngineInstance: any;
+  let mockPlaywrightEngineInstance: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockFetchEngineInstance = {
+      fetchHTML: vi
+        .fn()
+        .mockResolvedValue({
+          content: "<html><head><title></title></head><body><div id=\"root\"></div><noscript>Enable JS</noscript></body></html>",
+          title: "",
+          contentType: "html",
+          url: MOCK_URL,
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+    };
+    mockPlaywrightEngineInstance = {
+      fetchHTML: vi.fn().mockResolvedValue({
+        content: "playwright-html",
+        title: "Test",
+        contentType: "html",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      }),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      getMetrics: vi.fn().mockReturnValue([]),
+    };
+
+    (FetchEngine as any as SpyInstance).mockImplementation(() => mockFetchEngineInstance);
+    (PlaywrightEngine as any as SpyInstance).mockImplementation(() => mockPlaywrightEngineInstance);
+  });
+
+  it("should auto-detect SPA shells and fallback to Playwright with spaMode enabled", async () => {
+    const engine = new HybridEngine();
+    await engine.fetchHTML(MOCK_URL);
+
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
+      MOCK_URL,
+      expect.objectContaining({ spaMode: true })
+    );
+  });
+
+  it("should skip SPA auto-detection when autoDetectSpa is disabled", async () => {
+    const engine = new HybridEngine({ autoDetectSpa: false });
+    const result = await engine.fetchHTML(MOCK_URL);
+
+    expect(result.content).toContain("root");
+    expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+  });
+});
