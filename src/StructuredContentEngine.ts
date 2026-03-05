@@ -8,7 +8,13 @@ import type { PlaywrightEngineConfig } from "./types.js";
 // Suppress AI SDK warnings about responseFormat/structuredOutputs
 // This warning appears when using OpenAI-compatible APIs that don't support structured outputs
 if (typeof globalThis !== "undefined") {
-  (globalThis as any).AI_SDK_LOG_WARNINGS = false;
+  (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS = false;
+}
+
+/** Zod internal field shape we access for description extraction (not part of public API). */
+interface ZodFieldDef {
+  _def?: { typeName?: string; innerType?: { description?: string } };
+  description?: string;
 }
 
 /**
@@ -83,7 +89,7 @@ export class StructuredContentEngine {
       for (const [key, fieldSchema] of Object.entries(shape)) {
         // In Zod v4, description is stored directly on the schema object
         let description: string | undefined;
-        const fieldSchemaAny = fieldSchema as any;
+        const fieldSchemaAny = fieldSchema as unknown as ZodFieldDef;
         const def = fieldSchemaAny._def;
 
         // Handle optional fields - check innerType for description
@@ -117,7 +123,7 @@ export class StructuredContentEngine {
     const missingDescriptions: string[] = [];
 
     for (const [key, fieldSchema] of Object.entries(shape)) {
-      const fieldSchemaAny = fieldSchema as any;
+      const fieldSchemaAny = fieldSchema as unknown as ZodFieldDef;
 
       // In Zod v4, description is stored directly on the schema object
       // Check if it's an optional field by checking for innerType

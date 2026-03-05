@@ -3,7 +3,6 @@ export interface ConversionOptions {
     maxContentLength?: number;
 }
 export declare class MarkdownConverter {
-    private turndownService;
     constructor();
     /**
      * Converts HTML string to Markdown.
@@ -12,23 +11,21 @@ export declare class MarkdownConverter {
      * @returns The converted Markdown string.
      */
     convert(html: string, options?: ConversionOptions): string;
-    private setupPrioritizedRules;
-    private addContentExtractionRules;
-    private addStructureRules;
-    private addBlockRules;
-    private addInlineRules;
     private preprocessHTML;
-    /**
-     * Ensures simple data tables are convertible to GFM by promoting the first row to headers
-     * when no <th> exists. Skips layout tables marked with role="presentation".
-     */
-    private normalizeTablesForMarkdown;
+    /** Remove img elements with .svg src (external SVG URLs). Inline SVG and data: URIs already stripped by PREPROCESSING_REMOVE_SELECTORS. */
+    private removeSvgImageRefs;
     private removeBreadcrumbs;
+    /** Promote or inject a primary H1 heading using the provided title (from Kreuzberg metadata or DOM extraction). */
     private ensurePrimaryHeading;
-    private flattenTableToSimpleGfm;
-    private sanitizeCellContentForTable;
     private cleanupHtml;
     private cleanupContentHtml;
+    /** Check if any CSS class token matches exactly, or if any token contains the substring (for hyphenated classes like "article-body"). */
+    private hasClass;
+    private hasClassSubstring;
+    /** Check if element matches a main content selector (node-html-parser has no matches()). */
+    private elementMatchesMainContent;
+    /** Check if element matches boilerplate selectors (node-html-parser has no matches()). */
+    private elementMatchesBoilerplate;
     private removeHighLinkDensityElements;
     private detectForumPage;
     /**

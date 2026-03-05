@@ -1,5 +1,4 @@
-import TurndownService from "turndown";
-import { gfm } from "turndown-plugin-gfm";
+import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";
 import { parse, HTMLElement as NHPHTMLElement } from "node-html-parser";
 // --- Constants ---
 // Preprocessing - Selectors for removal (balanced approach)
@@ -8,6 +7,8 @@ const PREPROCESSING_REMOVE_SELECTORS = [
     "style",
     "noscript",
     "iframe:not([title])", // Keep iframes with titles (potential embeds)
+    "svg", // Inline SVGs - decorative icons, bloat RAG with meaningless path data
+    "img[src*='data:image/svg']", // Base64 inline SVG images
 ];
 // Preprocessing - Selectors for identifying potential main content
 const MAIN_CONTENT_SELECTORS = [
@@ -50,47 +51,13 @@ const MIN_LINK_DENSITY_TEXT_LENGTH = 50; // Lowered slightly from original
 const DEFAULT_LINK_DENSITY_THRESHOLD = 0.4; // Slightly lower threshold
 // Preprocessing - Forum Detection
 const MIN_FORUM_INDICATOR_COUNT = 3;
-// Turndown - Code block detection
-const CODE_BLOCK_LANG_PREFIXES = ["language-", "lang-"];
 // Postprocessing
 const POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES = 2; // Keep paragraphs separate
-// Turndown specific
-const DEFAULT_ORDERED_LIST_ITEM_PREFIX = "1. ";
-const TURNDOWN_NODE_ELEMENT_TYPE = 1;
-const TURNDOWN_PRESENTATION_ROLE = "presentation";
-const TURNDOWN_PRESERVE_CLASS = "preserve";
 // --- Class Definition ---
 export class MarkdownConverter {
-    turndownService;
     constructor() {
-        this.turndownService = new TurndownService({
-            headingStyle: "atx",
-            codeBlockStyle: "fenced",
-            bulletListMarker: "-",
-            strongDelimiter: "**",
-            emDelimiter: "*",
-            hr: "---",
-            // Use nodeType check instead of window.HTMLElement
-            // Important: Do NOT blanket-preserve <table> elements here — let the GFM plugin
-            // convert them to Markdown. Only preserve explicitly marked layout/preserved elements.
-            keepReplacement: ((_content, node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType === TURNDOWN_NODE_ELEMENT_TYPE) {
-                    const htmlElement = node;
-                    const role = htmlElement.getAttribute("role");
-                    const preserve = htmlElement.classList?.contains(TURNDOWN_PRESERVE_CLASS);
-                    if (role === TURNDOWN_PRESENTATION_ROLE || preserve) {
-                        return htmlElement.outerHTML;
-                    }
-                }
-                return "";
-            }),
-        });
-        this.turndownService.use(gfm);
-        // Setup conversion rules
-        this.setupPrioritizedRules();
+        // No initialization needed for Kreuzberg - it's stateless
     }
-    // --- Public Method ---
     /**
      * Converts HTML string to Markdown.
      * @param html The HTML string to convert.
@@ -100,300 +67,11 @@ export class MarkdownConverter {
     convert(html, options = {}) {
         // Preprocess HTML to clean and extract main content
         const preprocessedHtml = this.preprocessHTML(html);
-        // Convert preprocessed HTML to Markdown
-        let markdown = this.turndownService.turndown(preprocessedHtml);
+        // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
+        let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" });
         // Post-process Markdown for cleanup
         markdown = this.postprocessMarkdown(markdown, options);
         return markdown;
-    }
-    // --- Turndown Rule Setup ---
-    setupPrioritizedRules() {
-        this.addContentExtractionRules();
-        this.addStructureRules();
-        this.addBlockRules();
-        this.addInlineRules();
-    }
-    // We rely on preprocessing to remove nav/menus/high-link-density areas.
-    // These rules primarily help Turndown understand the *structure* of the *intended* content.
-    addContentExtractionRules() {
-        this.turndownService.addRule("main-content-marker", {
-            filter: (node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE)
-                    return false;
-                const el = node;
-                const element = node;
-                return (el.tagName.toLowerCase() === "main" ||
-                    ["main", "article"].includes(el.getAttribute("role") || "") ||
-                    MAIN_CONTENT_SELECTORS.some((selector) => {
-                        try {
-                            return element.matches(selector) && selector !== "body";
-                        }
-                        catch {
-                            return false;
-                        }
-                    }));
-            },
-            // Just pass content through, this rule is mainly for filter priority/debugging
-            replacement: (content) => content,
-        });
-        // Explicitly remove elements that should definitely not be in Markdown
-        const unwantedTags = [
-            "script",
-            "style",
-            "noscript",
-            "iframe",
-            "button",
-            "input",
-            "select",
-            "textarea",
-            "form",
-            "canvas",
-            /*'svg' removed */ "audio",
-            "video",
-        ];
-        this.turndownService.addRule("remove-unwanted", {
-            filter: unwantedTags,
-            replacement: () => "",
-        });
-    }
-    addStructureRules() {
-        // Article structure (less critical now preprocessing extracts content)
-        this.turndownService.addRule("article", {
-            filter: "article",
-            replacement: (content) => `\n\n${content}\n\n`, // Add separation
-        });
-        // Section structure (less critical now preprocessing extracts content)
-        this.turndownService.addRule("section", {
-            filter: "section",
-            replacement: (content) => `\n\n${content}\n\n`, // Add separation
-        });
-        // Preserve heading levels correctly
-        // this.turndownService.keep(["h1", "h2", "h3", "h4", "h5", "h6"]); // REMOVED - Use default ATX headings
-    }
-    addBlockRules() {
-        // Lists (ensure proper nesting indentation)
-        this.turndownService.addRule("list", {
-            filter: ["ul", "ol"],
-            replacement: (content, node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType !== TURNDOWN_NODE_ELEMENT_TYPE)
-                    return content;
-                // Check if the parent is a list item (nested list)
-                const parent = node.parentNode;
-                const indent = parent && parent.nodeName.toLowerCase() === "li" ? "  " : "";
-                // Ensure content is handled line by line for indentation
-                // Trim trailing spaces from each line before joining
-                return ("\n" +
-                    content
-                        .split("\n")
-                        .map((line) => indent + line.trimEnd())
-                        .join("\n")
-                        .trim() +
-                    "\n");
-            },
-        });
-        // List items
-        this.turndownService.addRule("listItem", {
-            filter: "li",
-            // Use arrow function for consistency, as 'this' is not used.
-            replacement: (content, node, options) => {
-                content = content
-                    .replace(/^\s+/gm, "") // Remove leading whitespace from each line
-                    .replace(/\n(?!\s*$)/gm, "\n  "); // Indent subsequent lines correctly
-                let prefix = options.bulletListMarker + " ";
-                const parentNode = node.parentNode;
-                if (parentNode && parentNode.nodeName === "OL") {
-                    try {
-                        const start = parentNode.getAttribute("start");
-                        const elementNode = node;
-                        const parentElement = parentNode;
-                        const index = Array.prototype.indexOf.call(parentElement.children, elementNode);
-                        prefix = (start ? Number(start) + index : index + 1) + ". ";
-                    }
-                    catch (e) {
-                        prefix = DEFAULT_ORDERED_LIST_ITEM_PREFIX;
-                        const message = e instanceof Error ? e.message : String(e);
-                        console.warn(`MarkdownConverter: Error processing OL start attribute or LI index: ${message}`, e instanceof Error ? e : undefined);
-                    }
-                }
-                return prefix + content.trim() + "\n"; // Add newline after each item
-            },
-        });
-        // Tables - Relying on GFM plugin
-        // Blockquotes
-        this.turndownService.addRule("blockquote", {
-            filter: "blockquote",
-            replacement: (content) => {
-                // Trim leading/trailing newlines from content and add > prefix correctly
-                const trimmedContent = content.trim();
-                return "\n\n> " + trimmedContent.replace(/\n/g, "\n> ") + "\n\n";
-            },
-        });
-    }
-    addInlineRules() {
-        // Links - Ensure proper formatting and title preservation
-        this.turndownService.addRule("link", {
-            filter: (node, _options) => {
-                // Check nodeType and nodeName first, then cast for getAttribute
-                return node.nodeType === 1 && node.nodeName === "A" && !!node.getAttribute("href");
-            },
-            replacement: (content, node) => {
-                const element = node;
-                const href = element.getAttribute("href") || "";
-                const title = element.getAttribute("title");
-                // Use content if available and not just whitespace, otherwise use href as text
-                const text = content.trim() ? content.trim() : href;
-                // Decode URI components, handling potential errors
-                let decodedHref = href;
-                try {
-                    // Decode only if it looks like it might be encoded
-                    if (href.includes("%")) {
-                        decodedHref = decodeURI(href);
-                    }
-                }
-                catch (e) {
-                    const message = e instanceof Error ? e.message : String(e);
-                    console.warn(`Failed to decode URI '${href}': ${message}. Keeping original.`, e instanceof Error ? e : undefined);
-                    // Keep original href if decoding fails
-                }
-                return title ? `[${text}](${decodedHref} \"${title}\")` : `[${text}](${decodedHref})`;
-            },
-        });
-        // Images - Handle figures and captions
-        this.turndownService.addRule("figure", {
-            filter: "figure",
-            replacement: (content, node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType !== 1)
-                    return content;
-                const element = node;
-                // Use DOM methods on the casted element
-                const img = element.querySelector("img");
-                const figcaption = element.querySelector("figcaption");
-                let markdown = "";
-                let mainImgMd = "";
-                if (img) {
-                    const src = img.getAttribute("src") || "";
-                    const alt = img.getAttribute("alt") || "";
-                    const title = img.getAttribute("title");
-                    mainImgMd = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
-                }
-                // Process the original content provided by Turndown (handles nested elements)
-                let processedContent = content.trim();
-                // If the figure primarily contains the image and caption, structure around the image
-                if (mainImgMd) {
-                    markdown = mainImgMd;
-                    // Remove the image representation from the processed content if Turndown included it
-                    // Use a simple placeholder to avoid issues with special chars in alt/src
-                    const imgPlaceholder = `![${img?.getAttribute("alt") || ""}](${img?.getAttribute("src") || ""})`;
-                    processedContent = processedContent.replace(imgPlaceholder, "").trim();
-                }
-                if (figcaption) {
-                    const captionText = figcaption.textContent?.trim();
-                    if (captionText) {
-                        markdown += `\n\n_${captionText}_`; // Use italics for caption below the image
-                        // Remove the caption representation from the processed content
-                        processedContent = processedContent.replace(captionText, "").trim();
-                        processedContent = processedContent.replace(/^_+|_+$/g, "").trim(); // Remove surrounding underscores if any
-                    }
-                }
-                // Append any remaining content from the figure
-                if (processedContent) {
-                    // Avoid adding just empty placeholders or insignificant content
-                    if (processedContent.length > 10 || /[a-zA-Z0-9]/.test(processedContent)) {
-                        markdown += `\n\n${processedContent}`;
-                    }
-                }
-                return "\n\n" + markdown.trim() + "\n\n";
-            },
-        });
-        // Standalone Images (not in figures)
-        this.turndownService.addRule("image", {
-            filter: (node) => {
-                // Node.ELEMENT_NODE is 1, it's an IMG, and has src
-                return node.nodeType === 1 && node.nodeName === "IMG" && !!node.getAttribute("src");
-            },
-            replacement: (_content, node) => {
-                const element = node;
-                const src = element.getAttribute("src") || "";
-                const alt = element.getAttribute("alt") || "";
-                const title = element.getAttribute("title");
-                // Add surrounding newlines for block display
-                return title ? `\n\n![${alt}](${src} "${title}")\n\n` : `\n\n![${alt}](${src})\n\n`;
-            },
-        });
-        // Code Blocks - Enhanced detection
-        this.turndownService.addRule("code-block", {
-            filter: (node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType !== 1)
-                    return false;
-                const element = node;
-                // Must be a <pre> tag
-                const isPre = element.tagName.toLowerCase() === "pre";
-                if (!isPre)
-                    return false;
-                // Consider it code if it has a <code> child or specific classes/attributes
-                const hasCodeChild = element.querySelector("code") !== null;
-                const hasCodeClass = /highlight|syntax|code|listing|source/i.test(element.className);
-                const hasLangAttribute = !!element.getAttribute("lang") || !!element.getAttribute("language");
-                return hasCodeChild || hasCodeClass || hasLangAttribute;
-            },
-            replacement: (content, node) => {
-                // Node.ELEMENT_NODE is 1
-                if (node.nodeType !== 1)
-                    return content.trim(); // Should be ELEMENT_NODE based on filter
-                const element = node;
-                // Detect language
-                let language = "";
-                const codeElement = element.querySelector("code");
-                // 1. Check attributes on <pre> or <code>
-                language =
-                    element.getAttribute("lang") ||
-                        element.getAttribute("language") ||
-                        (codeElement ? codeElement.getAttribute("lang") || codeElement.getAttribute("language") : "") ||
-                        "";
-                // 2. Check for "language-*" or "lang-*" class
-                if (!language) {
-                    const classes = (element.className + " " + (codeElement?.className || "")).split(" ").filter(Boolean);
-                    for (const cls of classes) {
-                        for (const prefix of CODE_BLOCK_LANG_PREFIXES) {
-                            if (cls.startsWith(prefix)) {
-                                language = cls.substring(prefix.length);
-                                break;
-                            }
-                        }
-                        if (language)
-                            break;
-                    }
-                }
-                // Clean up content - remove leading/trailing newlines often added
-                const cleanedContent = content.trim();
-                // Format code block
-                return `\n\n\`\`\`${language}\n${cleanedContent}\n\`\`\`\n\n`;
-            },
-        });
-        // Inline Code
-        this.turndownService.addRule("inlineCode", {
-            filter: (node) => node.nodeName === "CODE" && node.parentNode?.nodeName !== "PRE",
-            replacement: (content) => {
-                // Ensure content is trimmed and handle potential backticks inside
-                const trimmed = content.trim();
-                if (!trimmed)
-                    return ""; // Don't render empty code tags
-                // Determine delimiter based on content
-                let delimiter = "`";
-                if (trimmed.includes("`")) {
-                    delimiter = "``";
-                    // If content starts or ends with backtick, add space when using ``
-                    if (trimmed.startsWith("`") || trimmed.endsWith("`")) {
-                        return `${delimiter} ${trimmed} ${delimiter}`;
-                    }
-                }
-                return delimiter + trimmed + delimiter;
-            },
-        });
     }
     // --- HTML Preprocessing ---
     preprocessHTML(html) {
@@ -433,16 +111,15 @@ export class MarkdownConverter {
                     console.warn(`Skipping invalid selector during preprocessing: ${selector}`, e);
                 }
             });
+            // Remove img elements pointing to .svg URLs (decorative logos/icons; bloat RAG)
+            this.removeSvgImageRefs(rootElement);
             // Remove breadcrumb UI blocks explicitly (often low link density)
             this.removeBreadcrumbs(rootElement);
             this.removeHighLinkDensityElements(rootElement, DEFAULT_LINK_DENSITY_THRESHOLD);
-            // Normalize simple data tables so GFM can convert them (e.g., first row headers using <td>)
-            this.normalizeTablesForMarkdown(rootElement);
-            // Capture best title BEFORE removing head
-            const bestTitle = rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ||
-                rootElement.querySelector("meta[name='twitter:title']")?.getAttribute("content") ||
-                rootElement.querySelector("meta[name='DC.title']")?.getAttribute("content") ||
-                rootElement.querySelector("title")?.textContent ||
+            const bestTitle = rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ??
+                rootElement.querySelector("meta[name='twitter:title']")?.getAttribute("content") ??
+                rootElement.querySelector("meta[name='DC.title']")?.getAttribute("content") ??
+                rootElement.querySelector("title")?.textContent ??
                 "";
             // Drop <head> from the DOM so we don't leak <title> etc. into content
             try {
@@ -484,48 +161,13 @@ export class MarkdownConverter {
             return this.cleanupHtml(html); // Return original (but cleaned) HTML on failure
         }
     }
-    /**
-     * Ensures simple data tables are convertible to GFM by promoting the first row to headers
-     * when no <th> exists. Skips layout tables marked with role="presentation".
-     */
-    normalizeTablesForMarkdown(root) {
-        const tables = root.querySelectorAll("table");
-        for (const table of tables) {
-            if (!(table instanceof NHPHTMLElement))
-                continue;
-            const role = table.getAttribute("role");
-            if (role && role.toLowerCase() === "presentation")
-                continue; // skip layout tables
-            // Lossy-flatten complex tables to be GFM-compatible (best-effort). If flattening
-            // fails (unexpected markup), fall back to preserving the original.
-            const hasSpans = table.querySelector("[colspan], [rowspan]") !== null;
-            if (hasSpans) {
-                const ok = this.flattenTableToSimpleGfm(table);
-                if (!ok) {
-                    const existing = table.getAttribute("class");
-                    const newClass = existing ? `${existing} ${TURNDOWN_PRESERVE_CLASS}` : TURNDOWN_PRESERVE_CLASS;
-                    table.setAttribute("class", newClass);
-                }
-                continue;
-            }
-            // If table already has headers, leave as-is
-            if (table.querySelector("th"))
-                continue;
-            const firstRow = table.querySelector("tr");
-            if (!firstRow || !(firstRow instanceof NHPHTMLElement))
-                continue;
-            // Promote all cells in the first row to header cells
-            const cells = firstRow.querySelectorAll("td");
-            if (!cells || cells.length === 0)
-                continue;
-            for (const cell of cells) {
-                if (cell instanceof NHPHTMLElement && cell.tagName === "TD") {
-                    // Switch tag to TH so GFM plugin recognizes header row
-                    // node-html-parser allows mutating tagName directly
-                    cell.tagName = "TH";
-                }
-            }
-        }
+    /** Remove img elements with .svg src (external SVG URLs). Inline SVG and data: URIs already stripped by PREPROCESSING_REMOVE_SELECTORS. */
+    removeSvgImageRefs(root) {
+        root.querySelectorAll("img[src]").forEach((el) => {
+            const src = el.getAttribute("src") || "";
+            if (src.toLowerCase().includes(".svg"))
+                el.remove();
+        });
     }
     // Remove common breadcrumb containers explicitly, regardless of link density
     removeBreadcrumbs(root) {
@@ -557,37 +199,27 @@ export class MarkdownConverter {
             }
         }
     }
-    // Render metadata items to HTML so Turndown can convert cleanly to Markdown
-    // (metadata rendering removed – we no longer inject metadata into output)
-    // Promote or inject a primary H1 heading using best available title.
-    ensurePrimaryHeading(root, content, providedTitle) {
+    /** Promote or inject a primary H1 heading using the provided title (from Kreuzberg metadata or DOM extraction). */
+    ensurePrimaryHeading(_root, content, providedTitle) {
         if (!(content instanceof NHPHTMLElement))
             return;
-        // Determine best title from metadata sources
-        const bestTitle = providedTitle ||
-            root.querySelector("meta[property='og:title']")?.getAttribute("content") ||
-            root.querySelector("meta[name='twitter:title']")?.getAttribute("content") ||
-            root.querySelector("meta[name='DC.title']")?.getAttribute("content") ||
-            root.querySelector("title")?.textContent ||
-            "";
-        // Find existing headings in content
+        const normalize = (s) => (s || "").trim().replace(/\s+/g, " ");
+        const titleNorm = normalize(providedTitle);
         const firstH1 = content.querySelector("h1");
         const firstHeading = content.querySelector("h1, h2, h3, h4, h5, h6");
-        const normalize = (s) => (s || "").trim().replace(/\s+/g, " ");
-        const titleNorm = normalize(bestTitle);
         const h1Text = normalize(firstH1?.textContent || "");
         if (firstH1) {
             // If document title is longer and contains the existing H1, replace H1 with the document title
             if (titleNorm &&
                 titleNorm.length > h1Text.length &&
                 (titleNorm.includes(h1Text) || h1Text.includes(titleNorm.split("|")[0].trim()))) {
-                firstH1.set_content(bestTitle);
+                firstH1.set_content(providedTitle ?? "");
             }
             return;
         }
         // No H1 present: prefer document title if available
         if (titleNorm) {
-            const h1 = parse(`<h1>${bestTitle}</h1>`).firstChild;
+            const h1 = parse(`<h1>${providedTitle ?? ""}</h1>`).firstChild;
             content.prepend(h1);
             return;
         }
@@ -595,127 +227,6 @@ export class MarkdownConverter {
         if (firstHeading) {
             firstHeading.tagName = "H1";
         }
-    }
-    // Attempt to flatten a table with colspans/rowspans into a simple table
-    // with no spans so GFM can convert it. Returns true on success.
-    flattenTableToSimpleGfm(table) {
-        try {
-            const rows = table.querySelectorAll("tr");
-            if (!rows || rows.length === 0)
-                return false;
-            let spanMap = {};
-            const grid = [];
-            let maxCols = 0;
-            for (const tr of rows) {
-                if (!(tr instanceof NHPHTMLElement))
-                    continue;
-                // Pre-fill from active rowspans
-                const nextSpanMap = {};
-                const currentRow = [];
-                // Place carried-over cells first
-                const spanCols = Object.keys(spanMap)
-                    .map((k) => Number(k))
-                    .sort((a, b) => a - b);
-                for (const colIdx of spanCols) {
-                    const sc = spanMap[colIdx];
-                    currentRow[colIdx] = sc.content;
-                    if (sc.remaining - 1 > 0) {
-                        nextSpanMap[colIdx] = { content: sc.content, remaining: sc.remaining - 1 };
-                    }
-                }
-                // Place actual cells of the row, respecting existing occupied columns
-                const cells = tr.querySelectorAll("th, td");
-                let insertCol = 0;
-                for (const cell of cells) {
-                    if (!(cell instanceof NHPHTMLElement))
-                        continue;
-                    // Find next free column
-                    while (currentRow[insertCol] !== undefined)
-                        insertCol++;
-                    const colSpan = Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
-                    const rowSpan = Math.max(1, parseInt(cell.getAttribute("rowspan") || "1", 10) || 1);
-                    const content = this.sanitizeCellContentForTable(cell.innerHTML || "");
-                    for (let i = 0; i < colSpan; i++) {
-                        const col = insertCol + i;
-                        currentRow[col] = content;
-                        if (rowSpan > 1) {
-                            const existing = nextSpanMap[col];
-                            nextSpanMap[col] = { content, remaining: Math.max(existing?.remaining || 0, rowSpan - 1) };
-                        }
-                    }
-                    insertCol += colSpan;
-                }
-                // Normalize row
-                const length = currentRow.length;
-                maxCols = Math.max(maxCols, length);
-                grid.push(currentRow);
-                spanMap = nextSpanMap;
-            }
-            // Drop leading fully-empty rows (often style-only)
-            while (grid.length && grid[0].every((c) => !c || !c.trim())) {
-                grid.shift();
-            }
-            // Ensure all rows have equal length
-            for (const row of grid) {
-                for (let i = 0; i < maxCols; i++) {
-                    if (row[i] === undefined)
-                        row[i] = "";
-                }
-            }
-            // Pick a header row: first non-empty row (after dropping empties)
-            const headerRowIndex = 0;
-            // Build a simple table HTML without spans
-            let html = "<table><tbody>";
-            for (let r = 0; r < grid.length; r++) {
-                const row = grid[r];
-                html += "<tr>";
-                for (const cellContent of row) {
-                    if (r === headerRowIndex) {
-                        html += `<th>${cellContent}</th>`;
-                    }
-                    else {
-                        html += `<td>${cellContent}</td>`;
-                    }
-                }
-                html += "</tr>";
-            }
-            html += "</tbody></table>";
-            // Replace original table with the flattened one
-            const replacementRoot = parse(html);
-            const newTable = replacementRoot.querySelector("table");
-            if (!newTable)
-                return false;
-            table.replaceWith(newTable);
-            return true;
-        }
-        catch {
-            return false;
-        }
-    }
-    // Reduce blocky/complex markup inside table cells to inline-friendly HTML so Turndown
-    // does not break the table structure. Joins list items with " | ", removes outer divs,
-    // flattens paragraphs and <br> to spaces, and trims whitespace.
-    sanitizeCellContentForTable(content) {
-        if (!content)
-            return "";
-        let c = content;
-        // Normalize lists: turn <li> items into inline separated values
-        c = c.replace(/<li[^>]*>/gi, "").replace(/<\/li>/gi, " • ");
-        c = c.replace(/<\/(ul|ol)>/gi, "").replace(/<(ul|ol)[^>]*>/gi, "");
-        // Remove outer div/span wrappers but keep inner content
-        c = c.replace(/<div[^>]*>/gi, "").replace(/<\/div>/gi, " ");
-        c = c.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
-        // Flatten paragraphs and line breaks
-        c = c.replace(/<p[^>]*>/gi, "").replace(/<\/p>/gi, " ");
-        c = c.replace(/<br\s*\/?>(\s*)/gi, " ");
-        // Normalize bullet separators spacing
-        c = c.replace(/\s*•\s*/g, " • ");
-        c = c.replace(/(\s*•\s*)+$/g, "");
-        // Avoid Markdown table column separators inside cells
-        c = c.replace(/\|/g, " • ");
-        // Collapse multiple whitespace and trim
-        c = c.replace(/\s+/g, " ").trim();
-        return c;
     }
     cleanupHtml(html) {
         // Remove specific non-standard characters/patterns observed in the wild
@@ -745,11 +256,57 @@ export class MarkdownConverter {
             .replace(/\s*\n\s*/g, "\n")
             .trim());
     }
+    /** Check if any CSS class token matches exactly, or if any token contains the substring (for hyphenated classes like "article-body"). */
+    hasClass(cls, exact) {
+        return cls.split(/\s+/).some((token) => token === exact);
+    }
+    hasClassSubstring(cls, sub) {
+        return cls.split(/\s+/).some((token) => token.includes(sub));
+    }
+    /** Check if element matches a main content selector (node-html-parser has no matches()). */
+    elementMatchesMainContent(el) {
+        const tag = el.tagName?.toLowerCase() || "";
+        const role = (el.getAttribute?.("role") || "").toLowerCase();
+        const cls = (el.getAttribute?.("class") || "").toLowerCase();
+        const id = (el.getAttribute?.("id") || "").toLowerCase();
+        if (tag === "body" || tag === "main" || tag === "article")
+            return true;
+        if (role === "main" || role === "article")
+            return true;
+        if (this.hasClassSubstring(cls, "article-body") ||
+            this.hasClassSubstring(cls, "post-content") ||
+            this.hasClassSubstring(cls, "main-content") ||
+            this.hasClassSubstring(cls, "entry-content") ||
+            this.hasClass(cls, "article") ||
+            this.hasClass(cls, "post") ||
+            this.hasClass(cls, "content") ||
+            this.hasClass(cls, "entry") ||
+            this.hasClass(cls, "blog-post"))
+            return true;
+        if (id.includes("article-body") || id.includes("main-content"))
+            return true;
+        return false;
+    }
+    /** Check if element matches boilerplate selectors (node-html-parser has no matches()). */
+    elementMatchesBoilerplate(el) {
+        const tag = el.tagName?.toLowerCase() || "";
+        const role = (el.getAttribute?.("role") || "").toLowerCase();
+        const cls = (el.getAttribute?.("class") || "").toLowerCase();
+        if (["header", "footer", "nav", "aside"].includes(tag))
+            return true;
+        if (role === "navigation" || role === "complementary" || role === "banner")
+            return true;
+        if (this.hasClassSubstring(cls, "sidebar") ||
+            this.hasClassSubstring(cls, "widget") ||
+            this.hasClassSubstring(cls, "menu") ||
+            this.hasClassSubstring(cls, "nav") ||
+            this.hasClassSubstring(cls, "header") ||
+            this.hasClassSubstring(cls, "footer"))
+            return true;
+        return false;
+    }
     // Potentially performance-intensive: involves iterating over many elements
     // and performing sub-queries (querySelectorAll, textContent) for each.
-    // Complexity can be roughly O(B * (T_avg + L_avg * S_avg + M_avg)) where B is number of
-    // boilerplate candidates, T_avg is avg cost of textContent, L_avg is avg links per candidate,
-    // S_avg is avg cost of link text access, M_avg is avg cost of matches().
     removeHighLinkDensityElements(element, threshold) {
         const potentialBoilerplate = element.querySelectorAll("div, nav, ul, aside, section, .sidebar, .widget, .menu, [role='navigation'], [role='menubar']");
         for (const el of Array.from(potentialBoilerplate)) {
@@ -778,113 +335,13 @@ export class MarkdownConverter {
                 // Avoid removing the element if it contains a primary content marker
                 const containsMainContent = el.querySelector('main, article, [role="main"], [role="article"]') !== null;
                 // Also avoid removing if it IS the main content candidate itself
-                const isMainContent = MAIN_CONTENT_SELECTORS.some((selector) => {
-                    try {
-                        // Explicitly assert type before calling matches
-                        /* @ts-expect-error TODO: fix this */
-                        return el.matches(selector);
-                    }
-                    catch {
-                        return false;
-                    }
-                });
+                const isMainContent = this.elementMatchesMainContent(el);
                 if (!containsMainContent && !isMainContent) {
                     el.remove();
                 }
             }
         }
     }
-    /*
-    private extractDocumentMetadata(root: NHPHTMLElement): string[] {
-      const metadata: string[] = [];
-      const addedMeta: Set<string> = new Set(); // Track added keys to avoid duplicates
-  
-      // Helper to add metadata if value exists and key hasn't been added
-      const addMeta = (key: string, value: string | null | undefined, isTitle = false) => {
-        const cleanedValue = value?.trim();
-        if (cleanedValue && !addedMeta.has(key.toLowerCase())) {
-          // Skip injecting title as Markdown to avoid duplicating content H1
-          if (!isTitle) {
-            metadata.push(`${key}: ${cleanedValue}`);
-          }
-          addedMeta.add(key.toLowerCase());
-        }
-      };
-  
-      // 1. Title (Prioritize specific ones, fallback to <title>)
-      addMeta("Title", root.querySelector("meta[property='og:title']")?.getAttribute("content"), true);
-      addMeta("Title", root.querySelector("meta[name='twitter:title']")?.getAttribute("content"), true);
-      addMeta("Title", root.querySelector("meta[name='DC.title']")?.getAttribute("content"), true);
-      addMeta("Title", root.querySelector("title")?.textContent, true);
-  
-      // 2. Description
-      addMeta("Description", root.querySelector("meta[property='og:description']")?.getAttribute("content"));
-      addMeta("Description", root.querySelector("meta[name='twitter:description']")?.getAttribute("content"));
-      addMeta("Description", root.querySelector("meta[name='description']")?.getAttribute("content"));
-      addMeta("Description", root.querySelector("meta[name='DC.description']")?.getAttribute("content"));
-  
-      // 3. Author
-      addMeta("Author", root.querySelector("meta[name='author']")?.getAttribute("content"));
-      addMeta("Author", root.querySelector("meta[property='article:author']")?.getAttribute("content"));
-      addMeta("Author", root.querySelector("[rel='author']")?.textContent);
-  
-      // 4. Publication Date
-      addMeta("Published", root.querySelector("meta[property='article:published_time']")?.getAttribute("content"));
-      addMeta("Published", root.querySelector("meta[name='publish-date']")?.getAttribute("content"));
-      addMeta("Published", root.querySelector("time[itemprop='datePublished']")?.getAttribute("datetime"));
-      addMeta("Published", root.querySelector("time")?.getAttribute("datetime")); // Generic time tag
-  
-      // 5. Canonical URL
-      addMeta("URL", root.querySelector("link[rel='canonical']")?.getAttribute("href"));
-      addMeta("URL", root.querySelector("meta[property='og:url']")?.getAttribute("content"));
-  
-      // 6. Extract JSON-LD
-      const jsonLdScripts = root.querySelectorAll("script[type='application/ld+json']");
-      if (jsonLdScripts.length > 0) {
-        const jsonLdData = Array.from(jsonLdScripts)
-          .map((script) => {
-            try {
-              // Ensure script content exists before parsing
-              const textContent = script.textContent;
-              return textContent ? JSON.parse(textContent) : null;
-            } catch (e: unknown) {
-              const message = e instanceof Error ? e.message : String(e);
-              console.warn(`Failed to parse JSON-LD content: ${message}`, e instanceof Error ? e : undefined);
-              return null;
-            }
-          })
-          .filter((item): item is object => item !== null); // Type guard for filter
-  
-        if (jsonLdData.length > 0 && !addedMeta.has("json-ld")) {
-          // Keep JSON-LD as a single block; will be injected as HTML later
-          metadata.push(`<details><summary>JSON-LD Metadata</summary>\n<pre><code class="language-json">${
-            JSON.stringify(jsonLdData, null, 2)
-          }</code></pre>\n</details>`);
-          addedMeta.add("json-ld");
-  
-          // Add other relevant fields like 'author', 'datePublished', etc.
-          jsonLdData.forEach((jsonData) => {
-            if (typeof jsonData === "object" && jsonData !== null) {
-              // Safely extract publisher name from JSON-LD object
-              const publisher = (jsonData as Record<string, unknown>).publisher as unknown;
-              let orgName: string | undefined;
-              if (publisher && typeof publisher === "object") {
-                const name = (publisher as Record<string, unknown>).name;
-                if (typeof name === "string") {
-                  orgName = name;
-                }
-              } else if (typeof publisher === "string") {
-                orgName = publisher; // Some JSON-LD use a string for publisher
-              }
-              addMeta("Organization", orgName);
-            }
-          });
-        }
-      }
-  
-      return metadata;
-    }
-    */
     detectForumPage(root) {
         // Count indicators across different selector groups
         const countMatches = (selectors) => {
@@ -941,8 +398,8 @@ export class MarkdownConverter {
      * @returns The calculated score for the element.
      */
     // This scoring function is called for each candidate element during content extraction.
-    // It involves text content access, querySelectorAll("p"), and potentially element.matches(),
-    // contributing to the overall complexity of extractArticleContentElement.
+    // It involves text content access, querySelectorAll("p"), and elementMatchesBoilerplate()
+    // (node-html-parser has no matches()), contributing to the overall complexity of extractArticleContentElement.
     _calculateElementScore(element, currentMaxScore) {
         // Basic scoring: text length
         const textLength = (element.textContent || "").trim().length;
@@ -961,18 +418,8 @@ export class MarkdownConverter {
         // Penalize common boilerplate containers/roles
         if (["HEADER", "FOOTER", "NAV", "ASIDE"].includes(element.tagName))
             score *= 0.3;
-        try {
-            const BOILERPLATE_SELECTORS_FOR_PENALTY = '.sidebar, .widget, .menu, .nav, .header, .footer, [role="navigation"], [role="complementary"], [role="banner"]';
-            /* @ts-expect-error TODO: fix this (existing issue with NHPHTMLElement and matches) */
-            if (element.matches(BOILERPLATE_SELECTORS_FOR_PENALTY)) {
-                score *= 0.2;
-            }
-        }
-        catch (e) {
-            const message = e instanceof Error ? e.message : String(e);
-            console.warn(`MarkdownConverter: Error matching selector in _calculateElementScore: ${message}`);
-            /* Ignore selector match errors, but log a warning */
-        }
+        if (this.elementMatchesBoilerplate(element))
+            score *= 0.2;
         // Penalize if it contains high-link density elements that weren't removed
         // Using a constant for the threshold (e.g., HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6)
         const HIGH_LINK_DENSITY_THRESHOLD_PENALTY = 0.6;
