@@ -19,6 +19,9 @@ export declare class MarkdownConverter {
     private ensurePrimaryHeading;
     private cleanupHtml;
     private cleanupContentHtml;
+    /** Check if any CSS class token matches exactly, or if any token contains the substring (for hyphenated classes like "article-body"). */
+    private hasClass;
+    private hasClassSubstring;
     /** Check if element matches a main content selector (node-html-parser has no matches()). */
     private elementMatchesMainContent;
     /** Check if element matches boilerplate selectors (node-html-parser has no matches()). */

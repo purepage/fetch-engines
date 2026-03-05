@@ -1,6 +1,7 @@
 # @purepageio/fetch-engines
 
 [![npm version](https://img.shields.io/npm/v/@purepageio/fetch-engines.svg)](https://www.npmjs.com/package/@purepageio/fetch-engines)
+[![CI](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml/badge.svg)](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-first workflow that automatically promotes tricky pages to a managed Playwright browser and can even hand structured results back through OpenAI.
@@ -12,6 +13,7 @@ Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-
 - [Quick start](#quick-start)
 - [Usage patterns](#usage-patterns)
   - [Pick an engine](#pick-an-engine)
+  - [Markdown mode](#markdown-mode)
   - [Structured extraction](#structured-extraction)
 - [Configuration](#configuration)
   - [Essentials](#essentials)
@@ -32,9 +34,15 @@ Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-
 
 ```bash
 pnpm add @purepageio/fetch-engines
-# install Playwright browsers once if you plan to use the Hybrid or Playwright engines
+```
+
+If you plan to use `HybridEngine` or `PlaywrightEngine` (which launch a real browser), install the Playwright browsers once:
+
+```bash
 pnpm exec playwright install
 ```
+
+This step is **not needed** if you only use `FetchEngine` or `StructuredContentEngine`.
 
 ## Quick start
 
@@ -53,11 +61,29 @@ await engine.cleanup();
 
 ### Pick an engine
 
-| Engine                    | When to use it                                                                   |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `HybridEngine`            | Default option. Starts with HTTP, then retries via Playwright for tougher pages. |
-| `FetchEngine`             | Lightweight HTML/text fetching with zero browser overhead.                       |
-| `StructuredContentEngine` | Fetch a page and transform it into typed data with OpenAI.                       |
+| Engine                    | When to use it                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `HybridEngine`            | Default option. Starts with HTTP, then retries via Playwright for tougher pages.      |
+| `FetchEngine`             | Lightweight HTML/text fetching with zero browser overhead. Supports `markdown: true`. |
+| `StructuredContentEngine` | Fetch a page and transform it into typed data with OpenAI.                            |
+
+### Markdown mode
+
+Pass `markdown: true` to get clean Markdown instead of raw HTML — ideal for RAG pipelines, LLM context windows, and content indexing. The converter strips navigation, footers, sidebars, SVGs, and high-link-density boilerplate before converting via a Rust-native engine.
+
+```typescript
+import { HybridEngine } from "@purepageio/fetch-engines";
+
+const engine = new HybridEngine({ markdown: true });
+const page = await engine.fetchHTML("https://example.com/blog/my-post");
+
+console.log(page.content); // Clean Markdown with headings, tables, code blocks preserved
+console.log(page.contentType); // "markdown"
+
+await engine.cleanup();
+```
+
+`FetchEngine` also supports `markdown: true` for static pages that don't need JavaScript rendering.
 
 ### Structured extraction
 
@@ -111,30 +137,30 @@ Check the inline TypeScript docs or the [`/examples`](./examples) directory for 
 
 Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with defaults:
 
-| Option                     | Default     | Purpose                                                                                       |
-| -------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
-| `headers`                  | `{}`        | Extra headers merged into every request.                                                      |
-| `concurrentPages`          | `3`         | Maximum Playwright pages processed at once.                                                   |
-| `maxRetries`               | `3`         | Additional retry attempts after the first failure.                                            |
-| `retryDelay`               | `5000`      | Milliseconds to wait between retries.                                                         |
-| `cacheTTL`                 | `900000`    | Cache lifetime in ms (`0` disables caching).                                                  |
-| `useHttpFallback`          | `true`      | Try a fast HTTP GET before spinning up Playwright.                                            |
-| `useHeadedModeFallback`    | `false`     | Automatically retry a domain in headed mode after repeated failures.                          |
-| `defaultFastMode`          | `true`      | Block non-critical assets and skip human simulation unless overridden.                        |
-| `simulateHumanBehavior`    | `true`      | When not in fast mode, add delays and scrolling to avoid bot detection.                       |
-| `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                              |
-| `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                         |
-| `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                             |
-| `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                            |
-| `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).             |
-| `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                             |
-| `proxy`                    | `undefined` | Per-browser proxy `{ server, username?, password? }`.                                         |
-| `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                          |
-| `markdown`                 | `true`      | Return Markdown (instead of HTML) when possible. Override per request with `markdown: false`. |
-| `spaMode`                  | `false`     | Enable SPA heuristics and allow additional waits for client rendering.                        |
-| `spaRenderDelayMs`         | `0`         | Extra delay after load when `spaMode` is `true`.                                              |
-| `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP fetches.              |
-| `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                 |
+| Option                     | Default     | Purpose                                                                                          |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `headers`                  | `{}`        | Extra headers merged into every request.                                                         |
+| `concurrentPages`          | `3`         | Maximum Playwright pages processed at once.                                                      |
+| `maxRetries`               | `3`         | Additional retry attempts after the first failure.                                               |
+| `retryDelay`               | `5000`      | Milliseconds to wait between retries.                                                            |
+| `cacheTTL`                 | `900000`    | Cache lifetime in ms (`0` disables caching).                                                     |
+| `useHttpFallback`          | `true`      | Try a fast HTTP GET before spinning up Playwright.                                               |
+| `useHeadedModeFallback`    | `false`     | Automatically retry a domain in headed mode after repeated failures.                             |
+| `defaultFastMode`          | `true`      | Block non-critical assets and skip human simulation unless overridden.                           |
+| `simulateHumanBehavior`    | `true`      | When not in fast mode, add delays and scrolling to avoid bot detection.                          |
+| `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                                 |
+| `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                            |
+| `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                                |
+| `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                               |
+| `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).                |
+| `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                                |
+| `proxy`                    | `undefined` | Per-browser proxy `{ server, username?, password? }`.                                            |
+| `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                             |
+| `markdown`                 | `false`     | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal. |
+| `spaMode`                  | `false`     | Enable SPA heuristics and allow additional waits for client rendering.                           |
+| `spaRenderDelayMs`         | `0`         | Extra delay after load when `spaMode` is `true`.                                                 |
+| `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP fetches.                 |
+| `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                    |
 
 Per-request overrides: `fetchHTML` accepts `fastMode`, `markdown`, `spaMode`, and `headers`, while `fetchContent` supports `fastMode` and `headers`.
 
@@ -150,7 +176,15 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 
 ## Contributing
 
-Issues and pull requests are welcome! Please follow the existing linting/test commands before sending a change.
+Issues and pull requests are welcome! Before submitting a change:
+
+1. `pnpm test` — all tests pass
+2. `pnpm lint` — no errors
+3. `pnpm format` — code is formatted
+4. Update `CHANGELOG.md` under `[Unreleased]`
+5. Bump the version in `package.json` following [semver](https://semver.org/)
+
+See [`AGENTS.md`](./AGENTS.md) for detailed guidelines on versioning, testing, and documentation.
 
 ## License
 

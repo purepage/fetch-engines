@@ -256,6 +256,13 @@ export class MarkdownConverter {
             .replace(/\s*\n\s*/g, "\n")
             .trim());
     }
+    /** Check if any CSS class token matches exactly, or if any token contains the substring (for hyphenated classes like "article-body"). */
+    hasClass(cls, exact) {
+        return cls.split(/\s+/).some((token) => token === exact);
+    }
+    hasClassSubstring(cls, sub) {
+        return cls.split(/\s+/).some((token) => token.includes(sub));
+    }
     /** Check if element matches a main content selector (node-html-parser has no matches()). */
     elementMatchesMainContent(el) {
         const tag = el.tagName?.toLowerCase() || "";
@@ -266,15 +273,15 @@ export class MarkdownConverter {
             return true;
         if (role === "main" || role === "article")
             return true;
-        if (cls.includes("article-body") ||
-            cls.includes("post-content") ||
-            cls.includes("main-content") ||
-            cls.includes("entry-content") ||
-            cls.includes("article") ||
-            cls.includes("post") ||
-            cls.includes("content") ||
-            cls.includes("entry") ||
-            cls.includes("blog-post"))
+        if (this.hasClassSubstring(cls, "article-body") ||
+            this.hasClassSubstring(cls, "post-content") ||
+            this.hasClassSubstring(cls, "main-content") ||
+            this.hasClassSubstring(cls, "entry-content") ||
+            this.hasClass(cls, "article") ||
+            this.hasClass(cls, "post") ||
+            this.hasClass(cls, "content") ||
+            this.hasClass(cls, "entry") ||
+            this.hasClass(cls, "blog-post"))
             return true;
         if (id.includes("article-body") || id.includes("main-content"))
             return true;
@@ -289,12 +296,12 @@ export class MarkdownConverter {
             return true;
         if (role === "navigation" || role === "complementary" || role === "banner")
             return true;
-        if (cls.includes("sidebar") ||
-            cls.includes("widget") ||
-            cls.includes("menu") ||
-            cls.includes("nav") ||
-            cls.includes("header") ||
-            cls.includes("footer"))
+        if (this.hasClass(cls, "sidebar") ||
+            this.hasClass(cls, "widget") ||
+            this.hasClass(cls, "menu") ||
+            this.hasClass(cls, "nav") ||
+            this.hasClass(cls, "header") ||
+            this.hasClass(cls, "footer"))
             return true;
         return false;
     }
