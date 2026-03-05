@@ -1,4 +1,4 @@
-import { convert as kreuzbergConvert, convertWithMetadata, hasMetadataSupport } from "@kreuzberg/html-to-markdown";
+import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";
 import { parse, HTMLElement as NHPHTMLElement } from "node-html-parser";
 // --- Constants ---
 // Preprocessing - Selectors for removal (balanced approach)
@@ -65,23 +65,8 @@ export class MarkdownConverter {
      * @returns The converted Markdown string.
      */
     convert(html, options = {}) {
-        // Phase 2: Extract metadata from full document via Kreuzberg when available
-        let extractedTitle;
-        if (hasMetadataSupport()) {
-            try {
-                const { metadata } = convertWithMetadata(html, { headingStyle: "Atx" }, {
-                    extract_headers: false,
-                    extract_links: false,
-                    extract_images: false,
-                });
-                extractedTitle = metadata.document?.title ?? undefined;
-            }
-            catch {
-                // Fall back to DOM extraction if Kreuzberg metadata fails
-            }
-        }
         // Preprocess HTML to clean and extract main content
-        const preprocessedHtml = this.preprocessHTML(html, extractedTitle);
+        const preprocessedHtml = this.preprocessHTML(html);
         // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
         let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" });
         // Post-process Markdown for cleanup
@@ -89,7 +74,7 @@ export class MarkdownConverter {
         return markdown;
     }
     // --- HTML Preprocessing ---
-    preprocessHTML(html, extractedTitle) {
+    preprocessHTML(html) {
         // This function performs multi-stage processing on the HTML string:
         // 1. Initial cleanup (regex-based).
         // 2. Parsing into a DOM tree.
@@ -131,9 +116,7 @@ export class MarkdownConverter {
             // Remove breadcrumb UI blocks explicitly (often low link density)
             this.removeBreadcrumbs(rootElement);
             this.removeHighLinkDensityElements(rootElement, DEFAULT_LINK_DENSITY_THRESHOLD);
-            // Use Kreuzberg-extracted title when available; otherwise fall back to DOM extraction
-            const bestTitle = extractedTitle ??
-                rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ??
+            const bestTitle = rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ??
                 rootElement.querySelector("meta[name='twitter:title']")?.getAttribute("content") ??
                 rootElement.querySelector("meta[name='DC.title']")?.getAttribute("content") ??
                 rootElement.querySelector("title")?.textContent ??

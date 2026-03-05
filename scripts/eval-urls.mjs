@@ -8,11 +8,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const URLS = [
-  "https://www.dva.gov.au/access-benefits/payment-rates/summary-of-vea-pension-rates-limits-and-allowances",
   "https://theguardian.com/",
   "https://openai.com/",
   "https://github.com/",
   "https://siquick.com/blog/fine-tuning-open-source-llm-doric",
+  "https://www.dva.gov.au/access-benefits/payment-rates/summary-of-vea-pension-rates-limits-and-allowances",
 ];
 
 function slug(url) {
@@ -36,7 +36,7 @@ async function main() {
         await fs.writeFile(outPath, result.content, "utf8");
         console.log(`  -> ${outPath} (${result.content.length} chars)`);
       } catch (err) {
-        console.error(`  FAILED: ${err.message}`);
+        console.error(`  FAILED: ${err instanceof Error ? err.message : err}`);
       }
     }
   } finally {

@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Replaced Turndown with `@kreuzberg/html-to-markdown` (Rust-native) for HTML-to-Markdown conversion. Same public API; ~6x faster conversion, fewer dependencies.
-- Use Kreuzberg `convertWithMetadata()` for document title extraction with DOM fallback.
 - Strip SVG elements and SVG images (inline base64 + external .svg URLs) before conversion to reduce RAG pipeline bloat.
 - Fix `no-explicit-any` lint warnings in `StructuredContentEngine`.
 

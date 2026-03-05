@@ -292,6 +292,10 @@ it("should handle edge case correctly", () => {
 "version": "0.7.1"  // PATCH bump
 ```
 
+## Typecheck and linting
+
+Always run `pnpm typecheck`, `pnpm lint` and `pnpm build` to ensure your code changes are valid. Fix all issues.
+
 ## Common Mistakes to Avoid
 
 ❌ **Don't** skip tests

@@ -1,4 +1,4 @@
-import { convert as kreuzbergConvert, convertWithMetadata, hasMetadataSupport } from "@kreuzberg/html-to-markdown";
+import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";
 import { parse, HTMLElement as NHPHTMLElement, Node as NHPNode, TextNode as NHPTextNode } from "node-html-parser";
 
 // --- Constants ---
@@ -82,27 +82,8 @@ export class MarkdownConverter {
    * @returns The converted Markdown string.
    */
   public convert(html: string, options: ConversionOptions = {}): string {
-    // Phase 2: Extract metadata from full document via Kreuzberg when available
-    let extractedTitle: string | undefined;
-    if (hasMetadataSupport()) {
-      try {
-        const { metadata } = convertWithMetadata(
-          html,
-          { headingStyle: "Atx" as never },
-          {
-            extract_headers: false,
-            extract_links: false,
-            extract_images: false,
-          }
-        );
-        extractedTitle = metadata.document?.title ?? undefined;
-      } catch {
-        // Fall back to DOM extraction if Kreuzberg metadata fails
-      }
-    }
-
     // Preprocess HTML to clean and extract main content
-    const preprocessedHtml = this.preprocessHTML(html, extractedTitle);
+    const preprocessedHtml = this.preprocessHTML(html);
 
     // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
     let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" as never });
@@ -115,7 +96,7 @@ export class MarkdownConverter {
 
   // --- HTML Preprocessing ---
 
-  private preprocessHTML(html: string, extractedTitle?: string): string {
+  private preprocessHTML(html: string): string {
     // This function performs multi-stage processing on the HTML string:
     // 1. Initial cleanup (regex-based).
     // 2. Parsing into a DOM tree.
@@ -161,9 +142,7 @@ export class MarkdownConverter {
       this.removeBreadcrumbs(rootElement);
 
       this.removeHighLinkDensityElements(rootElement, DEFAULT_LINK_DENSITY_THRESHOLD);
-      // Use Kreuzberg-extracted title when available; otherwise fall back to DOM extraction
       const bestTitle =
-        extractedTitle ??
         rootElement.querySelector("meta[property='og:title']")?.getAttribute("content") ??
         rootElement.querySelector("meta[name='twitter:title']")?.getAttribute("content") ??
         rootElement.querySelector("meta[name='DC.title']")?.getAttribute("content") ??
