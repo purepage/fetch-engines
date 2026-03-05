@@ -32,7 +32,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # No fetch-depth needed anymore as we don't modify history
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -50,15 +49,14 @@ jobs:
 
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps
-        # TODO: Add caching for Playwright browsers
 
-      - name: Format code # Check formatting on PRs and main
+      - name: Format code
         run: pnpm format
 
-      - name: Run Lint # Lint on PRs and main
+      - name: Run Lint
         run: pnpm lint
 
-      - name: Run Tests # Test on PRs and main
+      - name: Run Tests
         run: pnpm test
 
       - name: Run Live Network Smoke Tests (opt-in)
@@ -67,26 +65,50 @@ jobs:
           LIVE_NETWORK: "1"
         run: pnpm test:live
 
-      # --- Publish Steps (only run on push to main branch) ---
-
-      # REMOVED: Configure Git step
-      # REMOVED: Bump version step
-
       - name: Build project
-        # Build runs after tests pass on the main branch commit (post-merge)
         run: pnpm build
 
-      - name: Setup Node.js for publish
+      # --- Publish + Release (only on push to main, only if version is new) ---
+
+      - name: Check if version is already published
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: version_check
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          echo "version=${LOCAL_VERSION}" >> "$GITHUB_OUTPUT"
+
+          PUBLISHED=$(npm view "${PACKAGE_NAME}@${LOCAL_VERSION}" version 2>/dev/null || echo "")
+          if [ "${PUBLISHED}" = "${LOCAL_VERSION}" ]; then
+            echo "new_version=false" >> "$GITHUB_OUTPUT"
+            echo "Version ${LOCAL_VERSION} already published — skipping publish and release."
+          else
+            echo "new_version=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${LOCAL_VERSION} is new — will publish and release."
+          fi
+
+      - name: Setup Node.js for publish
+        if: steps.version_check.outputs.new_version == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org/"
 
       - name: Publish to NPM
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.version_check.outputs.new_version == 'true'
         run: pnpm publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # REMOVED: Push changes to GitHub step
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.new_version == 'true'
+        run: |
+          VERSION="${{ steps.version_check.outputs.version }}"
+          # Extract changelog section between this version header and the next
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md)
+          gh release create "v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --title "v${VERSION}" \
+            --notes "${NOTES}"
+        env:
+          GH_TOKEN: ${{ github.token }}
