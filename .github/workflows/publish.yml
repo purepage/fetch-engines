@@ -103,12 +103,12 @@ jobs:
       - name: Create GitHub Release
         if: steps.version_check.outputs.new_version == 'true'
         run: |
-          VERSION="${{ steps.version_check.outputs.version }}"
-          # Extract changelog section between this version header and the next
           NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md)
           gh release create "v${VERSION}" \
-            --target "${{ github.sha }}" \
+            --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
             --notes "${NOTES}"
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version_check.outputs.version }}
+          GITHUB_SHA: ${{ github.sha }}
