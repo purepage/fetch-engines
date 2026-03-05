@@ -14,8 +14,8 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    - cron: "0 3 * * *" # 03:00 UTC daily live smoke
+  # schedule:
+  #   - cron: "0 3 * * *" # 03:00 UTC daily live smoke
 
 # Prevent multiple concurrent workflow runs on the same branch
 concurrency:

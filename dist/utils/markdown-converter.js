@@ -296,12 +296,12 @@ export class MarkdownConverter {
             return true;
         if (role === "navigation" || role === "complementary" || role === "banner")
             return true;
-        if (this.hasClass(cls, "sidebar") ||
-            this.hasClass(cls, "widget") ||
-            this.hasClass(cls, "menu") ||
-            this.hasClass(cls, "nav") ||
-            this.hasClass(cls, "header") ||
-            this.hasClass(cls, "footer"))
+        if (this.hasClassSubstring(cls, "sidebar") ||
+            this.hasClassSubstring(cls, "widget") ||
+            this.hasClassSubstring(cls, "menu") ||
+            this.hasClassSubstring(cls, "nav") ||
+            this.hasClassSubstring(cls, "header") ||
+            this.hasClassSubstring(cls, "footer"))
             return true;
         return false;
     }
