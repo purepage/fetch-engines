@@ -4,7 +4,7 @@
 [![CI](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml/badge.svg)](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-first workflow that automatically promotes tricky pages to a managed Playwright browser and can even hand structured results back through OpenAI.
+Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.
 
 ## Table of contents
 
@@ -26,9 +26,10 @@ Fetch websites with confidence. `@purepageio/fetch-engines` gives teams an HTTP-
 ## Why fetch-engines?
 
 - **One API for multiple strategies** – Call `fetchHTML` for rendered pages or `fetchContent` for raw responses. The library handles HTTP shortcuts and Playwright fallbacks automatically.
-- **Production-minded defaults** – Retries, caching, and consistent telemetry are ready out of the box.
-- **Drop-in AI enrichment** – Provide a Zod schema and let OpenAI (or any OpenAI-compatible API) convert full pages into structured data.
-- **Typed and tested** – Built in TypeScript with examples that mirror real-world scraping pipelines.
+- **RAG-ready Markdown** – Convert any page to clean Markdown with boilerplate, nav, and SVG noise stripped out. Powered by a Rust-native converter.
+- **Built-in retries, caching, and a managed browser pool** – Production defaults you can tune per request.
+- **URL to structured data in one call** – Define a Zod schema, get typed results back via any OpenAI-compatible API. The page is fetched as Markdown first to minimise tokens.
+- **Playwright is optional** – `FetchEngine` works without browser dependencies. Playwright is only loaded when you use `HybridEngine` or `PlaywrightEngine`.
 
 ## Installation
 
@@ -102,6 +103,8 @@ const result = await fetchStructuredContent("https://example.com/article", schem
 
 console.log(result.data.summary);
 ```
+
+Under the hood, structured extraction fetches the page as Markdown first (same boilerplate removal as Markdown mode), then sends the cleaned content to the AI model — keeping token usage low and extraction quality high.
 
 Set `OPENAI_API_KEY` (or `OPENROUTER_API_KEY`) before running structured helpers, or use `apiConfig` to connect to OpenAI-compatible APIs like OpenRouter. The engine automatically adds the `Authorization` header when you provide an API key:
 
