@@ -1,8 +1,8 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
-  "description": "A collection of configurable engines for fetching HTML content using fetch or Playwright.",
+  "description": "Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
