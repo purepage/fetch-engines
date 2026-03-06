@@ -184,4 +184,62 @@ describe("HybridEngine - Headers Propagation", () => {
     const actualOptionsUndefinedFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
     expect(actualOptionsUndefinedFailure.headers).toEqual({});
   });
+
+  it("should auto-render a shell-like HTTP response even when spaMode is not enabled", async () => {
+    mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
+      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      title: "",
+      contentType: "html",
+      url: MOCK_URL,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    });
+
+    const engine = new HybridEngine();
+    await engine.fetchHTML(MOCK_URL, {});
+
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+  });
+
+  it("should detect shells before markdown conversion", async () => {
+    mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
+      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      title: "",
+      contentType: "html",
+      url: MOCK_URL,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    });
+
+    const engine = new HybridEngine({ markdown: true });
+    await engine.fetchHTML(MOCK_URL, { markdown: true });
+
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(
+      MOCK_URL,
+      expect.objectContaining({ markdown: false })
+    );
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+  });
+
+  it("should fall back to the HTTP result when Playwright render fails after a successful fetch", async () => {
+    const httpShellResult = {
+      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      title: "",
+      contentType: "html" as const,
+      url: MOCK_URL,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    };
+
+    mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce(httpShellResult);
+    mockPlaywrightEngineInstance.fetchHTML.mockRejectedValueOnce(new Error("render failed"));
+
+    const engine = new HybridEngine();
+    const result = await engine.fetchHTML(MOCK_URL, {});
+
+    expect(result).toEqual(httpShellResult);
+  });
 });

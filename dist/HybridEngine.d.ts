@@ -9,7 +9,9 @@ export declare class HybridEngine implements IEngine {
     private readonly config;
     private readonly playwrightOnlyPatterns;
     constructor(config?: PlaywrightEngineConfig);
-    private _isSpaShell;
+    private _convertHtmlToMarkdown;
+    private _injectSourceUnderH1;
+    private _shouldAutoRender;
     fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
     /**
      * Fetches raw content from the specified URL using the hybrid approach.

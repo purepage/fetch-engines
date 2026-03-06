@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.9.1",
+  "version": "0.10.3",
   "type": "module",
   "description": "Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.",
   "main": "dist/index.js",
@@ -12,14 +12,17 @@
   ],
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"examples/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\" \"*.{js,cjs,json,md}\"",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:live": "LIVE_NETWORK=1 vitest run test/live/*.test.ts",
+    "test:live:auto-render": "LIVE_NETWORK=1 vitest run test/live/AutoRenderHypothesis.test.ts",
     "prepare": "husky",
     "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs",
+    "eval:auto-render": "pnpm build && node scripts/eval-auto-render.mjs",
     "simple-scraping": "tsx examples/simple-scraping.ts",
     "smart-scraping": "tsx examples/smart-scraping.ts",
     "ai-extraction": "tsx examples/ai-extraction.ts"

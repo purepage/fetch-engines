@@ -8,6 +8,9 @@ import type { IEngine } from "./IEngine.js";
  * Features include caching, retries, HTTP fallback, and configurable browser pooling.
  */
 export declare class PlaywrightEngine implements IEngine {
+    private static readonly AUTO_RENDER_POLL_MS;
+    private static readonly AUTO_RENDER_QUIET_WINDOW_MS;
+    private static readonly AUTO_RENDER_MAX_WAIT_MS;
     private browserPool;
     private readonly queue;
     private readonly cache;
@@ -41,6 +44,9 @@ export declare class PlaywrightEngine implements IEngine {
      * Simulate human-like interactions on the page.
      */
     private simulateHumanBehavior;
+    private captureRenderedDomSnapshot;
+    private shouldAutoWaitForRenderedDom;
+    private waitForRenderedDomIfNeeded;
     /**
      * Adds a result to the in-memory cache.
      */

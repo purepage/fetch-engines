@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added automatic app-shell detection in `HybridEngine`, so shell-like HTTP pages now escalate to Playwright by default without requiring per-domain configuration
+- Added a live `pnpm eval:auto-render` harness and `LIVE_NETWORK=1` hypothesis tests for comparing plain HTTP responses against automatic rendering on real URLs
+- Added a gated live quality matrix (SPA + static) with per-URL keyword/text/quality checks, plus pass-rate thresholds to catch regressions while keeping known-hard domains visible as non-gating sentinels
+
+### Changed
+
+- `HybridEngine` now fetches raw HTML first, decides whether rendering is necessary, and only converts to Markdown after that decision so SPA shell detection works even when callers request Markdown
+- `PlaywrightEngine` now returns serialized DOM HTML for HTML documents instead of the original navigation response body, which fixes client-rendered pages whose initial response is only an app shell
+- Playwright rendering now waits for generic content growth and a short quiet window, reducing reliance on fixed sleeps and `networkidle` alone
+
+### Fixed
+
+- Markdown conversion now resolves relative links and image sources to absolute URLs using the fetched page URL context, so output no longer contains unresolved `/path` links by default
+- Markdown conversion now removes generic utility controls (buttons and button-like UI elements) and prunes dense link-heavy chrome clusters from selected content, reducing boilerplate bleed-through without domain-specific rules
+- Markdown post-processing now separates adjacent link runs to avoid unreadable `][` link blobs in extracted output
+
 ## [0.9.1] - 2026-03-05
 
 ### Changed

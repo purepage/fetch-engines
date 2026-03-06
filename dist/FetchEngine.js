@@ -76,7 +76,7 @@ export class FetchEngine {
             if (effectiveOptions.markdown) {
                 try {
                     const converter = new MarkdownConverter();
-                    finalContent = converter.convert(html);
+                    finalContent = converter.convert(html, { baseUrl: response.url || url });
                     // Inject source URL directly under the first H1 for traceability
                     finalContent = this._injectSourceUnderH1(finalContent, response.url || url);
                     finalContentType = "markdown";

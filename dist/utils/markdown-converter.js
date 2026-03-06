@@ -9,6 +9,37 @@ const PREPROCESSING_REMOVE_SELECTORS = [
     "iframe:not([title])", // Keep iframes with titles (potential embeds)
     "svg", // Inline SVGs - decorative icons, bloat RAG with meaningless path data
     "img[src*='data:image/svg']", // Base64 inline SVG images
+    "button",
+    "[role='button']",
+    "input[type='button']",
+    "input[type='submit']",
+    "input[type='reset']",
+    "#cookies",
+    "[id*='cookie-banner']",
+    "[id*='cookie-consent']",
+    "[class*='cookie-banner']",
+    "[class*='cookie-consent']",
+    "[class*='consent-banner']",
+];
+// Content subtree cleanup - remove boilerplate even when nested inside semantic main/article containers.
+const CONTENT_SUBTREE_REMOVE_SELECTORS = [
+    "nav",
+    "header",
+    "footer",
+    "aside",
+    "[role='navigation']",
+    "[role='banner']",
+    "[role='contentinfo']",
+    "[role='complementary']",
+    "[class*='navbar']",
+    "[class*='site-nav']",
+    "[class*='site-header']",
+    "[class*='site-footer']",
+    "[id*='navbar']",
+    "[id*='site-header']",
+    "[id*='site-footer']",
+    "#footer",
+    "#header",
 ];
 // Preprocessing - Selectors for identifying potential main content
 const MAIN_CONTENT_SELECTORS = [
@@ -27,7 +58,6 @@ const MAIN_CONTENT_SELECTORS = [
     // Common CMS patterns
     ".article",
     ".post",
-    ".content",
     ".entry",
     ".blog-post",
     // Fallback
@@ -66,7 +96,7 @@ export class MarkdownConverter {
      */
     convert(html, options = {}) {
         // Preprocess HTML to clean and extract main content
-        const preprocessedHtml = this.preprocessHTML(html);
+        const preprocessedHtml = this.preprocessHTML(html, options);
         // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
         let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" });
         // Post-process Markdown for cleanup
@@ -74,7 +104,7 @@ export class MarkdownConverter {
         return markdown;
     }
     // --- HTML Preprocessing ---
-    preprocessHTML(html) {
+    preprocessHTML(html, options) {
         // This function performs multi-stage processing on the HTML string:
         // 1. Initial cleanup (regex-based).
         // 2. Parsing into a DOM tree.
@@ -111,6 +141,7 @@ export class MarkdownConverter {
                     console.warn(`Skipping invalid selector during preprocessing: ${selector}`, e);
                 }
             });
+            this.absolutizeRelativeUrls(rootElement, options.baseUrl);
             // Remove img elements pointing to .svg URLs (decorative logos/icons; bloat RAG)
             this.removeSvgImageRefs(rootElement);
             // Remove breadcrumb UI blocks explicitly (often low link density)
@@ -149,6 +180,11 @@ export class MarkdownConverter {
                 if (body)
                     contentElement = body;
             }
+            // Final content subtree cleanup: remove navigational and footer/header chrome
+            // even when it is nested under semantic containers like <main>.
+            this.removeContentSubtreeBoilerplate(contentElement);
+            // Remove generic high-link-density utility clusters still remaining inside content.
+            this.removeHighLinkDensityElementsInSelectedContent(contentElement);
             // Ensure main page title is rendered as H1 in content
             this.ensurePrimaryHeading(rootElement, contentElement, bestTitle);
             let contentHtml = contentElement instanceof NHPHTMLElement ? contentElement.outerHTML : contentElement.textContent;
@@ -197,6 +233,115 @@ export class MarkdownConverter {
             catch {
                 // Ignore selector errors
             }
+        }
+    }
+    removeContentSubtreeBoilerplate(content) {
+        if (!(content instanceof NHPHTMLElement))
+            return;
+        for (const selector of CONTENT_SUBTREE_REMOVE_SELECTORS) {
+            try {
+                content.querySelectorAll(selector).forEach((el) => el.remove());
+            }
+            catch (error) {
+                console.warn(`Skipping invalid selector during content subtree cleanup: ${selector}`, error);
+            }
+        }
+    }
+    removeHighLinkDensityElementsInSelectedContent(content) {
+        if (!(content instanceof NHPHTMLElement))
+            return;
+        const candidates = content.querySelectorAll("div, section, nav, ul, ol, aside");
+        const buttonSelector = "button, [role='button'], input[type='button'], input[type='submit'], input[type='reset']";
+        for (const candidate of Array.from(candidates)) {
+            if (!(candidate instanceof NHPHTMLElement))
+                continue;
+            if (candidate === content)
+                continue;
+            const text = (candidate.textContent || "").replace(/\s+/g, " ").trim();
+            if (text.length < MIN_LINK_DENSITY_TEXT_LENGTH)
+                continue;
+            const links = candidate.querySelectorAll("a");
+            if (links.length < 2)
+                continue;
+            const controls = candidate.querySelectorAll(buttonSelector).length;
+            const interactiveCount = links.length + controls;
+            if (interactiveCount < 2)
+                continue;
+            const headingCount = candidate.querySelectorAll("h1, h2, h3, h4, h5, h6").length;
+            const paragraphs = candidate.querySelectorAll("p");
+            const hasParagraph = paragraphs.length > 0;
+            const hasLongParagraph = paragraphs.some((p) => ((p.textContent || "").replace(/\s+/g, " ").trim().length || 0) >= 140);
+            let linkTextLength = 0;
+            links.forEach((link) => {
+                if (link.closest("a") === link) {
+                    linkTextLength += (link.textContent || "").replace(/\s+/g, " ").trim().length;
+                }
+            });
+            const density = linkTextLength / Math.max(1, text.length);
+            const nonLinkTextLength = Math.max(0, text.length - linkTextLength);
+            // Keep this intentionally conservative to avoid over-pruning content-heavy landing pages.
+            const likelyUtilityCluster = density > 0.78 &&
+                headingCount === 0 &&
+                !hasParagraph &&
+                !hasLongParagraph &&
+                text.length <= 260 &&
+                nonLinkTextLength < 120;
+            const likelyRelatedLinksCluster = links.length >= 4 &&
+                density > 0.82 &&
+                headingCount === 0 &&
+                !hasParagraph &&
+                !hasLongParagraph &&
+                text.length <= 320 &&
+                nonLinkTextLength < 80;
+            if (likelyUtilityCluster || likelyRelatedLinksCluster) {
+                candidate.remove();
+            }
+        }
+    }
+    absolutizeRelativeUrls(root, baseUrl) {
+        if (!baseUrl)
+            return;
+        let base;
+        try {
+            base = new URL(baseUrl);
+        }
+        catch {
+            return;
+        }
+        root.querySelectorAll("a[href], img[src], source[src], video[src], audio[src], track[src]").forEach((el) => {
+            if (!(el instanceof NHPHTMLElement))
+                return;
+            const href = el.getAttribute("href");
+            if (href) {
+                const resolved = this.resolveUrlAgainstBase(href, base);
+                if (resolved)
+                    el.setAttribute("href", resolved);
+            }
+            const src = el.getAttribute("src");
+            if (src) {
+                const resolved = this.resolveUrlAgainstBase(src, base);
+                if (resolved)
+                    el.setAttribute("src", resolved);
+            }
+        });
+    }
+    resolveUrlAgainstBase(rawValue, base) {
+        const value = rawValue.trim();
+        if (!value)
+            return null;
+        // Keep non-http navigations untouched.
+        if (/^(?:mailto:|tel:|sms:|javascript:|data:|blob:|about:|file:)/i.test(value)) {
+            return value;
+        }
+        // Already absolute with a scheme.
+        if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+            return value;
+        }
+        try {
+            return new URL(value, base).toString();
+        }
+        catch {
+            return value;
         }
     }
     /** Promote or inject a primary H1 heading using the provided title (from Kreuzberg metadata or DOM extraction). */
@@ -305,6 +450,22 @@ export class MarkdownConverter {
             return true;
         return false;
     }
+    isWithinProtectedMainContent(el) {
+        const protectedAncestor = el.closest?.("main, article, [role='main'], [role='article']");
+        return protectedAncestor instanceof NHPHTMLElement;
+    }
+    isLikelyConsentOrInterstitial(el) {
+        const id = (el.getAttribute?.("id") || "").toLowerCase();
+        const cls = (el.getAttribute?.("class") || "").toLowerCase();
+        const text = (el.textContent || "").toLowerCase();
+        if (id.includes("cookie") || cls.includes("cookie") || cls.includes("consent")) {
+            return true;
+        }
+        return (text.includes("manage preferences") ||
+            text.includes("agree to all") ||
+            text.includes("refuse all") ||
+            text.includes("accept cookies"));
+    }
     // Potentially performance-intensive: involves iterating over many elements
     // and performing sub-queries (querySelectorAll, textContent) for each.
     removeHighLinkDensityElements(element, threshold) {
@@ -312,6 +473,12 @@ export class MarkdownConverter {
         for (const el of Array.from(potentialBoilerplate)) {
             if (!(el instanceof NHPHTMLElement))
                 continue;
+            if (this.isWithinProtectedMainContent(el))
+                continue;
+            if (this.isLikelyConsentOrInterstitial(el)) {
+                el.remove();
+                continue;
+            }
             const textContent = el.textContent || "";
             if (textContent.length < MIN_LINK_DENSITY_TEXT_LENGTH)
                 continue;
@@ -341,6 +508,33 @@ export class MarkdownConverter {
                 }
             }
         }
+    }
+    findSemanticMainContent(root) {
+        const semanticCandidates = root.querySelectorAll("main, article, [role='main'], [role='article']");
+        let bestCandidate = null;
+        let bestScore = -1;
+        for (const element of Array.from(semanticCandidates)) {
+            if (!(element instanceof NHPHTMLElement))
+                continue;
+            const textLength = (element.textContent || "").trim().length;
+            const headingCount = element.querySelectorAll("h1, h2, h3").length;
+            const imageCount = element.querySelectorAll("img, figure, video").length;
+            const paragraphCount = element.querySelectorAll("p").length;
+            if (textLength < 120 && headingCount === 0 && imageCount === 0)
+                continue;
+            let score = textLength;
+            if (headingCount > 0)
+                score += 150;
+            if (paragraphCount > 1)
+                score += 75;
+            if (imageCount > 0)
+                score += 40;
+            if (score > bestScore) {
+                bestScore = score;
+                bestCandidate = element;
+            }
+        }
+        return bestCandidate;
     }
     detectForumPage(root) {
         // Count indicators across different selector groups
@@ -445,6 +639,10 @@ export class MarkdownConverter {
     // Complexity depends on the number of selectors, matched elements, and the
     // cost of _calculateElementScore.
     extractArticleContentElement(root) {
+        const semanticMain = this.findSemanticMainContent(root);
+        if (semanticMain) {
+            return semanticMain;
+        }
         let bestCandidate = null;
         let maxScore = -1;
         // Evaluate candidates based on selectors, text length, and tag boosting/penalties
@@ -578,9 +776,11 @@ export class MarkdownConverter {
         // 3. Remove empty Markdown elements (links, images)
         processed = processed.replace(/\[\]\([^)]*\)/g, ""); // Empty links: [](...)
         processed = processed.replace(/!\[\]\([^)]*\)/g, ""); // Empty images: ![](...)
-        // 4. Normalize image/link URLs (ensure protocol) - Basic handling
+        // 4. Normalize protocol-relative image/link URLs
         processed = processed.replace(/(!?\[[^\]]*\]\()(\/\/)/g, "$1https://"); // Fix protocol-relative URLs //
-        // Root-relative URLs (/path/...) need base URL context which we don't have here.
+        // Add a separator between adjacent links produced from tight inline UI chrome.
+        processed = processed.replace(/(\]\([^)]+\))(?=\[)/g, "$1 ");
+        processed = this.splitDenseAdjacentLinkRuns(processed);
         // 5. Normalize newlines (max 2 consecutive newlines)
         const maxNewlines = "\n".repeat(POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES + 1);
         const newlineRegex = new RegExp(`${maxNewlines}+`, "g");
@@ -606,6 +806,17 @@ export class MarkdownConverter {
         }
         // 11. Final trim
         return processed.trim();
+    }
+    splitDenseAdjacentLinkRuns(markdown) {
+        return markdown
+            .split("\n")
+            .map((line) => {
+            const linkRuns = line.match(/\[[^\]]*]\([^)]+\)/g);
+            if (!linkRuns || linkRuns.length < 3 || line.length < 180)
+                return line;
+            return line.replace(/(\]\([^)]+\))\s*(?=\[)/g, "$1\n");
+        })
+            .join("\n");
     }
 }
 //# sourceMappingURL=markdown-converter.js.map

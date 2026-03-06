@@ -169,21 +169,23 @@ export interface PlaywrightEngineConfig {
     /**
      * Enables Single Page Application (SPA) mode, which adjusts fetching strategies
      * for sites that heavily rely on client-side JavaScript rendering.
-     * When true, this may override options like `useHttpFallback` and `defaultFastMode`,
-     * and employ more patient page loading mechanisms.
+     * The library now auto-detects many app shells by default; `spaMode` still forces
+     * the more patient rendering path even when auto-detection is inconclusive.
      * @default false
      */
     spaMode?: boolean;
     /**
      * Explicit delay in milliseconds to wait after initial page load events when spaMode is true,
-     * allowing more time for client-side rendering and data fetching to complete.
+     * allowing more time for client-side rendering and data fetching to complete before
+     * the engine considers the DOM stable enough to serialize.
      * Only applies if `spaMode` is true.
-     * @default 0 (no additional fixed delay beyond Playwright's own waits)
+     * @default 0
      */
     spaRenderDelayMs?: number;
     /**
      * An array of string or RegExp patterns. If a URL matches any of these patterns,
-     * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and SPA shell heuristics.
+     * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and the default
+     * shell-detection pass. Useful when you already know a URL family is browser-only.
      * @default []
      */
     playwrightOnlyPatterns?: (string | RegExp)[];

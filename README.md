@@ -26,6 +26,7 @@ Fetch web pages as clean Markdown or structured data. HTTP-first with automatic 
 ## Why fetch-engines?
 
 - **One API for multiple strategies** – Call `fetchHTML` for rendered pages or `fetchContent` for raw responses. The library handles HTTP shortcuts and Playwright fallbacks automatically.
+- **Automatic app-shell detection** – Shell-like HTTP responses are upgraded to Playwright rendering by default, so client-rendered pages work without per-domain rules.
 - **RAG-ready Markdown** – Convert any page to clean Markdown with boilerplate, nav, and SVG noise stripped out. Powered by a Rust-native converter.
 - **Built-in retries, caching, and a managed browser pool** – Production defaults you can tune per request.
 - **URL to structured data in one call** – Define a Zod schema, get typed results back via any OpenAI-compatible API. The page is fetched as Markdown first to minimise tokens.
@@ -84,7 +85,8 @@ console.log(page.contentType); // "markdown"
 await engine.cleanup();
 ```
 
-`FetchEngine` also supports `markdown: true` for static pages that don't need JavaScript rendering.
+`FetchEngine` also supports `markdown: true` for static pages that don't need JavaScript rendering. `HybridEngine` now decides whether to render before converting to Markdown, so shell detection still works when callers request Markdown output.
+Relative links and image URLs in Markdown output are normalized to absolute URLs using the final fetched page URL. The converter also strips generic UI chrome (e.g., nav/footer/button controls and dense link clusters) using domain-agnostic heuristics.
 
 ### Structured extraction
 
@@ -131,7 +133,7 @@ When you supply a custom `baseURL`, the engine automatically switches to the Ver
 All engines accept familiar `fetch` options such as custom headers. Additional Hybrid/Playwright options you are likely to tweak:
 
 - `markdown` – return Markdown instead of HTML.
-- `spaMode` & `spaRenderDelayMs` – allow single-page apps to render before extraction.
+- Automatic shell detection is enabled by default. `spaMode` & `spaRenderDelayMs` still force a more patient render path when you know a page is highly dynamic.
 - `cacheTTL`, `maxRetries`, and browser pool sizes – control resilience and throughput.
 
 Check the inline TypeScript docs or the [`/examples`](./examples) directory for end-to-end flows.
@@ -140,30 +142,30 @@ Check the inline TypeScript docs or the [`/examples`](./examples) directory for 
 
 Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with defaults:
 
-| Option                     | Default     | Purpose                                                                                          |
-| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
-| `headers`                  | `{}`        | Extra headers merged into every request.                                                         |
-| `concurrentPages`          | `3`         | Maximum Playwright pages processed at once.                                                      |
-| `maxRetries`               | `3`         | Additional retry attempts after the first failure.                                               |
-| `retryDelay`               | `5000`      | Milliseconds to wait between retries.                                                            |
-| `cacheTTL`                 | `900000`    | Cache lifetime in ms (`0` disables caching).                                                     |
-| `useHttpFallback`          | `true`      | Try a fast HTTP GET before spinning up Playwright.                                               |
-| `useHeadedModeFallback`    | `false`     | Automatically retry a domain in headed mode after repeated failures.                             |
-| `defaultFastMode`          | `true`      | Block non-critical assets and skip human simulation unless overridden.                           |
-| `simulateHumanBehavior`    | `true`      | When not in fast mode, add delays and scrolling to avoid bot detection.                          |
-| `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                                 |
-| `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                            |
-| `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                                |
-| `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                               |
-| `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).                |
-| `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                                |
-| `proxy`                    | `undefined` | Per-browser proxy `{ server, username?, password? }`.                                            |
-| `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                             |
-| `markdown`                 | `false`     | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal. |
-| `spaMode`                  | `false`     | Enable SPA heuristics and allow additional waits for client rendering.                           |
-| `spaRenderDelayMs`         | `0`         | Extra delay after load when `spaMode` is `true`.                                                 |
-| `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP fetches.                 |
-| `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                    |
+| Option                     | Default     | Purpose                                                                                            |
+| -------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `headers`                  | `{}`        | Extra headers merged into every request.                                                           |
+| `concurrentPages`          | `3`         | Maximum Playwright pages processed at once.                                                        |
+| `maxRetries`               | `3`         | Additional retry attempts after the first failure.                                                 |
+| `retryDelay`               | `5000`      | Milliseconds to wait between retries.                                                              |
+| `cacheTTL`                 | `900000`    | Cache lifetime in ms (`0` disables caching).                                                       |
+| `useHttpFallback`          | `true`      | Try a fast HTTP GET before spinning up Playwright.                                                 |
+| `useHeadedModeFallback`    | `false`     | Automatically retry a domain in headed mode after repeated failures.                               |
+| `defaultFastMode`          | `true`      | Block non-critical assets and skip human simulation unless overridden.                             |
+| `simulateHumanBehavior`    | `true`      | When not in fast mode, add delays and scrolling to avoid bot detection.                            |
+| `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                                   |
+| `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                              |
+| `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                                  |
+| `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                                 |
+| `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).                  |
+| `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                                  |
+| `proxy`                    | `undefined` | Per-browser proxy `{ server, username?, password? }`.                                              |
+| `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                               |
+| `markdown`                 | `false`     | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal.   |
+| `spaMode`                  | `false`     | Force the more patient render path. Many shell-like pages are auto-detected even when this is off. |
+| `spaRenderDelayMs`         | `0`         | Minimum extra wait budget when `spaMode` is `true`.                                                |
+| `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.           |
+| `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                      |
 
 Per-request overrides: `fetchHTML` accepts `fastMode`, `markdown`, `spaMode`, and `headers`, while `fetchContent` supports `fastMode` and `headers`.
 
@@ -176,6 +178,8 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - Explore the [`examples`](./examples) directory for scripts you can run end-to-end.
 - Ready-to-use TypeScript types ship with the package.
 - `pnpm test` runs the automated suite when you are ready to contribute.
+- `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix (SPA + static pages) and exits non-zero if gated thresholds fail.
+- `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`).
 
 ## Contributing
 
