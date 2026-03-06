@@ -26,8 +26,8 @@ Fetch web pages as clean Markdown or structured data. HTTP-first with automatic 
 ## Why fetch-engines?
 
 - **One API for multiple strategies** – Call `fetchHTML` for rendered pages or `fetchContent` for raw responses. The library handles HTTP shortcuts and Playwright fallbacks automatically.
-- **Automatic app-shell detection** – Shell-like HTTP responses are upgraded to Playwright rendering by default, so client-rendered pages work without per-domain rules.
-- **RAG-ready Markdown** – Convert any page to clean Markdown with boilerplate, nav, and SVG noise stripped out. Powered by a Rust-native converter.
+- **Automatic app-shell & soft-block detection** – Shell-like HTTP responses and bot-gate pages (Cloudflare challenges, CAPTCHAs, "verify you're human") are upgraded to Playwright rendering by default, so client-rendered pages and soft blocks work without per-domain rules.
+- **RAG-ready Markdown** – Convert public content pages to clean Markdown with boilerplate, nav, and SVG noise stripped out. Powered by a Rust-native converter.
 - **Built-in retries, caching, and a managed browser pool** – Production defaults you can tune per request.
 - **URL to structured data in one call** – Define a Zod schema, get typed results back via any OpenAI-compatible API. The page is fetched as Markdown first to minimise tokens.
 - **Playwright is optional** – `FetchEngine` works without browser dependencies. Playwright is only loaded when you use `HybridEngine` or `PlaywrightEngine`.
@@ -86,7 +86,8 @@ await engine.cleanup();
 ```
 
 `FetchEngine` also supports `markdown: true` for static pages that don't need JavaScript rendering. `HybridEngine` now decides whether to render before converting to Markdown, so shell detection still works when callers request Markdown output.
-Relative links and image URLs in Markdown output are normalized to absolute URLs using the final fetched page URL. The converter also strips generic UI chrome (e.g., nav/footer/button controls and dense link clusters) using domain-agnostic heuristics.
+Relative links and image URLs in Markdown output are normalized to absolute URLs using the final fetched page URL. The converter strips generic UI chrome (nav/footer/button controls and dense link clusters) using domain-agnostic heuristics, while preserving content on pages without semantic `<main>`/`<article>` containers (e.g., Tailwind CSS docs).
+The extraction path is tuned for publicly accessible content. Paywalled or member-only pages may still return intentionally partial content unless you supply authenticated access yourself.
 
 ### Structured extraction
 
@@ -178,7 +179,7 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - Explore the [`examples`](./examples) directory for scripts you can run end-to-end.
 - Ready-to-use TypeScript types ship with the package.
 - `pnpm test` runs the automated suite when you are ready to contribute.
-- `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix (SPA + static pages) and exits non-zero if gated thresholds fail.
+- `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix across docs, government, knowledge, marketing, commerce, and access-guarded pages, using a stable gated core plus observe-only sentinels for harder domains.
 - `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`).
 
 ## Contributing

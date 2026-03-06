@@ -242,4 +242,33 @@ describe("HybridEngine - Headers Propagation", () => {
 
     expect(result).toEqual(httpShellResult);
   });
+
+  it("should escalate a soft-block page to Playwright even when it has a title and text", async () => {
+    const softBlockHtml = `<!DOCTYPE html>
+      <html><head><title>Just a moment...</title></head>
+      <body>
+        <div class="cf-challenge">
+          <h2>Checking your browser before accessing the site.</h2>
+          <p>This process is automatic.</p>
+        </div>
+      </body></html>`;
+
+    mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
+      content: softBlockHtml,
+      title: "Just a moment...",
+      contentType: "html",
+      url: MOCK_URL,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    });
+
+    const engine = new HybridEngine();
+    await engine.fetchHTML(MOCK_URL, {});
+
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
+      MOCK_URL,
+      expect.objectContaining({ useHttpFallback: false, spaMode: true })
+    );
+  });
 });

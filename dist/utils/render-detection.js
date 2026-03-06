@@ -5,6 +5,9 @@ const HEADING_REGEX = /<h[1-3][^>]*>/gi;
 const MAIN_LIKE_REGEX = /<(?:main|article)[^>]*>/i;
 const NOSCRIPT_ENABLE_JS_REGEX = /<noscript[\s\S]*?(enable javascript|requires javascript|javascript to run)/i;
 const SCRIPT_TAG_REGEX = /<script\b/gi;
+// Soft-block / challenge page detection
+const SOFT_BLOCK_TITLE_REGEX = /just a moment|attention required|access denied|please wait|one more step|checking your browser|security check|you have been blocked|blocked by|are you a robot/i;
+const SOFT_BLOCK_BODY_REGEX = /checking your browser|verify you.{0,10}(?:are |'re )?(?:not a )?(?:ro)?bot|verify you.{0,10}human|please complete the security check|cf-challenge|captcha-container|hcaptcha|recaptcha|cf-turnstile|enable (?:javascript|cookies) to (?:continue|access|view)|automated (?:access|request)|bot detect|suspicious activity|unusual traffic|too many requests|rate limit exceeded|we need to verify/i;
 function collapseWhitespace(value) {
     return value.replace(/\s+/g, " ").trim();
 }
@@ -95,6 +98,22 @@ export function assessHtmlRenderNeed(html) {
         renderLikelyNeededScore,
         renderLikelyNeeded: renderLikelyNeededScore >= 4,
     };
+}
+/**
+ * Detect if an HTTP response is a soft-block page (Cloudflare challenge, CAPTCHA,
+ * "verify you're human", etc.) that looks like a real HTML document but contains no
+ * actual page content.
+ */
+export function isSoftBlockPage(html) {
+    const visibleText = stripHtmlToVisibleText(html);
+    // Genuine content pages produce substantial text; soft blocks rarely exceed ~1500 visible chars.
+    if (visibleText.length > 1500)
+        return false;
+    const titleMatch = html.match(TITLE_REGEX);
+    const title = titleMatch?.[1] || "";
+    if (SOFT_BLOCK_TITLE_REGEX.test(title))
+        return true;
+    return SOFT_BLOCK_BODY_REGEX.test(html);
 }
 export function assessSerializedContent(content, contentType) {
     if (contentType === "html") {

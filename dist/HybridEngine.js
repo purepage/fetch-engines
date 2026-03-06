@@ -1,7 +1,7 @@
 import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
-import { assessHtmlRenderNeed, assessSerializedContent, isRenderedContentMeaningfullyBetter, } from "./utils/render-detection.js";
+import { assessHtmlRenderNeed, assessSerializedContent, isRenderedContentMeaningfullyBetter, isSoftBlockPage, } from "./utils/render-detection.js";
 /**
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
@@ -35,6 +35,9 @@ export class HybridEngine {
     }
     _shouldAutoRender(fetchResult, forceSpaMode) {
         if (forceSpaMode) {
+            return true;
+        }
+        if (isSoftBlockPage(fetchResult.content)) {
             return true;
         }
         return assessHtmlRenderNeed(fetchResult.content).renderLikelyNeeded;

@@ -6,6 +6,7 @@ import {
   assessHtmlRenderNeed,
   assessSerializedContent,
   isRenderedContentMeaningfullyBetter,
+  isSoftBlockPage,
 } from "./utils/render-detection.js";
 import type {
   HTMLFetchResult,
@@ -54,6 +55,9 @@ export class HybridEngine implements IEngine {
 
   private _shouldAutoRender(fetchResult: HTMLFetchResult, forceSpaMode: boolean): boolean {
     if (forceSpaMode) {
+      return true;
+    }
+    if (isSoftBlockPage(fetchResult.content)) {
       return true;
     }
     return assessHtmlRenderNeed(fetchResult.content).renderLikelyNeeded;

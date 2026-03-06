@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.10.2] - 2026-03-07
+
+### Added
+
+- Expanded the live auto-render evaluation matrix to cover 19 real URLs across documentation, government, knowledge, marketing, commerce, static-baseline, and access-guarded archetypes
+- Added observe-only live cases for chrome-heavy product pages and HTTP-blocked pages that should succeed via browser fallback
+- Added a regression test ensuring metered/paywalled partial-content prompts are not misclassified as soft-block bot challenges
+
+### Changed
+
+- `pnpm eval:auto-render` and `test/live/AutoRenderHypothesis.test.ts` now share a single case matrix, include archetype labels in reports, and support cases where direct HTTP baseline fetches are expected to fail
+- README positioning now reflects validated coverage more precisely: public content pages, not a blanket "any page" claim
+
+## [0.10.1] - 2026-03-07
+
+### Added
+
+- Soft-block page detection (`isSoftBlockPage`) — Cloudflare challenges, CAPTCHAs, "verify you're human" interstitials, and similar bot-gate pages are now detected and escalated to Playwright rendering automatically
+- Regression tests for documentation sites (MDN, Docusaurus, Read the Docs, Vite, Tailwind CSS) ensuring content extraction works on pages without `<main>` or `<article>` elements
+
+### Fixed
+
+- Link density removal no longer strips large layout containers that hold both navigation and content — pages like Tailwind CSS docs (no semantic `<main>` tag) now extract correctly instead of producing empty output
+- `HybridEngine._shouldAutoRender` now checks for soft-block pages before assessing render need, preventing challenge pages with valid-looking HTML from being returned as actual content
+
 ## [0.10.0] - 2026-03-07
 
 ### Added
@@ -103,7 +130,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/purepage/fetch-engines/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/purepage/fetch-engines/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/purepage/fetch-engines/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/purepage/fetch-engines/compare/v0.8.1...v0.9.0

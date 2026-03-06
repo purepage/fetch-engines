@@ -1,27 +1,22 @@
 import { describe, expect, it, afterAll, beforeAll } from "vitest";
 import { FetchEngine, HybridEngine } from "../../src/index.js";
 import { assessHtmlRenderNeed, assessSerializedContent } from "../../src/utils/render-detection.js";
+import {
+  AUTO_RENDER_EVAL_CASES,
+  AUTO_RENDER_MIN_GATED_PASS_RATE,
+  AUTO_RENDER_MIN_GATED_SPA_PASS_RATE,
+  AUTO_RENDER_MIN_GATED_STATIC_PASS_RATE,
+  type AutoRenderEvalArchetype,
+  type AutoRenderEvalCategory,
+} from "../../src/evals/auto-render-cases.js";
 
 const RUN_LIVE = process.env.LIVE_NETWORK === "1";
-const MIN_GATED_PASS_RATE = 0.8;
-const MIN_GATED_STATIC_PASS_RATE = 1;
-const MIN_GATED_SPA_PASS_RATE = 0.5;
-
-type EvalCategory = "spa" | "static";
-
-interface EvalCase {
-  name: string;
-  url: string;
-  category: EvalCategory;
-  requiredAny: string[];
-  minTextLength: number;
-  gate?: boolean;
-}
 
 interface EvalResult {
   name: string;
   url: string;
-  category: EvalCategory;
+  category: AutoRenderEvalCategory;
+  archetype: AutoRenderEvalArchetype;
   gate: boolean;
   pass: boolean;
   checks: Record<string, boolean>;
@@ -29,63 +24,10 @@ interface EvalResult {
   hybridQualityScore: number;
   baselineTextLength: number;
   hybridTextLength: number;
-  renderLikelyNeeded: boolean;
+  renderLikelyNeeded: boolean | null;
+  baselineError?: string;
   error?: string;
 }
-
-const EVAL_CASES: EvalCase[] = [
-  {
-    name: "Fanatico release page (known-hard SPA)",
-    url: "https://store.fanatico.au/release/4651760/romar-harmonie-ephemere-ep",
-    category: "spa",
-    requiredAny: ["romar", "harmonie", "fanatico"],
-    minTextLength: 80,
-    gate: false,
-  },
-  {
-    name: "OpenAI home page",
-    url: "https://openai.com/",
-    category: "spa",
-    requiredAny: ["openai", "chatgpt", "research"],
-    minTextLength: 120,
-  },
-  {
-    name: "Apple AU home page",
-    url: "https://www.apple.com/au/",
-    category: "spa",
-    requiredAny: ["apple", "macbook", "iphone"],
-    minTextLength: 250,
-  },
-  {
-    name: "Rebuilt product page (chrome-heavy SPA)",
-    url: "https://rebuilt.eco/product/2fd68bae-5cc7-41f0-bb30-bc67f3f6f740",
-    category: "spa",
-    requiredAny: ["primed flatsheets", "upfront carbon emissions", "weathertex"],
-    minTextLength: 180,
-    gate: false,
-  },
-  {
-    name: "Example domain",
-    url: "https://example.com/",
-    category: "static",
-    requiredAny: ["example domain"],
-    minTextLength: 40,
-  },
-  {
-    name: "httpbin HTML demo",
-    url: "https://httpbin.org/html",
-    category: "static",
-    requiredAny: ["herman", "moby-dick", "availing himself"],
-    minTextLength: 80,
-  },
-  {
-    name: "IANA reserved domains",
-    url: "https://www.iana.org/domains/reserved",
-    category: "static",
-    requiredAny: ["iana", "example domains"],
-    minTextLength: 150,
-  },
-];
 
 function includesAny(haystack: string, needles: string[]): boolean {
   const normalized = haystack.toLowerCase();
@@ -100,8 +42,9 @@ function buildResultLine(result: EvalResult): string {
   const status = result.pass ? "PASS" : "FAIL";
   const scores = `baselineQ=${result.baselineQualityScore}, hybridQ=${result.hybridQualityScore}, baselineText=${result.baselineTextLength}, hybridText=${result.hybridTextLength}`;
   const renderSignal = `renderLikelyNeeded=${result.renderLikelyNeeded}`;
+  const baselineError = result.baselineError ? `, baselineError=${result.baselineError}` : "";
   const error = result.error ? `, error=${result.error}` : "";
-  return `${status} [${gate}] ${result.category} :: ${result.name} (${result.url}) :: ${checks} :: ${scores}, ${renderSignal}${error}`;
+  return `${status} [${gate}] ${result.category}/${result.archetype} :: ${result.name} (${result.url}) :: ${checks} :: ${scores}, ${renderSignal}${baselineError}${error}`;
 }
 
 describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
@@ -121,18 +64,28 @@ describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
   it("meets quality thresholds across a mixed live URL matrix", async () => {
     const results: EvalResult[] = [];
 
-    for (const evalCase of EVAL_CASES) {
+    for (const evalCase of AUTO_RENDER_EVAL_CASES) {
       const gate = evalCase.gate !== false;
       try {
-        const baselineHtmlResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: false });
-        const baselineMarkdownResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: true });
         const hybridResult = await hybridEngine.fetchHTML(evalCase.url, { markdown: true });
+        let baselineHtmlResult: Awaited<ReturnType<FetchEngine["fetchHTML"]>> | null = null;
+        let baselineMarkdownResult: Awaited<ReturnType<FetchEngine["fetchHTML"]>> | null = null;
+        let baselineError: string | undefined;
 
-        const renderNeed = assessHtmlRenderNeed(baselineHtmlResult.content);
-        const baselineAssessment = assessSerializedContent(
-          baselineMarkdownResult.content,
-          baselineMarkdownResult.contentType
-        );
+        try {
+          baselineHtmlResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: false });
+          baselineMarkdownResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: true });
+        } catch (error: unknown) {
+          baselineError = error instanceof Error ? error.message : String(error);
+          if (!evalCase.baselineOptional) {
+            throw error;
+          }
+        }
+
+        const renderNeed = baselineHtmlResult ? assessHtmlRenderNeed(baselineHtmlResult.content) : null;
+        const baselineAssessment = baselineMarkdownResult
+          ? assessSerializedContent(baselineMarkdownResult.content, baselineMarkdownResult.contentType)
+          : { qualityScore: 0, textLength: 0, titleLength: 0 };
         const hybridAssessment = assessSerializedContent(hybridResult.content, hybridResult.contentType);
         const keywordHit = includesAny(hybridResult.content, evalCase.requiredAny);
 
@@ -142,10 +95,10 @@ describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
           minTextLength: hybridAssessment.textLength >= evalCase.minTextLength,
           keywordHit,
           noStaticRegression:
-            evalCase.category === "static"
+            evalCase.category === "static" && baselineMarkdownResult
               ? hybridAssessment.qualityScore >= baselineAssessment.qualityScore - 1
               : true,
-          renderNeedHandled: renderNeed.renderLikelyNeeded ? hybridAssessment.textLength >= 80 : true,
+          renderNeedHandled: renderNeed?.renderLikelyNeeded ? hybridAssessment.textLength >= 80 : true,
         };
 
         const pass = Object.values(checks).every(Boolean);
@@ -153,14 +106,16 @@ describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
           name: evalCase.name,
           url: evalCase.url,
           category: evalCase.category,
+          archetype: evalCase.archetype,
           gate,
           pass,
           checks,
+          baselineError,
           baselineQualityScore: baselineAssessment.qualityScore,
           hybridQualityScore: hybridAssessment.qualityScore,
           baselineTextLength: baselineAssessment.textLength,
           hybridTextLength: hybridAssessment.textLength,
-          renderLikelyNeeded: renderNeed.renderLikelyNeeded,
+          renderLikelyNeeded: renderNeed?.renderLikelyNeeded ?? null,
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -168,6 +123,7 @@ describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
           name: evalCase.name,
           url: evalCase.url,
           category: evalCase.category,
+          archetype: evalCase.archetype,
           gate,
           pass: false,
           checks: { execution: false },
@@ -192,10 +148,14 @@ describe.runIf(RUN_LIVE).sequential("Auto render hypothesis", () => {
       gatedSpa.length === 0 ? 1 : gatedSpa.filter((result) => result.pass).length / gatedSpa.length;
 
     expect(gated.length, `No gated cases were evaluated.\n${report}`).toBeGreaterThan(0);
-    expect(gatedPassRate, `Overall gated pass rate too low.\n${report}`).toBeGreaterThanOrEqual(MIN_GATED_PASS_RATE);
-    expect(gatedStaticPassRate, `Static pass rate too low.\n${report}`).toBeGreaterThanOrEqual(
-      MIN_GATED_STATIC_PASS_RATE
+    expect(gatedPassRate, `Overall gated pass rate too low.\n${report}`).toBeGreaterThanOrEqual(
+      AUTO_RENDER_MIN_GATED_PASS_RATE
     );
-    expect(gatedSpaPassRate, `SPA pass rate too low.\n${report}`).toBeGreaterThanOrEqual(MIN_GATED_SPA_PASS_RATE);
+    expect(gatedStaticPassRate, `Static pass rate too low.\n${report}`).toBeGreaterThanOrEqual(
+      AUTO_RENDER_MIN_GATED_STATIC_PASS_RATE
+    );
+    expect(gatedSpaPassRate, `SPA pass rate too low.\n${report}`).toBeGreaterThanOrEqual(
+      AUTO_RENDER_MIN_GATED_SPA_PASS_RATE
+    );
   }, 300000);
 });

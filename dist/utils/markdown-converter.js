@@ -494,13 +494,19 @@ export class MarkdownConverter {
                 continue;
             const density = linkTextLength / textLength;
             if (density > threshold) {
-                // Avoid removing the element if it contains a primary content marker
                 const containsMainContent = el.querySelector('main, article, [role="main"], [role="article"]') !== null;
-                // Also avoid removing if it IS the main content candidate itself
                 const isMainContent = this.elementMatchesMainContent(el);
-                if (!containsMainContent && !isMainContent) {
-                    el.remove();
-                }
+                if (containsMainContent || isMainContent)
+                    continue;
+                // Protect large layout wrappers that contain both nav and content.
+                // If significant non-link text or content signals exist inside the element,
+                // it's likely a page-level container rather than pure navigation.
+                const nonLinkTextLength = Math.max(0, textLength - linkTextLength);
+                const hasHeadings = el.querySelectorAll("h1, h2, h3, h4, h5, h6").length > 0;
+                const hasParagraphs = el.querySelectorAll("p").length > 0;
+                if (nonLinkTextLength > 200 && (hasHeadings || hasParagraphs))
+                    continue;
+                el.remove();
             }
         }
     }

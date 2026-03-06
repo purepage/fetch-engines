@@ -3,6 +3,7 @@ import {
   assessHtmlRenderNeed,
   assessSerializedContent,
   isRenderedContentMeaningfullyBetter,
+  isSoftBlockPage,
 } from "../src/utils/render-detection.js";
 
 describe("render detection", () => {
@@ -57,5 +58,104 @@ describe("render detection", () => {
     );
 
     expect(isRenderedContentMeaningfullyBetter(baseline, candidate)).toBe(true);
+  });
+});
+
+describe("isSoftBlockPage", () => {
+  it("should detect a Cloudflare challenge page", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Just a moment...</title></head>
+      <body>
+        <div class="cf-challenge">
+          <h2>Checking your browser before accessing the site.</h2>
+          <p>This process is automatic. Your browser will redirect shortly.</p>
+        </div>
+        <script src="/cdn-cgi/challenge-platform/scripts/main.js"></script>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(true);
+  });
+
+  it("should detect a CAPTCHA / verify-you-are-human page", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Security Check</title></head>
+      <body>
+        <h1>Verify you are human</h1>
+        <div class="captcha-container">
+          <p>Please complete the security check to access this site.</p>
+        </div>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(true);
+  });
+
+  it("should detect an access-denied soft block", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Access Denied</title></head>
+      <body>
+        <h1>You have been blocked</h1>
+        <p>This website is using a security service to protect itself.</p>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(true);
+  });
+
+  it("should detect a Turnstile challenge", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Please wait</title></head>
+      <body>
+        <div class="cf-turnstile"></div>
+        <p>We need to verify that you are not a robot.</p>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(true);
+  });
+
+  it("should NOT flag a genuine content page as a soft block", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Getting Started - My Framework</title></head>
+      <body>
+        <main>
+          <h1>Getting Started</h1>
+          <p>Welcome to the documentation. This guide will walk you through setting up your
+             project from scratch, configuring the build system, adding plugins, and deploying
+             to production. The framework provides a flexible architecture that scales from
+             small prototypes to large enterprise applications.</p>
+          <h2>Installation</h2>
+          <p>Run npm install my-framework to get started. You can also use yarn or pnpm as
+             your package manager. The minimum Node.js version required is 18.0.0.</p>
+        </main>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(false);
+  });
+
+  it("should NOT flag a content-heavy page even if it mentions verification in passing", () => {
+    const longContent = Array(50)
+      .fill("This is a paragraph of real content about software development and best practices.")
+      .join(" ");
+    const html = `<!DOCTYPE html>
+      <html><head><title>My Blog Post</title></head>
+      <body>
+        <article>
+          <h1>How to verify your deployment</h1>
+          <p>${longContent}</p>
+        </article>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(false);
+  });
+
+  it("should NOT flag a partial-content paywall prompt as a soft block", () => {
+    const html = `<!DOCTYPE html>
+      <html><head><title>Investigating modern web scraping techniques</title></head>
+      <body>
+        <article>
+          <h1>Investigating modern web scraping techniques</h1>
+          <p>Web scraping has evolved from simple DOM extraction to hybrid rendering pipelines
+             that balance cost, latency, and content completeness across static and dynamic pages.</p>
+          <p>In this article we compare server-rendered sites, app shells, access-guarded
+             properties, and documentation platforms with complex navigation structures.</p>
+        </article>
+        <section class="metered-paywall">
+          <h2>Subscribe to continue reading</h2>
+          <p>Create an account or sign in to access the full article.</p>
+        </section>
+      </body></html>`;
+    expect(isSoftBlockPage(html)).toBe(false);
   });
 });

@@ -195,4 +195,85 @@ describe("MarkdownConverter", () => {
     expect(markdown).toContain("(https://example.com/news/2)");
     expect(markdown).toContain("(https://example.com/news/3)");
   });
+
+  it("preserves content in pages with no semantic main/article where nav siblings inflate link density", () => {
+    const html = `
+      <body>
+        <div class="layout-wrapper">
+          <div class="sidebar">
+            <nav>
+              <a href="/docs/a">Getting Started</a>
+              <a href="/docs/b">Configuration</a>
+              <a href="/docs/c">Plugins</a>
+              <a href="/docs/d">API Reference</a>
+              <a href="/docs/e">Migration Guide</a>
+              <a href="/docs/f">FAQ</a>
+            </nav>
+          </div>
+          <div class="docs-content">
+            <h1>Getting Started</h1>
+            <p>Install the package using your preferred package manager. This guide walks you through
+               setting up the project from scratch, including configuration and first steps.</p>
+            <h2>Installation</h2>
+            <p>Run the following command to install the dependencies needed for the project.</p>
+            <pre><code>npm install my-framework</code></pre>
+            <h2>Configuration</h2>
+            <p>Create a configuration file in your project root with the following content to get started.</p>
+          </div>
+        </div>
+      </body>`;
+
+    const converter = new MarkdownConverter();
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain("Getting Started");
+    expect(markdown).toContain("Installation");
+    expect(markdown).toContain("npm install my-framework");
+    expect(markdown).toContain("Configuration");
+    expect(markdown).toContain("configuration file");
+  });
+
+  it("preserves doc content when navigation and content share a container with no semantic markers", () => {
+    const html = `
+      <body>
+        <div class="page">
+          <div class="top-nav">
+            <a href="/">Home</a>
+            <a href="/docs">Docs</a>
+            <a href="/api">API</a>
+            <a href="/blog">Blog</a>
+            <a href="/community">Community</a>
+          </div>
+          <div class="grid">
+            <div class="sidebar-nav">
+              <a href="/docs/intro">Intro</a>
+              <a href="/docs/setup">Setup</a>
+              <a href="/docs/config">Config</a>
+              <a href="/docs/deploy">Deploy</a>
+              <a href="/docs/testing">Testing</a>
+              <a href="/docs/advanced">Advanced</a>
+              <a href="/docs/plugins">Plugins</a>
+              <a href="/docs/themes">Themes</a>
+            </div>
+            <div class="content-area">
+              <h1>Introduction</h1>
+              <p>Welcome to the framework documentation. This comprehensive guide covers everything
+                 you need to know about building applications with our tools.</p>
+              <h2>Quick Start</h2>
+              <p>Follow these steps to create your first project and deploy it to production in under five minutes.</p>
+              <h3>Prerequisites</h3>
+              <p>You will need Node.js version 18 or later and a package manager like npm or pnpm installed.</p>
+            </div>
+          </div>
+        </div>
+      </body>`;
+
+    const converter = new MarkdownConverter();
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain("Introduction");
+    expect(markdown).toContain("Quick Start");
+    expect(markdown).toContain("Prerequisites");
+    expect(markdown).toContain("comprehensive guide");
+  });
 });

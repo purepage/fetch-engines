@@ -1,41 +1,11 @@
 import { FetchEngine, HybridEngine } from "../dist/index.js";
 import { assessHtmlRenderNeed, assessSerializedContent } from "../dist/utils/render-detection.js";
-
-const MIN_GATED_PASS_RATE = 0.8;
-const MIN_GATED_STATIC_PASS_RATE = 1;
-const MIN_GATED_SPA_PASS_RATE = 0.5;
-
-const DEFAULT_CASES = [
-  {
-    name: "Fanatico release page (known-hard SPA)",
-    url: "https://store.fanatico.au/release/4651760/romar-harmonie-ephemere-ep",
-    category: "spa",
-    requiredAny: ["romar", "harmonie", "fanatico"],
-    minTextLength: 80,
-    gate: false,
-  },
-  {
-    name: "OpenAI home page",
-    url: "https://openai.com/",
-    category: "spa",
-    requiredAny: ["openai", "chatgpt", "research"],
-    minTextLength: 120,
-  },
-  {
-    name: "httpbin HTML demo",
-    url: "https://httpbin.org/html",
-    category: "static",
-    requiredAny: ["herman", "moby-dick", "availing himself"],
-    minTextLength: 80,
-  },
-  {
-    name: "IANA reserved domains",
-    url: "https://www.iana.org/domains/reserved",
-    category: "static",
-    requiredAny: ["iana", "example domains"],
-    minTextLength: 150,
-  },
-];
+import {
+  AUTO_RENDER_EVAL_CASES,
+  AUTO_RENDER_MIN_GATED_PASS_RATE,
+  AUTO_RENDER_MIN_GATED_SPA_PASS_RATE,
+  AUTO_RENDER_MIN_GATED_STATIC_PASS_RATE,
+} from "../dist/evals/auto-render-cases.js";
 
 function includesAny(haystack, needles) {
   const normalized = haystack.toLowerCase();
@@ -47,6 +17,7 @@ function toAdHocCase(url) {
     name: `Ad-hoc URL ${url}`,
     url,
     category: "static",
+    archetype: "static-baseline",
     requiredAny: [],
     minTextLength: 40,
     gate: false,
@@ -57,6 +28,14 @@ function summarize(results) {
   const gated = results.filter((result) => result.gate);
   const gatedStatic = gated.filter((result) => result.category === "static");
   const gatedSpa = gated.filter((result) => result.category === "spa");
+  const archetypeCounts = Object.fromEntries(
+    Object.entries(
+      results.reduce((acc, result) => {
+        acc[result.archetype] = (acc[result.archetype] || 0) + 1;
+        return acc;
+      }, {})
+    ).sort(([left], [right]) => left.localeCompare(right))
+  );
 
   const gatedPassRate = gated.length === 0 ? 0 : gated.filter((result) => result.pass).length / gated.length;
   const gatedStaticPassRate =
@@ -69,30 +48,41 @@ function summarize(results) {
     gatedPassRate,
     gatedStaticPassRate,
     gatedSpaPassRate,
+    archetypeCounts,
     thresholds: {
-      gatedPassRate: MIN_GATED_PASS_RATE,
-      gatedStaticPassRate: MIN_GATED_STATIC_PASS_RATE,
-      gatedSpaPassRate: MIN_GATED_SPA_PASS_RATE,
+      gatedPassRate: AUTO_RENDER_MIN_GATED_PASS_RATE,
+      gatedStaticPassRate: AUTO_RENDER_MIN_GATED_STATIC_PASS_RATE,
+      gatedSpaPassRate: AUTO_RENDER_MIN_GATED_SPA_PASS_RATE,
     },
     thresholdPass:
-      gatedPassRate >= MIN_GATED_PASS_RATE &&
-      gatedStaticPassRate >= MIN_GATED_STATIC_PASS_RATE &&
-      gatedSpaPassRate >= MIN_GATED_SPA_PASS_RATE,
+      gatedPassRate >= AUTO_RENDER_MIN_GATED_PASS_RATE &&
+      gatedStaticPassRate >= AUTO_RENDER_MIN_GATED_STATIC_PASS_RATE &&
+      gatedSpaPassRate >= AUTO_RENDER_MIN_GATED_SPA_PASS_RATE,
   };
 }
 
 async function evaluateCase(evalCase, fetchEngine, hybridEngine) {
   const gate = evalCase.gate !== false;
   try {
-    const baselineHtmlResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: false });
-    const baselineMarkdownResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: true });
     const hybridResult = await hybridEngine.fetchHTML(evalCase.url, { markdown: true });
+    let baselineHtmlResult = null;
+    let baselineMarkdownResult = null;
+    let baselineError = null;
 
-    const renderNeed = assessHtmlRenderNeed(baselineHtmlResult.content);
-    const baselineAssessment = assessSerializedContent(
-      baselineMarkdownResult.content,
-      baselineMarkdownResult.contentType
-    );
+    try {
+      baselineHtmlResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: false });
+      baselineMarkdownResult = await fetchEngine.fetchHTML(evalCase.url, { markdown: true });
+    } catch (error) {
+      baselineError = error instanceof Error ? error.message : String(error);
+      if (!evalCase.baselineOptional) {
+        throw error;
+      }
+    }
+
+    const renderNeed = baselineHtmlResult ? assessHtmlRenderNeed(baselineHtmlResult.content) : null;
+    const baselineAssessment = baselineMarkdownResult
+      ? assessSerializedContent(baselineMarkdownResult.content, baselineMarkdownResult.contentType)
+      : { qualityScore: 0, textLength: 0, titleLength: 0 };
     const hybridAssessment = assessSerializedContent(hybridResult.content, hybridResult.contentType);
     const keywordHit = evalCase.requiredAny.length === 0 || includesAny(hybridResult.content, evalCase.requiredAny);
 
@@ -102,21 +92,25 @@ async function evaluateCase(evalCase, fetchEngine, hybridEngine) {
       minTextLength: hybridAssessment.textLength >= evalCase.minTextLength,
       keywordHit,
       noStaticRegression:
-        evalCase.category === "static" ? hybridAssessment.qualityScore >= baselineAssessment.qualityScore - 1 : true,
-      renderNeedHandled: renderNeed.renderLikelyNeeded ? hybridAssessment.textLength >= 80 : true,
+        evalCase.category === "static" && baselineMarkdownResult
+          ? hybridAssessment.qualityScore >= baselineAssessment.qualityScore - 1
+          : true,
+      renderNeedHandled: renderNeed?.renderLikelyNeeded ? hybridAssessment.textLength >= 80 : true,
     };
 
     return {
       name: evalCase.name,
       url: evalCase.url,
       category: evalCase.category,
+      archetype: evalCase.archetype,
       gate,
       pass: Object.values(checks).every(Boolean),
       checks,
+      baselineError,
       baseline: {
-        title: baselineMarkdownResult.title,
-        contentType: baselineMarkdownResult.contentType,
-        statusCode: baselineMarkdownResult.statusCode,
+        title: baselineMarkdownResult?.title ?? null,
+        contentType: baselineMarkdownResult?.contentType ?? null,
+        statusCode: baselineMarkdownResult?.statusCode ?? null,
         qualityScore: baselineAssessment.qualityScore,
         textLength: baselineAssessment.textLength,
       },
@@ -127,15 +121,16 @@ async function evaluateCase(evalCase, fetchEngine, hybridEngine) {
         qualityScore: hybridAssessment.qualityScore,
         textLength: hybridAssessment.textLength,
       },
-      renderLikelyNeeded: renderNeed.renderLikelyNeeded,
-      renderLikelyNeededScore: renderNeed.renderLikelyNeededScore,
-      renderNeedQualityScore: renderNeed.qualityScore,
+      renderLikelyNeeded: renderNeed?.renderLikelyNeeded ?? null,
+      renderLikelyNeededScore: renderNeed?.renderLikelyNeededScore ?? null,
+      renderNeedQualityScore: renderNeed?.qualityScore ?? null,
     };
   } catch (error) {
     return {
       name: evalCase.name,
       url: evalCase.url,
       category: evalCase.category,
+      archetype: evalCase.archetype,
       gate,
       pass: false,
       checks: { execution: false },
@@ -146,7 +141,7 @@ async function evaluateCase(evalCase, fetchEngine, hybridEngine) {
 
 async function main() {
   const urls = process.argv.slice(2);
-  const cases = urls.length > 0 ? urls.map(toAdHocCase) : DEFAULT_CASES;
+  const cases = urls.length > 0 ? urls.map(toAdHocCase) : AUTO_RENDER_EVAL_CASES;
   const results = [];
   const fetchEngine = new FetchEngine();
   const hybridEngine = new HybridEngine({ markdown: true, maxRetries: 1, useHttpFallback: true });
