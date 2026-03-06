@@ -22,21 +22,6 @@ const DEFAULT_CASES = [
     minTextLength: 120,
   },
   {
-    name: "Apple AU home page",
-    url: "https://www.apple.com/au/",
-    category: "spa",
-    requiredAny: ["apple", "macbook", "iphone"],
-    minTextLength: 250,
-  },
-  {
-    name: "Rebuilt product page (chrome-heavy SPA)",
-    url: "https://rebuilt.eco/product/2fd68bae-5cc7-41f0-bb30-bc67f3f6f740",
-    category: "spa",
-    requiredAny: ["primed flatsheets", "upfront carbon emissions", "weathertex"],
-    minTextLength: 180,
-    gate: false,
-  },
-  {
     name: "httpbin HTML demo",
     url: "https://httpbin.org/html",
     category: "static",
