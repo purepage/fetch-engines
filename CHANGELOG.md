@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `HybridEngine` auto-render path now skips Playwright's HTTP fallback and uses `spaMode` when a shell is detected, so slow SPAs (e.g. Fanatico) are actually rendered instead of returning the empty HTTP response again
 - Markdown conversion now resolves relative links and image sources to absolute URLs using the fetched page URL context, so output no longer contains unresolved `/path` links by default
 - Markdown conversion now removes generic utility controls (buttons and button-like UI elements) and prunes dense link-heavy chrome clusters from selected content, reducing boilerplate bleed-through without domain-specific rules
 - Markdown post-processing now separates adjacent link runs to avoid unreadable `][` link blobs in extracted output

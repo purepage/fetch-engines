@@ -83,8 +83,14 @@ export class HybridEngine {
                 return httpPreferredResult;
             }
             console.warn(`HybridEngine: HTTP fetch for ${url} looks incomplete. Attempting Playwright render.`);
+            // Skip HTTP fallback (we already know it's a shell) and use SPA rendering path for patient waits.
+            const autoRenderOptions = {
+                ...playwrightOptions,
+                useHttpFallback: false,
+                spaMode: true,
+            };
             try {
-                const playwrightResult = await this.playwrightEngine.fetchHTML(url, playwrightOptions);
+                const playwrightResult = await this.playwrightEngine.fetchHTML(url, autoRenderOptions);
                 const staticAssessment = assessSerializedContent(httpPreferredResult.content, httpPreferredResult.contentType);
                 const renderedAssessment = assessSerializedContent(playwrightResult.content, playwrightResult.contentType);
                 if (!isRenderedContentMeaningfullyBetter(staticAssessment, renderedAssessment)) {

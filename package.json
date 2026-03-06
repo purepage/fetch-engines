@@ -23,6 +23,7 @@
     "prepare": "husky",
     "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs",
     "eval:auto-render": "pnpm build && node scripts/eval-auto-render.mjs",
+    "fetch:fanatico": "pnpm build && node scripts/fetch-spa.mjs",
     "simple-scraping": "tsx examples/simple-scraping.ts",
     "smart-scraping": "tsx examples/smart-scraping.ts",
     "ai-extraction": "tsx examples/ai-extraction.ts"
