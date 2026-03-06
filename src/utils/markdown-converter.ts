@@ -287,7 +287,6 @@ export class MarkdownConverter {
     if (!(content instanceof NHPHTMLElement)) return;
 
     const candidates = content.querySelectorAll("div, section, nav, ul, ol, aside");
-    const buttonSelector = "button, [role='button'], input[type='button'], input[type='submit'], input[type='reset']";
 
     for (const candidate of Array.from(candidates)) {
       if (!(candidate instanceof NHPHTMLElement)) continue;
@@ -298,10 +297,6 @@ export class MarkdownConverter {
 
       const links = candidate.querySelectorAll("a");
       if (links.length < 2) continue;
-
-      const controls = candidate.querySelectorAll(buttonSelector).length;
-      const interactiveCount = links.length + controls;
-      if (interactiveCount < 2) continue;
 
       const headingCount = candidate.querySelectorAll("h1, h2, h3, h4, h5, h6").length;
       const paragraphs = candidate.querySelectorAll("p");
@@ -947,4 +942,13 @@ export class MarkdownConverter {
       })
       .join("\n");
   }
+}
+
+/** Insert a "Source: <url>" line immediately below the first H1 heading. */
+export function injectSourceUrl(markdown: string, sourceUrl: string): string {
+  if (!markdown || !sourceUrl) return markdown;
+  const head = markdown.split("\n").slice(0, 50).join("\n");
+  if (/^Source:\s+/m.test(head)) return markdown;
+  const safeUrl = sourceUrl.trim();
+  return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
 }

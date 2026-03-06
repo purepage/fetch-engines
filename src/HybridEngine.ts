@@ -1,7 +1,7 @@
 import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
-import { MarkdownConverter } from "./utils/markdown-converter.js";
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import {
   assessHtmlRenderNeed,
   assessSerializedContent,
@@ -37,7 +37,7 @@ export class HybridEngine implements IEngine {
   private _convertHtmlToMarkdown(htmlResult: HTMLFetchResult): HTMLFetchResult {
     try {
       const converter = new MarkdownConverter();
-      const content = this._injectSourceUnderH1(
+      const content = injectSourceUrl(
         converter.convert(htmlResult.content, { baseUrl: htmlResult.url }),
         htmlResult.url
       );
@@ -50,14 +50,6 @@ export class HybridEngine implements IEngine {
       console.error(`HybridEngine: Markdown conversion failed for ${htmlResult.url}:`, conversionError);
       return htmlResult;
     }
-  }
-
-  private _injectSourceUnderH1(markdown: string, sourceUrl: string): string {
-    if (!markdown || !sourceUrl) return markdown;
-    const head = markdown.split("\n").slice(0, 50).join("\n");
-    if (/^Source:\s+/m.test(head)) return markdown;
-    const safeUrl = sourceUrl.trim();
-    return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
   }
 
   private _shouldAutoRender(fetchResult: HTMLFetchResult, forceSpaMode: boolean): boolean {

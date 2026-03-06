@@ -10,7 +10,6 @@ export declare class HybridEngine implements IEngine {
     private readonly playwrightOnlyPatterns;
     constructor(config?: PlaywrightEngineConfig);
     private _convertHtmlToMarkdown;
-    private _injectSourceUnderH1;
     private _shouldAutoRender;
     fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
     /**

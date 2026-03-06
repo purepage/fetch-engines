@@ -1,5 +1,5 @@
-const ROOT_CONTAINER_REGEX = /<div[^>]+id=["']?(?:root|app)["']?[^>]*>\s*(?:<!--[\s\S]*?-->\s*)*<\/div>/i;
-const HAS_ROOT_CONTAINER_REGEX = /<(?:div|main|section)[^>]+id=["']?(?:root|app)["']?[^>]*>/i;
+const ROOT_CONTAINER_REGEX = /<div[^>]+id=["']?(?:root|app)\b["']?[^>]*>\s*(?:<!--[\s\S]*?-->\s*)*<\/div>/i;
+const HAS_ROOT_CONTAINER_REGEX = /<(?:div|main|section)[^>]+id=["']?(?:root|app)\b["']?[^>]*>/i;
 const TITLE_REGEX = /<title[^>]*>([\s\S]*?)<\/title>/i;
 const HEADING_REGEX = /<h[1-3][^>]*>/gi;
 const MAIN_LIKE_REGEX = /<(?:main|article)[^>]*>/i;
@@ -31,7 +31,7 @@ function stripMarkdownToVisibleText(markdown) {
         .replace(/```[\s\S]*?```/g, " ")
         .replace(/`[^`]*`/g, " ")
         .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-        .replace(/\[[^\]]*]\([^)]*\)/g, " ")
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
         .replace(/^#{1,6}\s+/gm, "")
         .replace(/[*_~>-]/g, " "));
 }

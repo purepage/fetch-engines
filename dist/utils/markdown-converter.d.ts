@@ -50,4 +50,6 @@ export declare class MarkdownConverter {
     private postprocessMarkdown;
     private splitDenseAdjacentLinkRuns;
 }
+/** Insert a "Source: <url>" line immediately below the first H1 heading. */
+export declare function injectSourceUrl(markdown: string, sourceUrl: string): string;
 //# sourceMappingURL=markdown-converter.d.ts.map

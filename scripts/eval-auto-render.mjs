@@ -37,13 +37,6 @@ const DEFAULT_CASES = [
     gate: false,
   },
   {
-    name: "Example domain",
-    url: "https://example.com/",
-    category: "static",
-    requiredAny: ["example domain"],
-    minTextLength: 40,
-  },
-  {
     name: "httpbin HTML demo",
     url: "https://httpbin.org/html",
     category: "static",

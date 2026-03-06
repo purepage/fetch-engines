@@ -17,7 +17,7 @@ import type {
 } from "playwright"; // Removed unused BrowserContext
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
-import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import {
   DEFAULT_HTTP_TIMEOUT,
   SHORT_DELAY_MS,
@@ -216,8 +216,7 @@ export class PlaywrightEngine implements IEngine {
           finalContent = converter.convert(originalHtml, {
             baseUrl: response.request?.res?.responseUrl || response.config.url || url,
           });
-          // Inject source URL directly under the first H1 for traceability
-          finalContent = this._injectSourceUnderH1(
+          finalContent = injectSourceUrl(
             finalContent,
             response.request?.res?.responseUrl || response.config.url || url
           );
@@ -319,6 +318,9 @@ export class PlaywrightEngine implements IEngine {
     }
   }
 
+  // Runs inside the browser via page.evaluate, so it uses live DOM APIs instead of
+  // the regex-based heuristics in render-detection.ts (which operates on raw HTML strings).
+  // The scoring weights intentionally diverge because the live DOM provides richer signals.
   private async captureRenderedDomSnapshot(page: Page): Promise<RenderedDomSnapshot> {
     return page.evaluate(() => {
       const collapseWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
@@ -560,7 +562,7 @@ export class PlaywrightEngine implements IEngine {
           const converter = new MarkdownConverter();
           // Convert a copy, do not mutate the cached object directly
           const convertedContent = converter.convert(cachedResult.content, { baseUrl: cachedResult.url || url });
-          const withSource = this._injectSourceUnderH1(convertedContent, url);
+          const withSource = injectSourceUrl(convertedContent, url);
           return {
             ...cachedResult,
             content: withSource,
@@ -936,7 +938,7 @@ export class PlaywrightEngine implements IEngine {
           try {
             const converter = new MarkdownConverter();
             finalContent = converter.convert(html, { baseUrl: finalUrl });
-            finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
+            finalContent = injectSourceUrl(finalContent, finalUrl);
             finalContentType = "markdown";
           } catch (conversionError: unknown) {
             console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
@@ -1008,15 +1010,6 @@ export class PlaywrightEngine implements IEngine {
         );
       }
     }
-  }
-
-  // Insert a "Source: <url>" line immediately below the first H1.
-  private _injectSourceUnderH1(markdown: string, sourceUrl: string): string {
-    if (!markdown || !sourceUrl) return markdown;
-    const head = markdown.split("\n").slice(0, 50).join("\n");
-    if (/^Source:\s+/m.test(head)) return markdown;
-    const safeUrl = sourceUrl.trim();
-    return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
   }
 
   /**

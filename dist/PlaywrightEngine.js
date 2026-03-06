@@ -2,7 +2,7 @@ import { PlaywrightBrowserPool } from "./browser/PlaywrightBrowserPool.js";
 import PQueue from "p-queue";
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
-import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_TITLE_TAG, REGEX_SIMPLE_HTML_TITLE_FALLBACK, REGEX_SANITIZE_HTML_TAGS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, } from "./constants.js"; // Corrected path
 function delay(time) {
     // Added return type
@@ -146,8 +146,7 @@ export class PlaywrightEngine {
                     finalContent = converter.convert(originalHtml, {
                         baseUrl: response.request?.res?.responseUrl || response.config.url || url,
                     });
-                    // Inject source URL directly under the first H1 for traceability
-                    finalContent = this._injectSourceUnderH1(finalContent, response.request?.res?.responseUrl || response.config.url || url);
+                    finalContent = injectSourceUrl(finalContent, response.request?.res?.responseUrl || response.config.url || url);
                     finalContentType = "markdown";
                 }
                 catch (conversionError) {
@@ -239,6 +238,9 @@ export class PlaywrightEngine {
             console.debug(`Error during human-like simulation on page ${page.url()}: ${message}`, err instanceof Error ? err : undefined);
         }
     }
+    // Runs inside the browser via page.evaluate, so it uses live DOM APIs instead of
+    // the regex-based heuristics in render-detection.ts (which operates on raw HTML strings).
+    // The scoring weights intentionally diverge because the live DOM provides richer signals.
     async captureRenderedDomSnapshot(page) {
         return page.evaluate(() => {
             const collapseWhitespace = (value) => value.replace(/\s+/g, " ").trim();
@@ -438,7 +440,7 @@ export class PlaywrightEngine {
                     const converter = new MarkdownConverter();
                     // Convert a copy, do not mutate the cached object directly
                     const convertedContent = converter.convert(cachedResult.content, { baseUrl: cachedResult.url || url });
-                    const withSource = this._injectSourceUnderH1(convertedContent, url);
+                    const withSource = injectSourceUrl(convertedContent, url);
                     return {
                         ...cachedResult,
                         content: withSource,
@@ -719,7 +721,7 @@ export class PlaywrightEngine {
                     try {
                         const converter = new MarkdownConverter();
                         finalContent = converter.convert(html, { baseUrl: finalUrl });
-                        finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
+                        finalContent = injectSourceUrl(finalContent, finalUrl);
                         finalContentType = "markdown";
                     }
                     catch (conversionError) {
@@ -779,16 +781,6 @@ export class PlaywrightEngine {
                 console.debug(`Error setting up Playwright routing rules: ${message}`, routingError instanceof Error ? routingError : undefined);
             }
         }
-    }
-    // Insert a "Source: <url>" line immediately below the first H1.
-    _injectSourceUnderH1(markdown, sourceUrl) {
-        if (!markdown || !sourceUrl)
-            return markdown;
-        const head = markdown.split("\n").slice(0, 50).join("\n");
-        if (/^Source:\s+/m.test(head))
-            return markdown;
-        const safeUrl = sourceUrl.trim();
-        return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
     }
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.
