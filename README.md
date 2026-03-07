@@ -181,6 +181,7 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - `pnpm test` runs the automated suite when you are ready to contribute.
 - `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix across docs, government, knowledge, marketing, commerce, and access-guarded pages, using a stable gated core plus observe-only sentinels for harder domains.
 - `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`).
+- GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact.
 
 ## Contributing
 

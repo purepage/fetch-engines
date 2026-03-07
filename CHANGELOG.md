@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-03-07
+
+### Added
+
+- Added a dedicated GitHub Actions workflow for browser-enabled live auto-render coverage, with runs on `main`, nightly schedule, and manual dispatch
+- Live browser CI now uploads the `pnpm eval:auto-render` JSON report as an artifact for inspection
+
+### Changed
+
+- The main publish workflow no longer installs Playwright or carries dormant opt-in live-test logic; browser-dependent coverage now lives in its own explicit CI lane
+- README tooling docs now describe the dedicated live browser evaluation workflow
+
 ## [0.10.2] - 2026-03-07
 
 ### Added
@@ -130,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/purepage/fetch-engines/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/purepage/fetch-engines/compare/v0.9.1...v0.10.0

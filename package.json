@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.10.2",
+  "version": "0.10.0",
   "type": "module",
   "description": "Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.",
   "main": "dist/index.js",
