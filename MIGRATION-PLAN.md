@@ -16,13 +16,13 @@ All changes are in config and documentation files. No source code changes requir
 
 ### package.json
 
-| Field | Old | New |
-| --- | --- | --- |
-| `name` | `@purepageio/fetch-engines` | `purepage` |
-| `repository.url` | `git+https://github.com/purepage/fetch-engines` | `git+https://github.com/purepage/purepage` |
-| `bugs.url` | `https://github.com/purepageio/fetch-engines/issues` | `https://github.com/purepage/purepage/issues` |
-| `homepage` | `https://github.com/purepageio/fetch-engines#readme` | `https://github.com/purepage/purepage#readme` |
-| `keywords` | add `purepage`, `web-extraction`, `markdown`, `rag` | — |
+| Field            | Old                                                  | New                                           |
+| ---------------- | ---------------------------------------------------- | --------------------------------------------- |
+| `name`           | `@purepageio/fetch-engines`                          | `purepage`                                    |
+| `repository.url` | `git+https://github.com/purepage/fetch-engines`      | `git+https://github.com/purepage/purepage`    |
+| `bugs.url`       | `https://github.com/purepageio/fetch-engines/issues` | `https://github.com/purepage/purepage/issues` |
+| `homepage`       | `https://github.com/purepageio/fetch-engines#readme` | `https://github.com/purepage/purepage#readme` |
+| `keywords`       | add `purepage`, `web-extraction`, `markdown`, `rag`  | —                                             |
 
 Consider dropping the `publishConfig.access: "public"` field — unscoped packages are public by default.
 
@@ -56,7 +56,7 @@ Consider dropping the `publishConfig.access: "public"` field — unscoped packag
 
 - Version label: `@purepageio/fetch-engines version:` → `purepage version:`
 
-### .github/workflows/*.yml
+### .github/workflows/\*.yml
 
 - No references to the package name, but verify the CI badge paths in README match the new repo after the GitHub rename
 
@@ -86,9 +86,7 @@ Publish one final version of `@purepageio/fetch-engines` that re-exports from `p
 
 ```typescript
 // src/index.ts (temporary, for the deprecation release only)
-console.warn(
-  "[@purepageio/fetch-engines] This package has been renamed to 'purepage'. Please update your dependency."
-);
+console.warn("[@purepageio/fetch-engines] This package has been renamed to 'purepage'. Please update your dependency.");
 export * from "purepage";
 ```
 
@@ -99,6 +97,7 @@ npm deprecate @purepageio/fetch-engines "This package has been renamed to 'purep
 ```
 
 This means existing users:
+
 - Don't break immediately (re-export keeps their imports working)
 - See a clear warning in their terminal on install and at runtime
 - Know exactly what to change
@@ -113,18 +112,18 @@ This means existing users:
 
 ## Files changed summary
 
-| File | Changes |
-| --- | --- |
-| `package.json` | name, repository, bugs, homepage, keywords |
-| `README.md` | title, badges, install, imports, section headings, comparison table |
-| `CHANGELOG.md` | comparison links, new rename entry |
-| `AGENTS.md` | title, example links |
-| `REQUIREMENTS.md` | title, first paragraph |
-| `.github/ISSUE_TEMPLATE/bug_report.md` | version label |
-| `src/**/*.ts` | **No changes** |
-| `test/**/*.ts` | **No changes** |
-| `examples/**/*.ts` | **No changes** |
-| `scripts/**/*.mjs` | **No changes** |
+| File                                   | Changes                                                             |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `package.json`                         | name, repository, bugs, homepage, keywords                          |
+| `README.md`                            | title, badges, install, imports, section headings, comparison table |
+| `CHANGELOG.md`                         | comparison links, new rename entry                                  |
+| `AGENTS.md`                            | title, example links                                                |
+| `REQUIREMENTS.md`                      | title, first paragraph                                              |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | version label                                                       |
+| `src/**/*.ts`                          | **No changes**                                                      |
+| `test/**/*.ts`                         | **No changes**                                                      |
+| `examples/**/*.ts`                     | **No changes**                                                      |
+| `scripts/**/*.mjs`                     | **No changes**                                                      |
 
 ## Risk
 
