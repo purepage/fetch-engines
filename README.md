@@ -2,13 +2,18 @@
 
 [![npm version](https://img.shields.io/npm/v/@purepageio/fetch-engines.svg)](https://www.npmjs.com/package/@purepageio/fetch-engines)
 [![CI](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml/badge.svg)](https://github.com/purepage/fetch-engines/actions/workflows/publish.yml)
+[![Live Browser Evals](https://github.com/purepage/fetch-engines/actions/workflows/live-browser-evals.yml/badge.svg)](https://github.com/purepage/fetch-engines/actions/workflows/live-browser-evals.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.
+Reliable public-web extraction for Node.js.
+
+HTTP-first for speed. Browser-backed when needed. Clean Markdown, soft-block handling, and structured extraction for RAG and AI pipelines.
 
 ## Table of contents
 
 - [Why fetch-engines?](#why-fetch-engines)
+- [Why trust fetch-engines](#why-trust-fetch-engines)
+- [Library vs hosted crawler](#library-vs-hosted-crawler)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Usage patterns](#usage-patterns)
@@ -28,9 +33,30 @@ Fetch web pages as clean Markdown or structured data. HTTP-first with automatic 
 - **One API for multiple strategies** – Call `fetchHTML` for rendered pages or `fetchContent` for raw responses. The library handles HTTP shortcuts and Playwright fallbacks automatically.
 - **Automatic app-shell & soft-block detection** – Shell-like HTTP responses and bot-gate pages (Cloudflare challenges, CAPTCHAs, "verify you're human") are upgraded to Playwright rendering by default, so client-rendered pages and soft blocks work without per-domain rules.
 - **RAG-ready Markdown** – Convert public content pages to clean Markdown with boilerplate, nav, and SVG noise stripped out. Powered by a Rust-native converter.
-- **Built-in retries, caching, and a managed browser pool** – Production defaults you can tune per request.
-- **URL to structured data in one call** – Define a Zod schema, get typed results back via any OpenAI-compatible API. The page is fetched as Markdown first to minimise tokens.
+- **HTTP-first, browser-backed when needed** – Fast pages stay cheap via plain HTTP, while harder pages automatically benefit from Playwright fallback.
+- **Structured extraction built in** – Define a Zod schema and go from URL to typed data via any OpenAI-compatible API. The page is fetched as Markdown first to minimise tokens.
 - **Playwright is optional** – `FetchEngine` works without browser dependencies. Playwright is only loaded when you use `HybridEngine` or `PlaywrightEngine`.
+
+## Why trust fetch-engines
+
+- **19 live URLs across 7 archetypes** (docs, government, knowledge, marketing, commerce, static, access-guarded) validated on every release and nightly via browser-enabled CI
+- **85 unit tests + dedicated live browser eval workflow** — not just "it compiles," but "it extracts real content from real pages"
+- Handles app shells, Cloudflare challenges, CAPTCHAs, and utility-class-heavy doc sites (Tailwind, Vite) without per-domain rules
+- Produces clean Markdown with absolute URLs — boilerplate removal typically reduces raw HTML to 10–30% of its original size before it reaches your LLM
+- Structured extraction with Zod schemas and any OpenAI-compatible provider, in the same pipeline as page fetching
+
+## Library vs hosted crawler
+
+|                     | fetch-engines                           | Hosted crawlers     |
+| ------------------- | --------------------------------------- | ------------------- |
+| **Runs where**      | Your Node.js process                    | Third-party API     |
+| **Data stays**      | In your infrastructure                  | Leaves your network |
+| **Cost model**      | Free + your compute                     | Per-page pricing    |
+| **Customisation**   | Full source access, tune heuristics     | Configuration flags |
+| **Browser control** | Your Playwright instance, your proxy    | Opaque              |
+| **Transparency**    | Open tests, open evals, open heuristics | Black box           |
+
+Choose `fetch-engines` when you want full control over extraction, data residency, and cost. Choose a hosted crawler when you need managed infrastructure and don't want to run browsers yourself.
 
 ## Installation
 

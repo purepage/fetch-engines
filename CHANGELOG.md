@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-03-07
+
+### Added
+
+- Added "Library vs hosted crawler" comparison table to README for clearer competitive positioning
+- Added concrete metrics to the trust section (19 live URLs, 7 archetypes, 85 unit tests, boilerplate-reduction stat)
+
+### Changed
+
+- Renamed "Why teams trust fetch-engines" to "Why trust fetch-engines" for broader appeal
+- Tightened "HTTP-first, browser-backed when needed" value prop bullet
+
+## [0.10.4] - 2026-03-07
+
+### Added
+
+- Added a dedicated live browser evaluation badge to the README so validation coverage is visible from the project landing page
+- Added a new "Why teams trust fetch-engines" section to the README highlighting live eval coverage, browser CI, and extraction strengths
+
+### Changed
+
+- Updated the package description to position `fetch-engines` as a production-grade public-web extraction library for Node.js
+- Reworked the README hero copy to emphasize reliability, browser-backed extraction, clean Markdown, and RAG/AI use cases more clearly
+- Refined the top-level value proposition bullets to better differentiate HTTP-first extraction, Playwright fallback, and built-in structured extraction
+
 ## [0.10.3] - 2026-03-07
 
 ### Added
@@ -142,7 +167,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.5...HEAD
+[0.10.5]: https://github.com/purepage/fetch-engines/compare/v0.10.4...v0.10.5
+[0.10.4]: https://github.com/purepage/fetch-engines/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/purepage/fetch-engines/compare/v0.10.0...v0.10.1

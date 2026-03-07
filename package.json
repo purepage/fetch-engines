@@ -2,7 +2,7 @@
   "name": "@purepageio/fetch-engines",
   "version": "0.10.0",
   "type": "module",
-  "description": "Fetch web pages as clean Markdown or structured data. HTTP-first with automatic Playwright fallback, built for RAG pipelines and content extraction.",
+  "description": "Production-grade public-web extraction for Node.js: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -23,7 +23,6 @@
     "prepare": "husky",
     "examples:hybrid-md": "node scripts/hybrid-md-dump.mjs",
     "eval:auto-render": "pnpm build && node scripts/eval-auto-render.mjs",
-    "fetch:fanatico": "pnpm build && node scripts/fetch-spa.mjs",
     "simple-scraping": "tsx examples/simple-scraping.ts",
     "smart-scraping": "tsx examples/smart-scraping.ts",
     "ai-extraction": "tsx examples/ai-extraction.ts"
