@@ -8,8 +8,9 @@ global.fetch = mockFetch;
 describe("FetchEngine - Headers", () => {
   const MOCK_URL = "http://example.com";
   const DEFAULT_BASE_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
   };
 
@@ -29,10 +30,7 @@ describe("FetchEngine - Headers", () => {
   it("should use default headers if no custom headers are provided", async () => {
     const engine = new FetchEngine();
     await engine.fetchHTML(MOCK_URL);
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: DEFAULT_BASE_HEADERS })
-    );
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: DEFAULT_BASE_HEADERS }));
   });
 
   // 2. Constructor Headers
@@ -92,16 +90,13 @@ describe("FetchEngine - Headers", () => {
     await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
     const expectedHeaders = {
-      ...DEFAULT_BASE_HEADERS,   // Defaults for Accept, Accept-Language
+      ...DEFAULT_BASE_HEADERS, // Defaults for Accept, Accept-Language
       "X-Constructor-Header": "constructor-val", // From constructor
-      "X-Fetch-Header": "fetch-val",             // From fetchOptions
-      "User-Agent": "FetchAgent",                // Overridden by fetchOptions
+      "X-Fetch-Header": "fetch-val", // From fetchOptions
+      "User-Agent": "FetchAgent", // Overridden by fetchOptions
     };
-    
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedHeaders })
-    );
+
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedHeaders }));
   });
 
   it("should merge fetchHTML options headers with constructor headers for different keys", async () => {
@@ -115,13 +110,9 @@ describe("FetchEngine - Headers", () => {
       "X-Constructor-Unique": "constructor-unique-val",
       "X-Fetch-Unique": "fetch-unique-val",
     };
-    
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedHeaders })
-    );
-  });
 
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedHeaders }));
+  });
 
   // 4. Mixed Scenarios & Precedence
   it("should use headers from default, constructor, and fetchHTML options when all have unique keys", async () => {
@@ -135,18 +126,18 @@ describe("FetchEngine - Headers", () => {
       "X-Constructor-Mixed": "constructor-mixed-val",
       "X-Fetch-Mixed": "fetch-mixed-val",
     };
-    
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedHeaders })
-    );
+
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedHeaders }));
   });
 
   it("should prioritize fetchHTML options header when same key is in default, constructor, and options", async () => {
     // 'User-Agent' is in DEFAULT_BASE_HEADERS
-    const constructorHeaders = { "User-Agent": "ConstructorUserAgentOverride", "X-Constructor-Only": "constructor-only" };
+    const constructorHeaders = {
+      "User-Agent": "ConstructorUserAgentOverride",
+      "X-Constructor-Only": "constructor-only",
+    };
     const fetchOptionsHeaders = { "User-Agent": "FetchOptionsUserAgentUltimateOverride" };
-    
+
     const engine = new FetchEngine({ headers: constructorHeaders });
     await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
@@ -155,59 +146,63 @@ describe("FetchEngine - Headers", () => {
       "X-Constructor-Only": "constructor-only", // From constructor
       "User-Agent": "FetchOptionsUserAgentUltimateOverride", // fetchHTML options win
     };
-    
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedHeaders })
-    );
+
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedHeaders }));
   });
 
   it("should correctly merge when constructor provides some overrides and options provide others", async () => {
     const constructorHeaders = { "User-Agent": "ConstructorAgent", "X-From-Constructor": "val1" };
     const fetchOptionsHeaders = { "Accept-Language": "fr-FR", "X-From-Options": "val2" };
-    
+
     const engine = new FetchEngine({ headers: constructorHeaders });
     await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
     const expectedHeaders = {
       "User-Agent": "ConstructorAgent", // From constructor, overrides default
-      "Accept": DEFAULT_BASE_HEADERS.Accept, // From default
+      Accept: DEFAULT_BASE_HEADERS.Accept, // From default
       "Accept-Language": "fr-FR", // From options, overrides default
       "X-From-Constructor": "val1", // From constructor
-      "X-From-Options": "val2",   // From options
+      "X-From-Options": "val2", // From options
     };
-    
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: expectedHeaders })
-    );
+
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedHeaders }));
   });
 
   // Test for empty headers objects
   it("should handle empty headers object from constructor", async () => {
     const engine = new FetchEngine({ headers: {} });
     await engine.fetchHTML(MOCK_URL);
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: DEFAULT_BASE_HEADERS })
-    );
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: DEFAULT_BASE_HEADERS }));
   });
 
   it("should handle empty headers object from fetchHTML options", async () => {
     const engine = new FetchEngine();
     await engine.fetchHTML(MOCK_URL, { headers: {} });
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: DEFAULT_BASE_HEADERS })
-    );
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: DEFAULT_BASE_HEADERS }));
   });
 
   it("should handle empty headers objects from both constructor and fetchHTML options", async () => {
     const engine = new FetchEngine({ headers: {} });
     await engine.fetchHTML(MOCK_URL, { headers: {} });
-    expect(mockFetch).toHaveBeenCalledWith(
-      MOCK_URL,
-      expect.objectContaining({ headers: DEFAULT_BASE_HEADERS })
-    );
+    expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: DEFAULT_BASE_HEADERS }));
+  });
+
+  it("should normalize relative markdown links to absolute URLs using response URL context", async () => {
+    const absoluteUrl = "https://example.com/products/item-1";
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "Content-Type": "text/html" }),
+      text: async () =>
+        `<html><head><title>Item</title></head><body><main><a href="/product/123">Product</a><a href="../about">About</a></main></body></html>`,
+      url: absoluteUrl,
+    });
+
+    const engine = new FetchEngine({ markdown: true });
+    const result = await engine.fetchHTML(absoluteUrl, { markdown: true });
+
+    expect(result.contentType).toBe("markdown");
+    expect(result.content).toContain("(https://example.com/product/123)");
+    expect(result.content).toContain("(https://example.com/about)");
   });
 });

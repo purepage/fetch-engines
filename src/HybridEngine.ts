@@ -1,6 +1,13 @@
 import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import {
+  assessHtmlRenderNeed,
+  assessSerializedContent,
+  isRenderedContentMeaningfullyBetter,
+  isSoftBlockPage,
+} from "./utils/render-detection.js";
 import type {
   HTMLFetchResult,
   ContentFetchResult,
@@ -21,30 +28,39 @@ export class HybridEngine implements IEngine {
 
   constructor(config: PlaywrightEngineConfig = {}) {
     // Pass relevant config parts to each engine
-    // FetchEngine only takes markdown option from the shared config
-    // spaMode from config is primarily for PlaywrightEngine, but HybridEngine uses it for decision making.
-    this.fetchEngine = new FetchEngine({ markdown: config.markdown, headers: config.headers });
+    // HybridEngine fetches raw HTML first so it can decide whether rendering is necessary.
+    this.fetchEngine = new FetchEngine({ markdown: false, headers: config.headers });
     this.playwrightEngine = new PlaywrightEngine(config);
     this.config = config; // Store for merging later
     this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
   }
 
-  private _isSpaShell(htmlContent: string): boolean {
-    if (!htmlContent || htmlContent.length < 150) {
-      // Very short content might be a shell or error
-      // Heuristic: if it's very short AND contains noscript, good chance it's a shell.
-      if (htmlContent.includes("<noscript>")) return true;
+  private _convertHtmlToMarkdown(htmlResult: HTMLFetchResult): HTMLFetchResult {
+    try {
+      const converter = new MarkdownConverter();
+      const content = injectSourceUrl(
+        converter.convert(htmlResult.content, { baseUrl: htmlResult.url }),
+        htmlResult.url
+      );
+      return {
+        ...htmlResult,
+        content,
+        contentType: "markdown",
+      };
+    } catch (conversionError: unknown) {
+      console.error(`HybridEngine: Markdown conversion failed for ${htmlResult.url}:`, conversionError);
+      return htmlResult;
     }
-    // Check for <noscript> tag
-    if (htmlContent.includes("<noscript>")) return true;
+  }
 
-    // Check for common empty root divs
-    if (/<div id=(?:"|')?(root|app)(?:"|')?[^>]*>\s*<\/div>/i.test(htmlContent)) return true;
-
-    // Check for empty title tag or no title tag at all
-    if (/<title>\s*<\/title>/i.test(htmlContent) || !/<title[^>]*>/i.test(htmlContent)) return true;
-
-    return false;
+  private _shouldAutoRender(fetchResult: HTMLFetchResult, forceSpaMode: boolean): boolean {
+    if (forceSpaMode) {
+      return true;
+    }
+    if (isSoftBlockPage(fetchResult.content)) {
+      return true;
+    }
+    return assessHtmlRenderNeed(fetchResult.content).renderLikelyNeeded;
   }
 
   async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
@@ -94,25 +110,41 @@ export class HybridEngine implements IEngine {
     }
 
     try {
-      // Prepare options for FetchEngine call
-      const fetchEngineCallSpecificOptions: FetchOptions = {
-        markdown: effectiveMarkdown, // Pass the resolved markdown setting
-        headers: options.headers, // Pass only the request-specific headers. FetchEngine will merge these with its own constructor headers.
-      };
-      const fetchResult = await this.fetchEngine.fetchHTML(url, fetchEngineCallSpecificOptions);
+      const fetchResult = await this.fetchEngine.fetchHTML(url, {
+        markdown: false,
+        headers: options.headers,
+      });
+      const httpPreferredResult = effectiveMarkdown ? this._convertHtmlToMarkdown(fetchResult) : fetchResult;
 
-      // If FetchEngine succeeded AND spaMode is active, check if it's just a shell
-      if (effectiveSpaMode && fetchResult && fetchResult.content) {
-        if (this._isSpaShell(fetchResult.content)) {
-          console.warn(
-            `HybridEngine: FetchEngine returned likely SPA shell for ${url} in spaMode. Forcing PlaywrightEngine.`
-          );
-          // Fallback to PlaywrightEngine, passing the determined effective options
-          return this.playwrightEngine.fetchHTML(url, playwrightOptions);
-        }
+      if (!this._shouldAutoRender(fetchResult, effectiveSpaMode)) {
+        return httpPreferredResult;
       }
-      // If not spaMode, or if spaMode but content is not a shell, return FetchEngine's result
-      return fetchResult;
+
+      console.warn(`HybridEngine: HTTP fetch for ${url} looks incomplete. Attempting Playwright render.`);
+
+      // Skip HTTP fallback (we already know it's a shell) and use SPA rendering path for patient waits.
+      const autoRenderOptions = {
+        ...playwrightOptions,
+        useHttpFallback: false,
+        spaMode: true,
+      };
+
+      try {
+        const playwrightResult = await this.playwrightEngine.fetchHTML(url, autoRenderOptions);
+        const staticAssessment = assessSerializedContent(httpPreferredResult.content, httpPreferredResult.contentType);
+        const renderedAssessment = assessSerializedContent(playwrightResult.content, playwrightResult.contentType);
+
+        if (!isRenderedContentMeaningfullyBetter(staticAssessment, renderedAssessment)) {
+          console.warn(`HybridEngine: Playwright render for ${url} was not meaningfully better. Keeping HTTP result.`);
+          return httpPreferredResult;
+        }
+
+        return playwrightResult;
+      } catch (playwrightError: unknown) {
+        const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
+        console.warn(`HybridEngine: Playwright render failed for ${url}: ${pwMessage}. Returning HTTP result.`);
+        return httpPreferredResult;
+      }
     } catch (fetchError: unknown) {
       // If FetchEngine returned a 404, do not attempt Playwright fallback
       if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {

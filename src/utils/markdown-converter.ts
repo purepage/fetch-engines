@@ -11,6 +11,38 @@ const PREPROCESSING_REMOVE_SELECTORS: ReadonlyArray<string> = [
   "iframe:not([title])", // Keep iframes with titles (potential embeds)
   "svg", // Inline SVGs - decorative icons, bloat RAG with meaningless path data
   "img[src*='data:image/svg']", // Base64 inline SVG images
+  "button",
+  "[role='button']",
+  "input[type='button']",
+  "input[type='submit']",
+  "input[type='reset']",
+  "#cookies",
+  "[id*='cookie-banner']",
+  "[id*='cookie-consent']",
+  "[class*='cookie-banner']",
+  "[class*='cookie-consent']",
+  "[class*='consent-banner']",
+];
+
+// Content subtree cleanup - remove boilerplate even when nested inside semantic main/article containers.
+const CONTENT_SUBTREE_REMOVE_SELECTORS: ReadonlyArray<string> = [
+  "nav",
+  "header",
+  "footer",
+  "aside",
+  "[role='navigation']",
+  "[role='banner']",
+  "[role='contentinfo']",
+  "[role='complementary']",
+  "[class*='navbar']",
+  "[class*='site-nav']",
+  "[class*='site-header']",
+  "[class*='site-footer']",
+  "[id*='navbar']",
+  "[id*='site-header']",
+  "[id*='site-footer']",
+  "#footer",
+  "#header",
 ];
 
 // Preprocessing - Selectors for identifying potential main content
@@ -30,7 +62,6 @@ const MAIN_CONTENT_SELECTORS: ReadonlyArray<string> = [
   // Common CMS patterns
   ".article",
   ".post",
-  ".content",
   ".entry",
   ".blog-post",
   // Fallback
@@ -66,6 +97,8 @@ const POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES = 2; // Keep paragraphs separate
 export interface ConversionOptions {
   /** Maximum length of the final Markdown content. Defaults to Infinity. */
   maxContentLength?: number;
+  /** Base URL used to resolve relative href/src URLs into absolute URLs. */
+  baseUrl?: string;
 }
 
 // --- Class Definition ---
@@ -83,7 +116,7 @@ export class MarkdownConverter {
    */
   public convert(html: string, options: ConversionOptions = {}): string {
     // Preprocess HTML to clean and extract main content
-    const preprocessedHtml = this.preprocessHTML(html);
+    const preprocessedHtml = this.preprocessHTML(html, options);
 
     // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
     let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" as never });
@@ -96,7 +129,7 @@ export class MarkdownConverter {
 
   // --- HTML Preprocessing ---
 
-  private preprocessHTML(html: string): string {
+  private preprocessHTML(html: string, options: ConversionOptions): string {
     // This function performs multi-stage processing on the HTML string:
     // 1. Initial cleanup (regex-based).
     // 2. Parsing into a DOM tree.
@@ -134,6 +167,8 @@ export class MarkdownConverter {
           console.warn(`Skipping invalid selector during preprocessing: ${selector}`, e);
         }
       });
+
+      this.absolutizeRelativeUrls(rootElement, options.baseUrl);
 
       // Remove img elements pointing to .svg URLs (decorative logos/icons; bloat RAG)
       this.removeSvgImageRefs(rootElement);
@@ -177,6 +212,12 @@ export class MarkdownConverter {
         const body = rootElement.querySelector("body");
         if (body) contentElement = body as unknown as NHPHTMLElement;
       }
+
+      // Final content subtree cleanup: remove navigational and footer/header chrome
+      // even when it is nested under semantic containers like <main>.
+      this.removeContentSubtreeBoilerplate(contentElement);
+      // Remove generic high-link-density utility clusters still remaining inside content.
+      this.removeHighLinkDensityElementsInSelectedContent(contentElement);
 
       // Ensure main page title is rendered as H1 in content
       this.ensurePrimaryHeading(rootElement, contentElement, bestTitle);
@@ -227,6 +268,121 @@ export class MarkdownConverter {
       } catch {
         // Ignore selector errors
       }
+    }
+  }
+
+  private removeContentSubtreeBoilerplate(content: NHPHTMLElement | NHPNode): void {
+    if (!(content instanceof NHPHTMLElement)) return;
+
+    for (const selector of CONTENT_SUBTREE_REMOVE_SELECTORS) {
+      try {
+        content.querySelectorAll(selector).forEach((el) => el.remove());
+      } catch (error) {
+        console.warn(`Skipping invalid selector during content subtree cleanup: ${selector}`, error);
+      }
+    }
+  }
+
+  private removeHighLinkDensityElementsInSelectedContent(content: NHPHTMLElement | NHPNode): void {
+    if (!(content instanceof NHPHTMLElement)) return;
+
+    const candidates = content.querySelectorAll("div, section, nav, ul, ol, aside");
+
+    for (const candidate of Array.from(candidates)) {
+      if (!(candidate instanceof NHPHTMLElement)) continue;
+      if (candidate === content) continue;
+
+      const text = (candidate.textContent || "").replace(/\s+/g, " ").trim();
+      if (text.length < MIN_LINK_DENSITY_TEXT_LENGTH) continue;
+
+      const links = candidate.querySelectorAll("a");
+      if (links.length < 2) continue;
+
+      const headingCount = candidate.querySelectorAll("h1, h2, h3, h4, h5, h6").length;
+      const paragraphs = candidate.querySelectorAll("p");
+      const hasParagraph = paragraphs.length > 0;
+      const hasLongParagraph = paragraphs.some(
+        (p) => ((p.textContent || "").replace(/\s+/g, " ").trim().length || 0) >= 140
+      );
+
+      let linkTextLength = 0;
+      links.forEach((link) => {
+        if (link.closest("a") === link) {
+          linkTextLength += (link.textContent || "").replace(/\s+/g, " ").trim().length;
+        }
+      });
+
+      const density = linkTextLength / Math.max(1, text.length);
+      const nonLinkTextLength = Math.max(0, text.length - linkTextLength);
+
+      // Keep this intentionally conservative to avoid over-pruning content-heavy landing pages.
+      const likelyUtilityCluster =
+        density > 0.78 &&
+        headingCount === 0 &&
+        !hasParagraph &&
+        !hasLongParagraph &&
+        text.length <= 260 &&
+        nonLinkTextLength < 120;
+      const likelyRelatedLinksCluster =
+        links.length >= 4 &&
+        density > 0.82 &&
+        headingCount === 0 &&
+        !hasParagraph &&
+        !hasLongParagraph &&
+        text.length <= 320 &&
+        nonLinkTextLength < 80;
+
+      if (likelyUtilityCluster || likelyRelatedLinksCluster) {
+        candidate.remove();
+      }
+    }
+  }
+
+  private absolutizeRelativeUrls(root: NHPHTMLElement, baseUrl?: string): void {
+    if (!baseUrl) return;
+
+    let base: URL;
+    try {
+      base = new URL(baseUrl);
+    } catch {
+      return;
+    }
+
+    root.querySelectorAll("a[href], img[src], source[src], video[src], audio[src], track[src]").forEach((el) => {
+      if (!(el instanceof NHPHTMLElement)) return;
+
+      const href = el.getAttribute("href");
+      if (href) {
+        const resolved = this.resolveUrlAgainstBase(href, base);
+        if (resolved) el.setAttribute("href", resolved);
+      }
+
+      const src = el.getAttribute("src");
+      if (src) {
+        const resolved = this.resolveUrlAgainstBase(src, base);
+        if (resolved) el.setAttribute("src", resolved);
+      }
+    });
+  }
+
+  private resolveUrlAgainstBase(rawValue: string, base: URL): string | null {
+    const value = rawValue.trim();
+    if (!value) return null;
+
+    // Keep non-http navigations untouched.
+    if (/^(?:mailto:|tel:|sms:|javascript:|data:|blob:|about:|file:)/i.test(value)) {
+      return value;
+    }
+
+    // Already absolute with a scheme.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+      return value;
+    }
+
+    try {
+      return new URL(value, base).toString();
+    } catch {
+      return value;
     }
   }
 
@@ -351,6 +507,28 @@ export class MarkdownConverter {
     return false;
   }
 
+  private isWithinProtectedMainContent(el: NHPHTMLElement): boolean {
+    const protectedAncestor = el.closest?.("main, article, [role='main'], [role='article']");
+    return protectedAncestor instanceof NHPHTMLElement;
+  }
+
+  private isLikelyConsentOrInterstitial(el: NHPHTMLElement): boolean {
+    const id = (el.getAttribute?.("id") || "").toLowerCase();
+    const cls = (el.getAttribute?.("class") || "").toLowerCase();
+    const text = (el.textContent || "").toLowerCase();
+
+    if (id.includes("cookie") || cls.includes("cookie") || cls.includes("consent")) {
+      return true;
+    }
+
+    return (
+      text.includes("manage preferences") ||
+      text.includes("agree to all") ||
+      text.includes("refuse all") ||
+      text.includes("accept cookies")
+    );
+  }
+
   // Potentially performance-intensive: involves iterating over many elements
   // and performing sub-queries (querySelectorAll, textContent) for each.
   private removeHighLinkDensityElements(element: NHPHTMLElement, threshold: number): void {
@@ -360,6 +538,12 @@ export class MarkdownConverter {
 
     for (const el of Array.from(potentialBoilerplate)) {
       if (!(el instanceof NHPHTMLElement)) continue;
+
+      if (this.isWithinProtectedMainContent(el)) continue;
+      if (this.isLikelyConsentOrInterstitial(el)) {
+        el.remove();
+        continue;
+      }
 
       const textContent = el.textContent || "";
       if (textContent.length < MIN_LINK_DENSITY_TEXT_LENGTH) continue;
@@ -383,16 +567,51 @@ export class MarkdownConverter {
       const density = linkTextLength / textLength;
 
       if (density > threshold) {
-        // Avoid removing the element if it contains a primary content marker
         const containsMainContent = el.querySelector('main, article, [role="main"], [role="article"]') !== null;
-        // Also avoid removing if it IS the main content candidate itself
         const isMainContent = this.elementMatchesMainContent(el);
+        if (containsMainContent || isMainContent) continue;
 
-        if (!containsMainContent && !isMainContent) {
-          el.remove();
-        }
+        // Protect large layout wrappers that contain both nav and content.
+        // If significant non-link text or content signals exist inside the element,
+        // it's likely a page-level container rather than pure navigation.
+        const nonLinkTextLength = Math.max(0, textLength - linkTextLength);
+        const hasHeadings = el.querySelectorAll("h1, h2, h3, h4, h5, h6").length > 0;
+        const hasParagraphs = el.querySelectorAll("p").length > 0;
+        if (nonLinkTextLength > 200 && (hasHeadings || hasParagraphs)) continue;
+
+        el.remove();
       }
     }
+  }
+
+  private findSemanticMainContent(root: NHPHTMLElement): NHPHTMLElement | null {
+    const semanticCandidates = root.querySelectorAll("main, article, [role='main'], [role='article']");
+
+    let bestCandidate: NHPHTMLElement | null = null;
+    let bestScore = -1;
+
+    for (const element of Array.from(semanticCandidates)) {
+      if (!(element instanceof NHPHTMLElement)) continue;
+
+      const textLength = (element.textContent || "").trim().length;
+      const headingCount = element.querySelectorAll("h1, h2, h3").length;
+      const imageCount = element.querySelectorAll("img, figure, video").length;
+      const paragraphCount = element.querySelectorAll("p").length;
+
+      if (textLength < 120 && headingCount === 0 && imageCount === 0) continue;
+
+      let score = textLength;
+      if (headingCount > 0) score += 150;
+      if (paragraphCount > 1) score += 75;
+      if (imageCount > 0) score += 40;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = element;
+      }
+    }
+
+    return bestCandidate;
   }
 
   private detectForumPage(root: NHPHTMLElement): boolean {
@@ -509,6 +728,11 @@ export class MarkdownConverter {
   // Complexity depends on the number of selectors, matched elements, and the
   // cost of _calculateElementScore.
   private extractArticleContentElement(root: NHPHTMLElement): NHPHTMLElement | NHPNode {
+    const semanticMain = this.findSemanticMainContent(root);
+    if (semanticMain) {
+      return semanticMain;
+    }
+
     let bestCandidate: NHPHTMLElement | null = null;
     let maxScore = -1;
 
@@ -674,9 +898,11 @@ export class MarkdownConverter {
     processed = processed.replace(/\[\]\([^)]*\)/g, ""); // Empty links: [](...)
     processed = processed.replace(/!\[\]\([^)]*\)/g, ""); // Empty images: ![](...)
 
-    // 4. Normalize image/link URLs (ensure protocol) - Basic handling
+    // 4. Normalize protocol-relative image/link URLs
     processed = processed.replace(/(!?\[[^\]]*\]\()(\/\/)/g, "$1https://"); // Fix protocol-relative URLs //
-    // Root-relative URLs (/path/...) need base URL context which we don't have here.
+    // Add a separator between adjacent links produced from tight inline UI chrome.
+    processed = processed.replace(/(\]\([^)]+\))(?=\[)/g, "$1 ");
+    processed = this.splitDenseAdjacentLinkRuns(processed);
 
     // 5. Normalize newlines (max 2 consecutive newlines)
     const maxNewlines = "\n".repeat(POSTPROCESSING_MAX_CONSECUTIVE_NEWLINES + 1);
@@ -710,4 +936,24 @@ export class MarkdownConverter {
     // 11. Final trim
     return processed.trim();
   }
+
+  private splitDenseAdjacentLinkRuns(markdown: string): string {
+    return markdown
+      .split("\n")
+      .map((line) => {
+        const linkRuns = line.match(/\[[^\]]*]\([^)]+\)/g);
+        if (!linkRuns || linkRuns.length < 3 || line.length < 180) return line;
+        return line.replace(/(\]\([^)]+\))\s*(?=\[)/g, "$1\n");
+      })
+      .join("\n");
+  }
+}
+
+/** Insert a "Source: <url>" line immediately below the first H1 heading. */
+export function injectSourceUrl(markdown: string, sourceUrl: string): string {
+  if (!markdown || !sourceUrl) return markdown;
+  const head = markdown.split("\n").slice(0, 50).join("\n");
+  if (/^Source:\s+/m.test(head)) return markdown;
+  const safeUrl = sourceUrl.trim();
+  return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
 }

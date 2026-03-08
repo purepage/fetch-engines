@@ -1,10 +1,9 @@
+import axios from "axios";
+import { afterEach, beforeEach, describe, expect, it, SpyInstance, vi } from "vitest";
 import { PlaywrightEngine } from "../src/PlaywrightEngine";
 import { PlaywrightBrowserPool } from "../src/browser/PlaywrightBrowserPool";
-import { MarkdownConverter } from "../src/utils/markdown-converter.js";
-import axios from "axios";
-import PQueue from "p-queue";
-import { vi, describe, it, expect, beforeEach, afterEach, SpyInstance } from "vitest";
 import { COMMON_HEADERS as ENGINE_COMMON_HEADERS } from "../src/constants"; // Actual common headers from engine
+import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 // Mock dependencies
 vi.mock("../src/browser/PlaywrightBrowserPool");
@@ -23,7 +22,6 @@ vi.mock("p-queue", () => {
 });
 vi.mock("../src/utils/markdown-converter.js");
 
-
 describe("PlaywrightEngine - Headers", () => {
   const MOCK_URL = "http://example.com";
   let mockPage: any;
@@ -41,13 +39,13 @@ describe("PlaywrightEngine - Headers", () => {
     simulateHumanBehavior: false, // Disable for most tests to simplify
     maxBrowsers: 1,
     maxPagesPerContext: 1,
-    maxBrowserAge: 0, 
-    healthCheckInterval: 0, 
+    maxBrowserAge: 0,
+    healthCheckInterval: 0,
     poolBlockedDomains: [],
     poolBlockedResourceTypes: [],
     proxy: undefined,
     useHeadedMode: false,
-    markdown: false, 
+    markdown: false,
     spaMode: false,
     spaRenderDelayMs: 0,
     playwrightOnlyPatterns: [],
@@ -57,6 +55,19 @@ describe("PlaywrightEngine - Headers", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    const stableSnapshot = {
+      titleLength: 10,
+      textLength: 320,
+      mainLikeTextLength: 220,
+      headingTextLength: 24,
+      htmlLength: 5200,
+      hasRootContainer: false,
+      rootChildCount: 0,
+      appChildCount: 0,
+      qualityScore: 7,
+      shellScore: 0,
+    };
 
     mockPage = {
       setExtraHTTPHeaders: vi.fn().mockResolvedValue(undefined),
@@ -73,22 +84,27 @@ describe("PlaywrightEngine - Headers", () => {
       close: vi.fn().mockResolvedValue(undefined),
       context: vi.fn(() => ({
         browser: vi.fn(() => ({
-            isConnected: vi.fn(() => true),
-            close: vi.fn().mockResolvedValue(undefined) 
+          isConnected: vi.fn(() => true),
+          close: vi.fn().mockResolvedValue(undefined),
         })),
         close: vi.fn().mockResolvedValue(undefined),
       })),
       setDefaultNavigationTimeout: vi.fn(),
       setDefaultTimeout: vi.fn(),
-      evaluate: vi.fn(),
+      evaluate: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === "string") {
+          return Promise.resolve(2);
+        }
+        return Promise.resolve(stableSnapshot);
+      }),
       $: vi.fn(),
       $$: vi.fn(),
       waitForLoadState: vi.fn(),
       waitForTimeout: vi.fn(),
-      route: vi.fn().mockResolvedValue(undefined), 
-      mouse: { move: vi.fn(), wheel: vi.fn() }, 
-      keyboard: { press: vi.fn() },          
-      viewportSize: vi.fn(() => ({ width: 1920, height: 1080 })), 
+      route: vi.fn().mockResolvedValue(undefined),
+      mouse: { move: vi.fn(), wheel: vi.fn() },
+      keyboard: { press: vi.fn() },
+      viewportSize: vi.fn(() => ({ width: 1920, height: 1080 })),
     };
 
     mockPoolInstance = {
@@ -96,7 +112,7 @@ describe("PlaywrightEngine - Headers", () => {
       releasePage: vi.fn().mockResolvedValue(undefined),
       cleanup: vi.fn().mockResolvedValue(undefined),
       getMetrics: vi.fn().mockReturnValue([]),
-      initialize: vi.fn().mockResolvedValue(undefined), 
+      initialize: vi.fn().mockResolvedValue(undefined),
     };
     (PlaywrightBrowserPool as any as SpyInstance).mockImplementation(() => mockPoolInstance);
 
@@ -104,7 +120,7 @@ describe("PlaywrightEngine - Headers", () => {
       data: "<html><body>Axios Fallback Content</body></html>",
       status: 200,
       headers: { "content-type": "text/html" },
-      request: { res: { responseUrl: MOCK_URL } }, 
+      request: { res: { responseUrl: MOCK_URL } },
     });
 
     (MarkdownConverter.prototype.convert as SpyInstance).mockImplementation((html) => `markdown: ${html}`);
@@ -115,7 +131,6 @@ describe("PlaywrightEngine - Headers", () => {
       // await engine.cleanup(); // Ensure cleanup is called if engine was initialized
     }
   });
-
 
   describe("Playwright Page Navigation Headers (page.setExtraHTTPHeaders)", () => {
     it("should call page.setExtraHTTPHeaders with constructor headers", async () => {
@@ -135,7 +150,7 @@ describe("PlaywrightEngine - Headers", () => {
     it("should call page.setExtraHTTPHeaders with merged headers (fetchHTML options override constructor)", async () => {
       const constructorHeaders = { "X-Construct": "val-c", "X-Common": "construct" };
       const fetchOptionsHeaders = { "X-Fetch": "val-f", "X-Common": "fetch" };
-      const expectedHeaders = { ...constructorHeaders, ...fetchOptionsHeaders }; 
+      const expectedHeaders = { ...constructorHeaders, ...fetchOptionsHeaders };
 
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, headers: constructorHeaders });
       await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
@@ -144,7 +159,7 @@ describe("PlaywrightEngine - Headers", () => {
 
     it("should NOT call page.setExtraHTTPHeaders if no effective headers are present (both constructor and options are empty or undefined)", async () => {
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, headers: {} });
-      await engine.fetchHTML(MOCK_URL, { headers: {} }); 
+      await engine.fetchHTML(MOCK_URL, { headers: {} });
       expect(mockPage.setExtraHTTPHeaders).not.toHaveBeenCalled();
 
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE }); // headers undefined in config
@@ -152,7 +167,7 @@ describe("PlaywrightEngine - Headers", () => {
       expect(mockPage.setExtraHTTPHeaders).not.toHaveBeenCalled();
     });
 
-     it("should call page.setExtraHTTPHeaders if constructor has headers and options is empty obj", async () => {
+    it("should call page.setExtraHTTPHeaders if constructor has headers and options is empty obj", async () => {
       const constructorHeaders = { "X-Initial": "foo" };
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, headers: constructorHeaders });
       await engine.fetchHTML(MOCK_URL, { headers: {} }); // Empty options headers
@@ -178,7 +193,7 @@ describe("PlaywrightEngine - Headers", () => {
       // Changed to mockRejectedValue to make all goto calls fail for these tests.
       mockPage.goto.mockRejectedValue(new Error("Simulated: page.goto failure"));
     };
-    
+
     it("should use merged custom headers (options over constructor) combined with ENGINE_COMMON_HEADERS for HTTP fallback", async () => {
       setupForFallback();
       const constructorHeaders = { "X-FB-Construct": "fb-c", "X-Common-Custom": "construct" };
@@ -186,19 +201,16 @@ describe("PlaywrightEngine - Headers", () => {
       const effectiveCustomHeaders = { ...constructorHeaders, ...fetchOptionsHeaders };
       const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...effectiveCustomHeaders };
 
-      engine = new PlaywrightEngine({ 
-        ...DEFAULT_ENGINE_CONFIG_BASE, 
-        useHttpFallback: true, 
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: true,
         headers: constructorHeaders,
-        maxRetries: 0 // Ensure it doesn't retry Playwright before fallback
+        maxRetries: 0, // Ensure it doesn't retry Playwright before fallback
       });
-      
+
       await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
-      expect(axios.get).toHaveBeenCalledWith(
-        MOCK_URL,
-        expect.objectContaining({ headers: expectedAxiosHeaders })
-      );
+      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
     });
 
     it("should use only constructor headers combined with ENGINE_COMMON_HEADERS for fallback if no fetchHTML options headers", async () => {
@@ -206,53 +218,44 @@ describe("PlaywrightEngine - Headers", () => {
       const constructorHeaders = { "X-FB-Construct-Only": "val" };
       const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...constructorHeaders };
 
-      engine = new PlaywrightEngine({ 
-        ...DEFAULT_ENGINE_CONFIG_BASE, 
-        useHttpFallback: true, 
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: true,
         headers: constructorHeaders,
-        maxRetries: 0
+        maxRetries: 0,
       });
-      await engine.fetchHTML(MOCK_URL, { headers: {} }); 
-      
-      expect(axios.get).toHaveBeenCalledWith(
-        MOCK_URL,
-        expect.objectContaining({ headers: expectedAxiosHeaders })
-      );
+      await engine.fetchHTML(MOCK_URL, { headers: {} });
+
+      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
     });
-    
+
     it("should use only fetchHTML options headers combined with ENGINE_COMMON_HEADERS for fallback if no constructor headers", async () => {
       setupForFallback();
       const fetchOptionsHeaders = { "X-FB-Fetch-Only": "val" };
       const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...fetchOptionsHeaders };
 
-      engine = new PlaywrightEngine({ 
-        ...DEFAULT_ENGINE_CONFIG_BASE, 
-        useHttpFallback: true, 
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: true,
         headers: {}, // Empty constructor headers
-        maxRetries: 0
+        maxRetries: 0,
       });
       await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
-      expect(axios.get).toHaveBeenCalledWith(
-        MOCK_URL,
-        expect.objectContaining({ headers: expectedAxiosHeaders })
-      );
+      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
     });
 
     it("should use only ENGINE_COMMON_HEADERS for fallback if no custom headers are provided at any level", async () => {
       setupForFallback();
-      engine = new PlaywrightEngine({ 
-        ...DEFAULT_ENGINE_CONFIG_BASE, 
-        useHttpFallback: true, 
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: true,
         headers: {}, // Empty constructor
-        maxRetries: 0
+        maxRetries: 0,
       });
       await engine.fetchHTML(MOCK_URL, { headers: {} }); // Empty options
 
-      expect(axios.get).toHaveBeenCalledWith(
-        MOCK_URL,
-        expect.objectContaining({ headers: ENGINE_COMMON_HEADERS }) 
-      );
+      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: ENGINE_COMMON_HEADERS }));
     });
 
     it("should allow custom headers to override ENGINE_COMMON_HEADERS keys in fallback", async () => {
@@ -260,32 +263,49 @@ describe("PlaywrightEngine - Headers", () => {
       // Example: User-Agent is typically in ENGINE_COMMON_HEADERS
       const customHeaders = { "User-Agent": "MyCustomFallbackAgent/1.0", "X-Unique": "UniqueValue" };
       const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...customHeaders };
-      
-      engine = new PlaywrightEngine({ 
-        ...DEFAULT_ENGINE_CONFIG_BASE, 
-        useHttpFallback: true, 
+
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: true,
         headers: customHeaders,
-        maxRetries: 0
+        maxRetries: 0,
       });
       await engine.fetchHTML(MOCK_URL, { headers: {} });
 
-      expect(axios.get).toHaveBeenCalledWith(
-        MOCK_URL,
-        expect.objectContaining({ headers: expectedAxiosHeaders })
-      );
+      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
     });
 
     it("should not attempt HTTP fallback if useHttpFallback is false, even if Playwright fails", async () => {
-        setupForFallback(); // page.goto will fail
-        engine = new PlaywrightEngine({
-            ...DEFAULT_ENGINE_CONFIG_BASE,
-            useHttpFallback: false, // Explicitly false
-            maxRetries: 0
-        });
+      setupForFallback(); // page.goto will fail
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: false, // Explicitly false
+        maxRetries: 0,
+      });
 
-        // We expect fetchHTML to throw because Playwright fails and fallback is disabled
-        await expect(engine.fetchHTML(MOCK_URL, {})).rejects.toThrow();
-        expect(axios.get).not.toHaveBeenCalled();
+      // We expect fetchHTML to throw because Playwright fails and fallback is disabled
+      await expect(engine.fetchHTML(MOCK_URL, {})).rejects.toThrow();
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Rendered HTML extraction", () => {
+    it("should return hydrated DOM HTML from page.content() instead of response.text()", async () => {
+      engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, markdown: false });
+
+      const result = await engine.fetchHTML(MOCK_URL);
+
+      expect(result.content).toBe("<html><body>Playwright Content</body></html>");
+      expect(mockPage.content).toHaveBeenCalled();
+    });
+
+    it("should return hydrated DOM HTML for fetchContent() when the response is HTML", async () => {
+      engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, markdown: false });
+
+      const result = await engine.fetchContent(MOCK_URL);
+
+      expect(result.content).toBe("<html><body>Playwright Content</body></html>");
+      expect(mockPage.content).toHaveBeenCalled();
     });
   });
 });

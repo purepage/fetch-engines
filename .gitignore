@@ -76,3 +76,5 @@ build/Release
 *.njsproj
 *.sln
 *.sw?
+
+scripts/output

@@ -2,7 +2,7 @@ import { PlaywrightBrowserPool } from "./browser/PlaywrightBrowserPool.js";
 import PQueue from "p-queue";
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
-import { MarkdownConverter } from "./utils/markdown-converter.js"; // Import the converter
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_TITLE_TAG, REGEX_SIMPLE_HTML_TITLE_FALLBACK, REGEX_SANITIZE_HTML_TAGS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, } from "./constants.js"; // Corrected path
 function delay(time) {
     // Added return type
@@ -16,6 +16,9 @@ function delay(time) {
  * Features include caching, retries, HTTP fallback, and configurable browser pooling.
  */
 export class PlaywrightEngine {
+    static AUTO_RENDER_POLL_MS = 200;
+    static AUTO_RENDER_QUIET_WINDOW_MS = 600;
+    static AUTO_RENDER_MAX_WAIT_MS = 5000;
     browserPool = null;
     queue;
     cache = new Map();
@@ -140,9 +143,10 @@ export class PlaywrightEngine {
             if (markdown) {
                 try {
                     const converter = new MarkdownConverter();
-                    finalContent = converter.convert(originalHtml);
-                    // Inject source URL directly under the first H1 for traceability
-                    finalContent = this._injectSourceUnderH1(finalContent, response.request?.res?.responseUrl || response.config.url || url);
+                    finalContent = converter.convert(originalHtml, {
+                        baseUrl: response.request?.res?.responseUrl || response.config.url || url,
+                    });
+                    finalContent = injectSourceUrl(finalContent, response.request?.res?.responseUrl || response.config.url || url);
                     finalContentType = "markdown";
                 }
                 catch (conversionError) {
@@ -234,6 +238,145 @@ export class PlaywrightEngine {
             console.debug(`Error during human-like simulation on page ${page.url()}: ${message}`, err instanceof Error ? err : undefined);
         }
     }
+    // Runs inside the browser via page.evaluate, so it uses live DOM APIs instead of
+    // the regex-based heuristics in render-detection.ts (which operates on raw HTML strings).
+    // The scoring weights intentionally diverge because the live DOM provides richer signals.
+    async captureRenderedDomSnapshot(page) {
+        return page.evaluate(() => {
+            const collapseWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+            const bodyText = collapseWhitespace(document.body?.innerText || "");
+            const mainLikeText = collapseWhitespace(Array.from(document.querySelectorAll("main, article"))
+                .map((node) => node.textContent || "")
+                .join(" "));
+            const headingText = collapseWhitespace(Array.from(document.querySelectorAll("h1, h2, h3"))
+                .map((node) => node.textContent || "")
+                .join(" "));
+            const titleLength = collapseWhitespace(document.title || "").length;
+            const textLength = bodyText.length;
+            const mainLikeTextLength = mainLikeText.length;
+            const headingTextLength = headingText.length;
+            const htmlLength = document.documentElement.outerHTML.length;
+            const rootElement = document.querySelector("#root");
+            const appElement = document.querySelector("#app");
+            const hasRootContainer = !!(rootElement || appElement);
+            const rootChildCount = rootElement?.childElementCount || 0;
+            const appChildCount = appElement?.childElementCount || 0;
+            let qualityScore = 0;
+            qualityScore += Math.min(6, Math.floor(textLength / 120));
+            qualityScore += Math.min(2, Math.floor(titleLength / 12));
+            if (mainLikeTextLength >= 120)
+                qualityScore += 2;
+            if (headingTextLength >= 12)
+                qualityScore += 1;
+            let shellScore = 0;
+            if (titleLength === 0)
+                shellScore += 2;
+            if (textLength < 80)
+                shellScore += 3;
+            if (htmlLength < 2000)
+                shellScore += 1;
+            if (hasRootContainer && rootChildCount + appChildCount <= 1 && textLength < 120)
+                shellScore += 2;
+            if (mainLikeTextLength < 60 && headingTextLength < 12 && textLength < 140)
+                shellScore += 1;
+            return {
+                titleLength,
+                textLength,
+                mainLikeTextLength,
+                headingTextLength,
+                htmlLength,
+                hasRootContainer,
+                rootChildCount,
+                appChildCount,
+                qualityScore,
+                shellScore,
+            };
+        });
+    }
+    shouldAutoWaitForRenderedDom(snapshot, isSpaMode) {
+        if (isSpaMode) {
+            return true;
+        }
+        if (snapshot.shellScore >= 4) {
+            return true;
+        }
+        return snapshot.titleLength === 0 && snapshot.textLength < 200;
+    }
+    async waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs) {
+        const initialSnapshot = await this.captureRenderedDomSnapshot(page);
+        if (!this.shouldAutoWaitForRenderedDom(initialSnapshot, isSpaMode)) {
+            return initialSnapshot;
+        }
+        const maxWaitMs = Math.max(spaRenderDelayMs, isSpaMode ? PlaywrightEngine.AUTO_RENDER_MAX_WAIT_MS : Math.floor(PlaywrightEngine.AUTO_RENDER_MAX_WAIT_MS / 2));
+        let pendingRequests = 0;
+        let lastNetworkActivity = Date.now();
+        const trackableResourceTypes = new Set(["fetch", "xhr"]);
+        const trackedRequests = new Set();
+        const markActivity = () => {
+            lastNetworkActivity = Date.now();
+        };
+        const onRequest = (request) => {
+            if (!trackableResourceTypes.has(request.resourceType()))
+                return;
+            trackedRequests.add(request);
+            pendingRequests = trackedRequests.size;
+            markActivity();
+        };
+        const onRequestDone = (request) => {
+            if (!trackedRequests.delete(request))
+                return;
+            pendingRequests = trackedRequests.size;
+            markActivity();
+        };
+        page.on("request", onRequest);
+        page.on("requestfinished", onRequestDone);
+        page.on("requestfailed", onRequestDone);
+        try {
+            let bestSnapshot = initialSnapshot;
+            let lastSignature = "";
+            let stableSince = 0;
+            const earliestCompletionAt = Date.now() + (isSpaMode ? spaRenderDelayMs : 0);
+            const deadline = Date.now() + maxWaitMs;
+            while (Date.now() < deadline) {
+                const snapshot = await this.captureRenderedDomSnapshot(page);
+                if (snapshot.qualityScore > bestSnapshot.qualityScore) {
+                    bestSnapshot = snapshot;
+                }
+                const signature = [
+                    snapshot.titleLength,
+                    Math.floor(snapshot.textLength / 25),
+                    Math.floor(snapshot.mainLikeTextLength / 25),
+                    Math.floor(snapshot.htmlLength / 100),
+                ].join("|");
+                if (signature === lastSignature) {
+                    if (stableSince === 0)
+                        stableSince = Date.now();
+                }
+                else {
+                    lastSignature = signature;
+                    stableSince = Date.now();
+                }
+                const quietForMs = Date.now() - Math.max(stableSince, lastNetworkActivity);
+                const hasMeaningfulContent = snapshot.qualityScore >= Math.max(3, initialSnapshot.qualityScore + 1) ||
+                    snapshot.textLength >= 200 ||
+                    snapshot.mainLikeTextLength >= 120 ||
+                    snapshot.headingTextLength >= 16;
+                if (hasMeaningfulContent &&
+                    pendingRequests === 0 &&
+                    quietForMs >= PlaywrightEngine.AUTO_RENDER_QUIET_WINDOW_MS &&
+                    Date.now() >= earliestCompletionAt) {
+                    return snapshot;
+                }
+                await page.waitForTimeout(PlaywrightEngine.AUTO_RENDER_POLL_MS);
+            }
+            return bestSnapshot;
+        }
+        finally {
+            page.removeListener("request", onRequest);
+            page.removeListener("requestfinished", onRequestDone);
+            page.removeListener("requestfailed", onRequestDone);
+        }
+    }
     /**
      * Adds a result to the in-memory cache.
      */
@@ -296,8 +439,8 @@ export class PlaywrightEngine {
                 try {
                     const converter = new MarkdownConverter();
                     // Convert a copy, do not mutate the cached object directly
-                    const convertedContent = converter.convert(cachedResult.content);
-                    const withSource = this._injectSourceUnderH1(convertedContent, url);
+                    const convertedContent = converter.convert(cachedResult.content, { baseUrl: cachedResult.url || url });
+                    const withSource = injectSourceUrl(convertedContent, url);
                     return {
                         ...cachedResult,
                         content: withSource,
@@ -519,13 +662,13 @@ export class PlaywrightEngine {
                 throw new FetchError(`HTTP error status received: ${response.status()}`, "ERR_HTTP_ERROR", undefined, response.status());
             }
             const actualContentTypeHeader = response.headers()["content-type"]?.toLowerCase() || "";
+            const isHtmlDocument = actualContentTypeHeader.startsWith("text/html") || actualContentTypeHeader.startsWith("application/xhtml+xml");
+            if (isHtmlDocument) {
+                await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
+            }
             const title = await page.title();
             const finalUrl = page.url();
             const status = response.status();
-            // Post-load delay for SPAs
-            if (isSpaMode && spaRenderDelayMs > 0) {
-                await page.waitForTimeout(spaRenderDelayMs);
-            }
             // Simulate human behavior after potential SPA rendering
             if (this.config.simulateHumanBehavior && !actualFastMode) {
                 // 'actualFastMode' is false if isSpaMode is true
@@ -550,7 +693,7 @@ export class PlaywrightEngine {
                 // RAW CONTENT FETCHING
                 const isAllowedRawType = ALLOWED_RAW_TEXT_CONTENT_TYPE_PREFIXES.some((prefix) => actualContentTypeHeader.startsWith(prefix));
                 if (isAllowedRawType) {
-                    finalContent = await response.text();
+                    finalContent = isHtmlDocument ? await page.content() : await response.text();
                     // Per discussion, keep "html" to align with existing HTMLFetchResult type
                     // The actual content is raw, but the type field is constrained.
                     finalContentType = "html";
@@ -567,8 +710,7 @@ export class PlaywrightEngine {
             }
             else {
                 // MARKDOWN CONVERSION
-                if (actualContentTypeHeader.startsWith("text/html") ||
-                    actualContentTypeHeader.startsWith("application/xhtml+xml")) {
+                if (isHtmlDocument) {
                     if (!fastMode && this.config.simulateHumanBehavior) {
                         if (await this.isPageValid(page)) {
                             // Ensure page is valid before simulation
@@ -578,8 +720,8 @@ export class PlaywrightEngine {
                     const html = await page.content(); // page.content() for HTML suitable for DOM-based conversion
                     try {
                         const converter = new MarkdownConverter();
-                        finalContent = converter.convert(html);
-                        finalContent = this._injectSourceUnderH1(finalContent, finalUrl);
+                        finalContent = converter.convert(html, { baseUrl: finalUrl });
+                        finalContent = injectSourceUrl(finalContent, finalUrl);
                         finalContentType = "markdown";
                     }
                     catch (conversionError) {
@@ -639,16 +781,6 @@ export class PlaywrightEngine {
                 console.debug(`Error setting up Playwright routing rules: ${message}`, routingError instanceof Error ? routingError : undefined);
             }
         }
-    }
-    // Insert a "Source: <url>" line immediately below the first H1.
-    _injectSourceUnderH1(markdown, sourceUrl) {
-        if (!markdown || !sourceUrl)
-            return markdown;
-        const head = markdown.split("\n").slice(0, 50).join("\n");
-        if (/^Source:\s+/m.test(head))
-            return markdown;
-        const safeUrl = sourceUrl.trim();
-        return markdown.replace(/^(\s*#\s.*)$/m, `$1\n\nSource: ${safeUrl}`);
     }
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.
@@ -889,19 +1021,24 @@ export class PlaywrightEngine {
                 throw new FetchError(`HTTP error! status: ${response.status()}`, "ERR_HTTP_ERROR", undefined, response.status());
             }
             const contentType = response.headers()["content-type"] || "application/octet-stream";
+            const normalizedContentType = contentType.toLowerCase();
+            const isHtmlDocument = normalizedContentType.startsWith("text/html") || normalizedContentType.startsWith("application/xhtml+xml");
+            if (isHtmlDocument) {
+                await this.waitForRenderedDomIfNeeded(page, false, 0);
+            }
             const title = await page.title();
             const finalUrl = page.url();
             const status = response.status();
             // Get raw content based on content type
             let content;
-            const isTextBased = contentType.startsWith("text/") ||
-                contentType.includes("json") ||
-                contentType.includes("xml") ||
-                contentType.includes("javascript") ||
-                contentType.includes("html") ||
-                contentType.includes("css");
+            const isTextBased = normalizedContentType.startsWith("text/") ||
+                normalizedContentType.includes("json") ||
+                normalizedContentType.includes("xml") ||
+                normalizedContentType.includes("javascript") ||
+                normalizedContentType.includes("html") ||
+                normalizedContentType.includes("css");
             if (isTextBased) {
-                content = await response.text();
+                content = isHtmlDocument ? await page.content() : await response.text();
             }
             else {
                 const bodyBuffer = await response.body();
