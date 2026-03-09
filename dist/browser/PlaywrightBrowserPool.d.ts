@@ -1,5 +1,5 @@
 import { Page, LaunchOptions } from "playwright";
-import type { BrowserMetrics } from "../types.js";
+import type { BrowserMetrics, BrowserProfile } from "../types.js";
 /**
  * Manages a pool of Playwright Browser instances for efficient reuse.
  */
@@ -17,6 +17,7 @@ export declare class PlaywrightBrowserPool {
     private readonly blockedResourceTypes;
     private readonly proxyConfig?;
     private readonly launchOptions?;
+    private readonly browserProfile?;
     private static readonly DEFAULT_BLOCKED_DOMAINS;
     private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES;
     private readonly acquireQueue;
@@ -35,6 +36,7 @@ export declare class PlaywrightBrowserPool {
         };
         maxIdleTime?: number;
         launchOptions?: LaunchOptions;
+        browserProfile?: BrowserProfile;
     });
     initialize(): Promise<void>;
     private scheduleHealthCheck;

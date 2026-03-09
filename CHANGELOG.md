@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-03-08
+
+### Fixed
+
+- Switched the live `FetchEngine` smoke test from `example.com` to `https://httpbin.org/html`, avoiding environment-specific TLS/certificate failures on machines where `example.com` is not a stable HTTPS sentinel
+- Forced live network tests to run in Vitest's Node environment instead of the repo-wide `jsdom` environment, avoiding `jsdom` XHR/TLS/DNS behavior in real network checks
+
+## [0.11.0] - 2026-03-08
+
+### Added
+
+- Added a first-class `browserProfile` Playwright config surface for coherent browser-context identity, including locale, timezone, geolocation, permissions, storage state, and init scripts
+- Added optional `HTMLFetchResult.diagnostics` metadata when Playwright detects soft-block/challenge signals, performs an adaptive full-browser retry, or falls back from headless to headed mode
+- Added regression tests covering browser-profile context creation, adaptive challenge retries, and headed fallback diagnostics
+
+### Changed
+
+- `PlaywrightBrowserPool` now applies browser-context profile settings when creating pooled contexts instead of only randomizing user agent and viewport
+- `PlaywrightEngine` now treats challenge pages and shell-like rendered DOMs as retry signals, escalating into a fuller SPA-style browser pass before failing
+
 ## [0.10.5] - 2026-03-07
 
 ### Added
@@ -167,7 +187,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.5...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/purepage/fetch-engines/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/purepage/fetch-engines/compare/v0.10.5...v0.11.0
 [0.10.5]: https://github.com/purepage/fetch-engines/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/purepage/fetch-engines/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3

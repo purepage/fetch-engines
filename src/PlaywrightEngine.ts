@@ -3,6 +3,7 @@ import type {
   ContentFetchResult,
   ContentFetchOptions,
   BrowserMetrics,
+  FetchDiagnostics,
   PlaywrightEngineConfig,
   FetchOptions,
 } from "./types.js";
@@ -18,6 +19,7 @@ import type {
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import { assessHtmlRenderNeed, isSoftBlockPage } from "./utils/render-detection.js";
 import {
   DEFAULT_HTTP_TIMEOUT,
   SHORT_DELAY_MS,
@@ -60,9 +62,29 @@ interface CacheEntry {
 
 // Define a type for the fully resolved engine configuration
 // All properties from PlaywrightEngineConfig are required, except for 'proxy' which can be undefined.
-type ResolvedPlaywrightEngineConfig = Required<Omit<PlaywrightEngineConfig, "proxy" | "playwrightLaunchOptions">> & {
+type ResolvedPlaywrightEngineConfig = Required<
+  Omit<PlaywrightEngineConfig, "proxy" | "playwrightLaunchOptions" | "browserProfile">
+> & {
   proxy: PlaywrightEngineConfig["proxy"]; // Retains original optionality, allowing undefined
   playwrightLaunchOptions: PlaywrightEngineConfig["playwrightLaunchOptions"]; // Retains original optionality
+  browserProfile: PlaywrightEngineConfig["browserProfile"]; // Retains original optionality
+};
+
+type PlaywrightFetchRuntimeConfig = Required<
+  FetchOptions & {
+    markdown: boolean;
+    retryDelay: number;
+    maxRetries: number;
+    useHttpFallback: boolean;
+    useHeadedModeFallback: boolean;
+    useHeadedMode: boolean;
+    spaRenderDelayMs: number;
+    headers: Record<string, string>;
+  }
+> & {
+  diagnostics?: FetchDiagnostics;
+  adaptiveRetryTriggered: boolean;
+  headedFallbackTriggered: boolean;
 };
 
 /**
@@ -111,6 +133,7 @@ export class PlaywrightEngine implements IEngine {
     spaRenderDelayMs: 0,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,
+    browserProfile: undefined,
   };
 
   /**
@@ -157,6 +180,7 @@ export class PlaywrightEngine implements IEngine {
         blockedResourceTypes: this.config.poolBlockedResourceTypes,
         proxy: this.config.proxy,
         launchOptions: this.config.playwrightLaunchOptions,
+        browserProfile: this.config.browserProfile,
       });
       await this.browserPool.initialize();
     } catch (error) {
@@ -257,6 +281,48 @@ export class PlaywrightEngine implements IEngine {
       this.cache.delete(url);
     }
     return null;
+  }
+
+  private hasMeaningfulDiagnostics(diagnostics?: FetchDiagnostics): diagnostics is FetchDiagnostics {
+    return !!(
+      diagnostics &&
+      (diagnostics.adaptiveBrowserRetry ||
+        diagnostics.headedFallback ||
+        diagnostics.softBlockDetected ||
+        diagnostics.renderLikelyNeeded)
+    );
+  }
+
+  private attachDiagnostics(
+    result: HTMLFetchResult,
+    diagnostics: FetchDiagnostics | undefined,
+    finalContext: { fastMode: boolean; spaMode: boolean; headed: boolean; strategy: "http" | "playwright" }
+  ): HTMLFetchResult {
+    if (!this.hasMeaningfulDiagnostics(diagnostics)) {
+      return result;
+    }
+
+    return {
+      ...result,
+      diagnostics: {
+        ...diagnostics,
+        strategy: finalContext.strategy,
+        fastMode: finalContext.fastMode,
+        spaMode: finalContext.spaMode,
+        headed: finalContext.headed,
+      },
+    };
+  }
+
+  private markDiagnostics(
+    diagnostics: FetchDiagnostics | undefined,
+    patch: Partial<FetchDiagnostics>
+  ): FetchDiagnostics {
+    return {
+      strategy: diagnostics?.strategy ?? "playwright",
+      ...diagnostics,
+      ...patch,
+    };
   }
 
   /**
@@ -509,19 +575,17 @@ export class PlaywrightEngine implements IEngine {
     const requestSpecificHeaders = options.headers || {};
     const effectiveHeaders = { ...constructorHeaders, ...requestSpecificHeaders };
 
-    const fetchConfig = {
+    const fetchConfig: PlaywrightFetchRuntimeConfig = {
       ...this.config, // Includes constructor-level headers if this.config.headers is set
       markdown: options.markdown === undefined ? this.config.markdown : options.markdown,
       fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
       spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
       headers: effectiveHeaders, // Ensure effectiveHeaders are part of the config for _fetchRecursive
-      // Ensure all fields expected by _fetchRecursive's currentConfig are present
-      // Most come from this.config, which is ResolvedPlaywrightEngineConfig
-      // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
+      diagnostics: undefined,
+      adaptiveRetryTriggered: false,
+      headedFallbackTriggered: false,
     };
-    // The type of fetchConfig will need to accommodate 'headers'.
-    // ResolvedPlaywrightEngineConfig already has 'headers', so this should be fine if fetchConfig is typed as such.
-    return this._fetchRecursive(url, fetchConfig as Parameters<typeof this._fetchRecursive>[1], 0);
+    return this._fetchRecursive(url, fetchConfig, 0);
   }
 
   /**
@@ -532,21 +596,7 @@ export class PlaywrightEngine implements IEngine {
    * @param currentConfig Current fetch configuration
    * @returns Cached result or null if not found/needs re-fetch.
    */
-  private _handleCacheCheck(
-    url: string,
-    currentConfig: Required<
-      FetchOptions & {
-        markdown: boolean;
-        retryDelay: number;
-        maxRetries: number;
-        useHttpFallback: boolean;
-        useHeadedModeFallback: boolean;
-        useHeadedMode: boolean;
-        spaRenderDelayMs: number;
-        headers?: Record<string, string>; // Add headers here
-      }
-    >
-  ): HTMLFetchResult | null {
+  private _handleCacheCheck(url: string, currentConfig: PlaywrightFetchRuntimeConfig): HTMLFetchResult | null {
     const cachedResult = this.checkCache(url);
     if (cachedResult) {
       // Check if markdown conversion is needed or if there's a type mismatch
@@ -595,14 +645,7 @@ export class PlaywrightEngine implements IEngine {
    */
   private async _attemptHttpFallback(
     url: string,
-    currentConfig: Required<
-      FetchOptions & {
-        markdown: boolean;
-        useHttpFallback: boolean;
-        headers?: Record<string, string>; // Add headers here
-        // other properties are not directly used by this helper but are part of the type
-      }
-    >
+    currentConfig: PlaywrightFetchRuntimeConfig
   ): Promise<HTMLFetchResult | null> {
     if (!currentConfig.useHttpFallback) {
       return null;
@@ -616,6 +659,10 @@ export class PlaywrightEngine implements IEngine {
     } catch (httpError: unknown) {
       if (httpError instanceof FetchError && httpError.code === "ERR_CHALLENGE_PAGE") {
         // Log or specific handling for challenge page if needed, then signal to proceed with Playwright
+        currentConfig.diagnostics = this.markDiagnostics(currentConfig.diagnostics, {
+          softBlockDetected: true,
+          detectionSource: "http-fallback",
+        });
         console.warn(`HTTP fallback for ${url} resulted in a challenge page. Proceeding with Playwright.`);
         return null;
       } else {
@@ -639,7 +686,7 @@ export class PlaywrightEngine implements IEngine {
    */
   private async _ensureBrowserPoolInitialized(
     useHeadedMode: boolean,
-    currentConfig: Required<{ retryDelay: number }>
+    currentConfig: Pick<PlaywrightFetchRuntimeConfig, "retryDelay">
   ): Promise<void> {
     // This check is slightly different from initializeBrowserPool internal check,
     // as it needs to be called before attempting initialization within _fetchRecursive
@@ -682,18 +729,7 @@ export class PlaywrightEngine implements IEngine {
    */
   private async _fetchRecursive(
     url: string,
-    currentConfig: Required<
-      FetchOptions & {
-        markdown: boolean;
-        retryDelay: number;
-        maxRetries: number;
-        useHttpFallback: boolean;
-        useHeadedModeFallback: boolean;
-        useHeadedMode: boolean;
-        spaRenderDelayMs: number;
-        headers?: Record<string, string>; // Add headers here
-      }
-    >,
+    currentConfig: PlaywrightFetchRuntimeConfig,
     retryAttempt: number
   ): Promise<HTMLFetchResult> {
     const isSpaMode = currentConfig.spaMode;
@@ -741,9 +777,49 @@ export class PlaywrightEngine implements IEngine {
         throw new FetchError("Playwright fetch queued but no result returned.", "ERR_QUEUE_NO_RESULT");
       }
 
-      this.addToCache(url, result); // Cache successful Playwright result
-      return result;
+      const resultWithDiagnostics = this.attachDiagnostics(result, currentConfig.diagnostics, {
+        strategy: "playwright",
+        fastMode: currentConfig.fastMode,
+        spaMode: isSpaMode,
+        headed: useHeadedMode,
+      });
+
+      this.addToCache(url, resultWithDiagnostics); // Cache successful Playwright result
+      return resultWithDiagnostics;
     } catch (error: unknown) {
+      const fetchError = error instanceof FetchError ? error : undefined;
+      const errorCode = fetchError?.code;
+
+      if (
+        !currentConfig.adaptiveRetryTriggered &&
+        (errorCode === "ERR_SOFT_BLOCK_PAGE" || errorCode === "ERR_RENDER_INCOMPLETE")
+      ) {
+        const diagnostics = this.markDiagnostics(currentConfig.diagnostics, {
+          adaptiveBrowserRetry: true,
+          softBlockDetected: errorCode === "ERR_SOFT_BLOCK_PAGE" ? true : currentConfig.diagnostics?.softBlockDetected,
+          renderLikelyNeeded:
+            errorCode === "ERR_RENDER_INCOMPLETE" ? true : currentConfig.diagnostics?.renderLikelyNeeded,
+          detectionSource: "playwright-dom",
+        });
+
+        console.warn(
+          `Playwright fetch for ${url} looked challenged or incomplete. Retrying with full browser settings.`
+        );
+
+        return this._fetchRecursive(
+          url,
+          {
+            ...currentConfig,
+            fastMode: false,
+            spaMode: true,
+            useHttpFallback: false,
+            diagnostics,
+            adaptiveRetryTriggered: true,
+          },
+          0
+        );
+      }
+
       // Retry logic:
       // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
       if (currentConfig.fastMode && retryAttempt === 0) {
@@ -773,8 +849,11 @@ export class PlaywrightEngine implements IEngine {
         const headedConfig = {
           ...currentConfig,
           useHeadedMode: true,
-          retryAttempt: 0, // Reset for the new mode
           maxRetries: 0, // Single attempt for headed fallback
+          diagnostics: this.markDiagnostics(currentConfig.diagnostics, {
+            headedFallback: true,
+          }),
+          headedFallbackTriggered: true,
         };
         return this._fetchRecursive(url, headedConfig, 0);
       }
@@ -886,6 +965,7 @@ export class PlaywrightEngine implements IEngine {
 
       let finalContent: string;
       let finalContentType: "html" | "markdown";
+      let renderedHtml: string | null = null;
 
       const ALLOWED_RAW_TEXT_CONTENT_TYPE_PREFIXES = [
         "text/html",
@@ -908,7 +988,12 @@ export class PlaywrightEngine implements IEngine {
         );
 
         if (isAllowedRawType) {
-          finalContent = isHtmlDocument ? await page.content() : await response.text();
+          if (isHtmlDocument) {
+            renderedHtml = await page.content();
+            finalContent = renderedHtml;
+          } else {
+            finalContent = await response.text();
+          }
           // Per discussion, keep "html" to align with existing HTMLFetchResult type
           // The actual content is raw, but the type field is constrained.
           finalContentType = "html";
@@ -934,16 +1019,16 @@ export class PlaywrightEngine implements IEngine {
               await this.simulateHumanBehavior(page);
             }
           }
-          const html = await page.content(); // page.content() for HTML suitable for DOM-based conversion
+          renderedHtml = await page.content(); // page.content() for HTML suitable for DOM-based conversion
           try {
             const converter = new MarkdownConverter();
-            finalContent = converter.convert(html, { baseUrl: finalUrl });
+            finalContent = converter.convert(renderedHtml, { baseUrl: finalUrl });
             finalContent = injectSourceUrl(finalContent, finalUrl);
             finalContentType = "markdown";
           } catch (conversionError: unknown) {
             console.error(`Markdown conversion failed for ${url} (Playwright):`, conversionError);
             // Fallback to original HTML on conversion error
-            finalContent = html;
+            finalContent = renderedHtml;
             finalContentType = "html";
           }
         } else {
@@ -952,6 +1037,24 @@ export class PlaywrightEngine implements IEngine {
             `Cannot convert non-HTML content type '${actualContentTypeHeader || "unknown"}' to Markdown.`,
             "ERR_MARKDOWN_CONVERSION_NON_HTML"
           );
+        }
+      }
+
+      if (renderedHtml) {
+        if (isSoftBlockPage(renderedHtml)) {
+          throw new FetchError("Playwright returned a soft-block or challenge page.", "ERR_SOFT_BLOCK_PAGE");
+        }
+
+        const renderAssessment = assessHtmlRenderNeed(renderedHtml);
+        const stillLooksLikeShell =
+          renderAssessment.hasEmptyRootContainer ||
+          renderAssessment.hasNoscriptEnableJs ||
+          (renderAssessment.visibleTextLength < 120 &&
+            renderAssessment.scriptCount >= 3 &&
+            renderAssessment.headingCount === 0);
+
+        if (stillLooksLikeShell && !isSpaMode) {
+          throw new FetchError("Playwright render still looks incomplete after navigation.", "ERR_RENDER_INCOMPLETE");
         }
       }
 

@@ -46,6 +46,7 @@ class ManagedBrowserInstance {
     proxyConfig;
     onDisconnect;
     launchOptions;
+    browserProfile;
     constructor(config) {
         this.id = uuidv4();
         this.useHeadedMode = config.useHeadedMode;
@@ -54,6 +55,7 @@ class ManagedBrowserInstance {
         this.proxyConfig = config.proxyConfig;
         this.onDisconnect = config.onDisconnect;
         this.launchOptions = config.launchOptions;
+        this.browserProfile = config.browserProfile;
         const now = new Date();
         this.metrics = {
             id: this.id,
@@ -97,15 +99,30 @@ class ManagedBrowserInstance {
             mergedLaunchOptions.headless = this.launchOptions.headless;
         }
         this.browser = await augmentedLauncher.launch(mergedLaunchOptions);
-        this.context = await this.browser.newContext({
-            userAgent: new UserAgent().toString(),
-            viewport: {
+        const contextOptions = {
+            userAgent: this.browserProfile?.userAgent ?? new UserAgent().toString(),
+            viewport: this.browserProfile?.viewport ?? {
                 width: 1280 + Math.floor(Math.random() * 120),
                 height: 720 + Math.floor(Math.random() * 80),
             },
-            javaScriptEnabled: true,
+            javaScriptEnabled: this.browserProfile?.javaScriptEnabled ?? true,
             ignoreHTTPSErrors: true,
-        });
+            locale: this.browserProfile?.locale,
+            timezoneId: this.browserProfile?.timezoneId,
+            geolocation: this.browserProfile?.geolocation,
+            colorScheme: this.browserProfile?.colorScheme,
+            reducedMotion: this.browserProfile?.reducedMotion,
+            storageState: this.browserProfile?.storageState,
+        };
+        this.context = await this.browser.newContext(contextOptions);
+        if (this.browserProfile?.permissions && this.browserProfile.permissions.length > 0) {
+            await this.context.grantPermissions(this.browserProfile.permissions);
+        }
+        if (this.browserProfile?.initScripts) {
+            for (const initScript of this.browserProfile.initScripts) {
+                await this.context.addInitScript(initScript);
+            }
+        }
         await this.context.route("**/*", async (route) => {
             const request = route.request();
             const url = request.url();
@@ -248,6 +265,7 @@ export class PlaywrightBrowserPool {
     blockedResourceTypes;
     proxyConfig;
     launchOptions;
+    browserProfile;
     static DEFAULT_BLOCKED_DOMAINS = [
         "doubleclick.net",
         "google-analytics.com",
@@ -296,6 +314,7 @@ export class PlaywrightBrowserPool {
                 : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
         this.proxyConfig = config.proxy;
         this.launchOptions = config.launchOptions;
+        this.browserProfile = config.browserProfile;
     }
     async initialize() {
         await loadDependencies(); // Load dependencies first
@@ -339,6 +358,7 @@ export class PlaywrightBrowserPool {
             blockedResourceTypes: this.blockedResourceTypes,
             proxyConfig: this.proxyConfig,
             launchOptions: this.launchOptions,
+            browserProfile: this.browserProfile,
             onDisconnect: (instanceId) => {
                 // Find the instance by ID and remove it from the pool
                 let instanceToRemove;

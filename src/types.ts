@@ -1,4 +1,50 @@
-import type { Browser as PlaywrightBrowser, BrowserContext, LaunchOptions } from "playwright";
+import type { Browser as PlaywrightBrowser, BrowserContext, BrowserContextOptions, LaunchOptions } from "playwright";
+
+export interface BrowserProfile {
+  /** Override the browser user agent for a coherent browser identity. */
+  userAgent?: BrowserContextOptions["userAgent"];
+  /** Override the viewport instead of using the pool's randomized desktop viewport. */
+  viewport?: BrowserContextOptions["viewport"];
+  /** Set the browser locale (e.g. "en-US"). */
+  locale?: BrowserContextOptions["locale"];
+  /** Set the browser timezone to align with proxy geography (e.g. "America/New_York"). */
+  timezoneId?: BrowserContextOptions["timezoneId"];
+  /** Set the browser geolocation. Typically paired with `permissions: ["geolocation"]`. */
+  geolocation?: BrowserContextOptions["geolocation"];
+  /** Pre-grant browser permissions after the context is created. */
+  permissions?: Parameters<BrowserContext["grantPermissions"]>[0];
+  /** Emulate a preferred color scheme. */
+  colorScheme?: BrowserContextOptions["colorScheme"];
+  /** Emulate reduced-motion preferences. */
+  reducedMotion?: BrowserContextOptions["reducedMotion"];
+  /** Override JavaScript execution for the context. */
+  javaScriptEnabled?: BrowserContextOptions["javaScriptEnabled"];
+  /** Reuse cookies/local storage via Playwright storage state. */
+  storageState?: BrowserContextOptions["storageState"];
+  /** Init scripts injected before any page scripts run. */
+  initScripts?: Array<{ content: string } | { path: string }>;
+}
+
+export interface FetchDiagnostics {
+  /** Final strategy that produced the result. */
+  strategy: "http" | "playwright";
+  /** Whether the successful attempt ran in fast mode. */
+  fastMode?: boolean;
+  /** Whether the successful attempt used the patient SPA render path. */
+  spaMode?: boolean;
+  /** Whether the successful attempt ran in headed mode. */
+  headed?: boolean;
+  /** Whether the engine escalated into a fuller browser retry after anti-bot / shell signals. */
+  adaptiveBrowserRetry?: boolean;
+  /** Whether the engine had to fall back from headless to headed mode. */
+  headedFallback?: boolean;
+  /** Whether a challenge / soft-block signal was detected on the path to this result. */
+  softBlockDetected?: boolean;
+  /** Whether shell-like rendered output triggered an adaptive retry. */
+  renderLikelyNeeded?: boolean;
+  /** Where the detection signal came from. */
+  detectionSource?: "http-fallback" | "playwright-dom" | "hybrid-http";
+}
 
 /**
  * Defines the structure for the result of fetching HTML content.
@@ -18,6 +64,8 @@ export interface HTMLFetchResult {
   statusCode: number | undefined;
   /** Any error encountered during the fetch process. */
   error: Error | undefined; // Use generic Error type
+  /** Optional diagnostics about retries, challenge detection, and the final browser mode used. */
+  diagnostics?: FetchDiagnostics;
 }
 
 /**
@@ -211,6 +259,12 @@ export interface PlaywrightEngineConfig {
    * @default undefined
    */
   playwrightLaunchOptions?: LaunchOptions;
+  /**
+   * Optional Playwright browser-context profile used to keep browser identity coherent.
+   * Supports locale/timezone/geolocation alignment, storage state reuse, and init scripts.
+   * @default undefined
+   */
+  browserProfile?: BrowserProfile;
   /** Optional headers to include in the request. */
   headers?: Record<string, string>;
 }

@@ -36,6 +36,9 @@ export declare class PlaywrightEngine implements IEngine {
      */
     private fetchHTMLWithHttpFallback;
     private checkCache;
+    private hasMeaningfulDiagnostics;
+    private attachDiagnostics;
+    private markDiagnostics;
     /**
      * Safely check if a page is still usable and connected.
      */

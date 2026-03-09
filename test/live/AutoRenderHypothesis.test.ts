@@ -1,3 +1,5 @@
+/** @vitest-environment node */
+
 import { describe, expect, it, afterAll, beforeAll } from "vitest";
 import { FetchEngine, HybridEngine } from "../../src/index.js";
 import { assessHtmlRenderNeed, assessSerializedContent } from "../../src/utils/render-detection.js";

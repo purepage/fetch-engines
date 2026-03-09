@@ -82,6 +82,7 @@ describe("PlaywrightEngine - Headers", () => {
       content: vi.fn().mockResolvedValue("<html><body>Playwright Content</body></html>"),
       url: vi.fn().mockReturnValue(MOCK_URL), // Added this line
       close: vi.fn().mockResolvedValue(undefined),
+      isClosed: vi.fn(() => false),
       context: vi.fn(() => ({
         browser: vi.fn(() => ({
           isConnected: vi.fn(() => true),
@@ -91,6 +92,9 @@ describe("PlaywrightEngine - Headers", () => {
       })),
       setDefaultNavigationTimeout: vi.fn(),
       setDefaultTimeout: vi.fn(),
+      on: vi.fn(),
+      off: vi.fn(),
+      removeListener: vi.fn(),
       evaluate: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === "string") {
           return Promise.resolve(2);
@@ -306,6 +310,100 @@ describe("PlaywrightEngine - Headers", () => {
 
       expect(result.content).toBe("<html><body>Playwright Content</body></html>");
       expect(mockPage.content).toHaveBeenCalled();
+    });
+  });
+
+  describe("browser profiling and adaptive retries", () => {
+    it("should pass browserProfile through to the PlaywrightBrowserPool", async () => {
+      const browserProfile = {
+        locale: "en-US",
+        timezoneId: "America/New_York",
+      };
+
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        browserProfile,
+      });
+
+      await engine.fetchHTML(MOCK_URL);
+
+      expect(PlaywrightBrowserPool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          browserProfile,
+        })
+      );
+    });
+
+    it("should retry with full browser settings when Playwright returns a challenge page", async () => {
+      mockPage.content
+        .mockResolvedValueOnce(
+          '<html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>'
+        )
+        .mockResolvedValueOnce("<html><body>Recovered content</body></html>");
+
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: false,
+        defaultFastMode: true,
+        maxRetries: 0,
+      });
+
+      const result = await engine.fetchHTML(MOCK_URL);
+
+      expect(mockPoolInstance.acquirePage).toHaveBeenCalledTimes(2);
+      expect(mockPage.goto).toHaveBeenCalledTimes(2);
+      expect(mockPage.goto.mock.calls[0][1]).toEqual(expect.objectContaining({ waitUntil: "domcontentloaded" }));
+      expect(mockPage.goto.mock.calls[1][1]).toEqual(expect.objectContaining({ waitUntil: "networkidle" }));
+      expect(result.content).toBe("<html><body>Recovered content</body></html>");
+      expect(result.diagnostics).toEqual(
+        expect.objectContaining({
+          strategy: "playwright",
+          fastMode: false,
+          spaMode: true,
+          adaptiveBrowserRetry: true,
+          softBlockDetected: true,
+          detectionSource: "playwright-dom",
+        })
+      );
+    });
+
+    it("should report headed fallback when headless rendering fails and headed fallback is enabled", async () => {
+      mockPage.goto
+        .mockRejectedValueOnce(new Error("blocked in headless"))
+        .mockResolvedValueOnce({
+          ok: () => true,
+          status: () => 200,
+          url: () => MOCK_URL,
+          text: async () => "<html><body>Headed success</body></html>",
+          headers: () => ({ "content-type": "text/html" }),
+        });
+      mockPage.content.mockResolvedValue("<html><body>Headed success</body></html>");
+
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        useHttpFallback: false,
+        defaultFastMode: false,
+        useHeadedModeFallback: true,
+        maxRetries: 0,
+      });
+
+      const result = await engine.fetchHTML(MOCK_URL, { fastMode: false });
+
+      expect(PlaywrightBrowserPool).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ useHeadedMode: false })
+      );
+      expect(PlaywrightBrowserPool).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ useHeadedMode: true })
+      );
+      expect(result.diagnostics).toEqual(
+        expect.objectContaining({
+          strategy: "playwright",
+          headed: true,
+          headedFallback: true,
+        })
+      );
     });
   });
 });

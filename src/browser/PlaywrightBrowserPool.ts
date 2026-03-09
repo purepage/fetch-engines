@@ -2,6 +2,7 @@
 import {
   chromium as playwrightChromiumLauncher,
   Browser as PlaywrightBrowserType,
+  BrowserContextOptions,
   ChromiumBrowser as PlaywrightChromiumBrowserInstanceType,
   BrowserContext,
   Page,
@@ -9,7 +10,7 @@ import {
   LaunchOptions,
   BrowserType as PlaywrightBrowserLauncherType,
 } from "playwright";
-import type { BrowserMetrics } from "../types.js";
+import type { BrowserMetrics, BrowserProfile } from "../types.js";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue";
@@ -70,6 +71,7 @@ class ManagedBrowserInstance {
   private readonly proxyConfig?: { server: string; username?: string; password?: string };
   private readonly onDisconnect: (instanceId: string) => void;
   private readonly launchOptions?: LaunchOptions;
+  private readonly browserProfile?: BrowserProfile;
 
   constructor(config: {
     useHeadedMode: boolean;
@@ -78,6 +80,7 @@ class ManagedBrowserInstance {
     proxyConfig?: { server: string; username?: string; password?: string };
     onDisconnect: (instanceId: string) => void;
     launchOptions?: LaunchOptions;
+    browserProfile?: BrowserProfile;
   }) {
     this.id = uuidv4();
     this.useHeadedMode = config.useHeadedMode;
@@ -86,6 +89,7 @@ class ManagedBrowserInstance {
     this.proxyConfig = config.proxyConfig;
     this.onDisconnect = config.onDisconnect;
     this.launchOptions = config.launchOptions;
+    this.browserProfile = config.browserProfile;
 
     const now = new Date();
     this.metrics = {
@@ -135,15 +139,34 @@ class ManagedBrowserInstance {
     }
 
     this.browser = await augmentedLauncher.launch(mergedLaunchOptions);
-    this.context = await this.browser.newContext({
-      userAgent: new UserAgent().toString(),
-      viewport: {
+
+    const contextOptions: BrowserContextOptions = {
+      userAgent: this.browserProfile?.userAgent ?? new UserAgent().toString(),
+      viewport: this.browserProfile?.viewport ?? {
         width: 1280 + Math.floor(Math.random() * 120),
         height: 720 + Math.floor(Math.random() * 80),
       },
-      javaScriptEnabled: true,
+      javaScriptEnabled: this.browserProfile?.javaScriptEnabled ?? true,
       ignoreHTTPSErrors: true,
-    });
+      locale: this.browserProfile?.locale,
+      timezoneId: this.browserProfile?.timezoneId,
+      geolocation: this.browserProfile?.geolocation,
+      colorScheme: this.browserProfile?.colorScheme,
+      reducedMotion: this.browserProfile?.reducedMotion,
+      storageState: this.browserProfile?.storageState,
+    };
+
+    this.context = await this.browser.newContext(contextOptions);
+
+    if (this.browserProfile?.permissions && this.browserProfile.permissions.length > 0) {
+      await this.context.grantPermissions(this.browserProfile.permissions);
+    }
+
+    if (this.browserProfile?.initScripts) {
+      for (const initScript of this.browserProfile.initScripts) {
+        await this.context.addInitScript(initScript);
+      }
+    }
 
     await this.context.route("**/*", async (route: Route) => {
       const request = route.request();
@@ -300,6 +323,7 @@ export class PlaywrightBrowserPool {
     password?: string;
   };
   private readonly launchOptions?: LaunchOptions;
+  private readonly browserProfile?: BrowserProfile;
 
   private static readonly DEFAULT_BLOCKED_DOMAINS: string[] = [
     "doubleclick.net",
@@ -346,6 +370,7 @@ export class PlaywrightBrowserPool {
       proxy?: { server: string; username?: string; password?: string };
       maxIdleTime?: number;
       launchOptions?: LaunchOptions;
+      browserProfile?: BrowserProfile;
     } = {}
   ) {
     this.maxBrowsers = config.maxBrowsers ?? 2;
@@ -364,6 +389,7 @@ export class PlaywrightBrowserPool {
         : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
     this.proxyConfig = config.proxy;
     this.launchOptions = config.launchOptions;
+    this.browserProfile = config.browserProfile;
   }
 
   public async initialize(): Promise<void> {
@@ -410,6 +436,7 @@ export class PlaywrightBrowserPool {
       blockedResourceTypes: this.blockedResourceTypes,
       proxyConfig: this.proxyConfig,
       launchOptions: this.launchOptions,
+      browserProfile: this.browserProfile,
       onDisconnect: (instanceId) => {
         // Find the instance by ID and remove it from the pool
         let instanceToRemove: ManagedBrowserInstance | undefined;

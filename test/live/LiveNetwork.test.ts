@@ -1,3 +1,5 @@
+/** @vitest-environment node */
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { HybridEngine, FetchEngine } from "../../src/index.js";
 
@@ -19,12 +21,12 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     await fetcher.cleanup();
   });
 
-  it("FetchEngine gets example.com HTML", async () => {
-    const res = await fetcher.fetchContent("https://example.com");
+  it("FetchEngine gets HTML from httpbin", async () => {
+    const res = await fetcher.fetchContent("https://httpbin.org/html");
     expect(res.statusCode).toBe(200);
     expect(res.contentType).toContain("text/html");
     expect(typeof res.content).toBe("string");
-    expect(res.title).toBeTruthy();
+    expect(String(res.content)).toContain("<html");
   }, 30000);
 
   it("HybridEngine follows redirects (httpbin)", async () => {
@@ -45,4 +47,3 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     await expect(hybrid.fetchContent("https://httpbin.org/status/404")).rejects.toHaveProperty("statusCode", 404);
   }, 30000);
 });
-
