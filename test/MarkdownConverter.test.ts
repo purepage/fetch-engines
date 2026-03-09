@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
   it("uses a namespace import for Kreuzberg interop compatibility", () => {
-    const source = readFileSync("src/utils/markdown-converter.ts", "utf8");
+    const source = readFileSync(resolve(import.meta.dirname, "../src/utils/markdown-converter.ts"), "utf8");
 
     expect(source).toContain('import * as kreuzbergHtmlToMarkdown from "@kreuzberg/html-to-markdown";');
     expect(source).not.toContain('import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";');
