@@ -5,7 +5,7 @@
 [![Live Browser Evals](https://github.com/purepage/fetch-engines/actions/workflows/live-browser-evals.yml/badge.svg)](https://github.com/purepage/fetch-engines/actions/workflows/live-browser-evals.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Reliable public-web extraction for Node.js.
+Reliable web extraction.
 
 HTTP-first for speed. Browser-backed when needed. Clean Markdown, soft-block handling, and structured extraction for RAG and AI pipelines.
 

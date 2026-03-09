@@ -1,8 +1,8 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "type": "module",
-  "description": "Production-grade public-web extraction for Node.js: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
+  "description": "Production-grade web extraction: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

@@ -1,5 +1,25 @@
-import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";
+import * as kreuzbergHtmlToMarkdown from "@kreuzberg/html-to-markdown";
 import { parse, HTMLElement as NHPHTMLElement, Node as NHPNode, TextNode as NHPTextNode } from "node-html-parser";
+
+type KreuzbergConvert = (typeof import("@kreuzberg/html-to-markdown"))["convert"];
+
+function resolveKreuzbergConvert(): KreuzbergConvert {
+  const moduleWithOptionalDefault = kreuzbergHtmlToMarkdown as typeof kreuzbergHtmlToMarkdown & {
+    default?: { convert?: KreuzbergConvert };
+  };
+
+  if (typeof moduleWithOptionalDefault.convert === "function") {
+    return moduleWithOptionalDefault.convert;
+  }
+
+  if (typeof moduleWithOptionalDefault.default?.convert === "function") {
+    return moduleWithOptionalDefault.default.convert;
+  }
+
+  throw new Error("Failed to resolve @kreuzberg/html-to-markdown convert export.");
+}
+
+const kreuzbergConvert = resolveKreuzbergConvert();
 
 // --- Constants ---
 

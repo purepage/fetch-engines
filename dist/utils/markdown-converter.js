@@ -1,5 +1,16 @@
-import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";
+import * as kreuzbergHtmlToMarkdown from "@kreuzberg/html-to-markdown";
 import { parse, HTMLElement as NHPHTMLElement } from "node-html-parser";
+function resolveKreuzbergConvert() {
+    const moduleWithOptionalDefault = kreuzbergHtmlToMarkdown;
+    if (typeof moduleWithOptionalDefault.convert === "function") {
+        return moduleWithOptionalDefault.convert;
+    }
+    if (typeof moduleWithOptionalDefault.default?.convert === "function") {
+        return moduleWithOptionalDefault.default.convert;
+    }
+    throw new Error("Failed to resolve @kreuzberg/html-to-markdown convert export.");
+}
+const kreuzbergConvert = resolveKreuzbergConvert();
 // --- Constants ---
 // Preprocessing - Selectors for removal (balanced approach)
 const PREPROCESSING_REMOVE_SELECTORS = [
