@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Updated the package description to position `fetch-engines` as a production-grade public-web extraction library for Node.js
+- Updated the package description to position `fetch-engines` as a production-grade web extraction library
 - Reworked the README hero copy to emphasize reliability, browser-backed extraction, clean Markdown, and RAG/AI use cases more clearly
 - Refined the top-level value proposition bullets to better differentiate HTTP-first extraction, Playwright fallback, and built-in structured extraction
 - The main publish workflow no longer installs Playwright or carries dormant opt-in live-test logic; browser-dependent coverage now lives in its own explicit CI lane
