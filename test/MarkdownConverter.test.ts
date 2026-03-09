@@ -1,7 +1,15 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
+  it("uses a namespace import for Kreuzberg interop compatibility", () => {
+    const source = readFileSync("src/utils/markdown-converter.ts", "utf8");
+
+    expect(source).toContain('import * as kreuzbergHtmlToMarkdown from "@kreuzberg/html-to-markdown";');
+    expect(source).not.toContain('import { convert as kreuzbergConvert } from "@kreuzberg/html-to-markdown";');
+  });
+
   it("converts tables without explicit header rows to GFM with promoted headers", () => {
     const html = `<table>
 <tbody>

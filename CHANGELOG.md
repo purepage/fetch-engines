@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolved `@kreuzberg/html-to-markdown` ESM interop under `tsx watch` by replacing the fragile named import with a namespace-based `convert` resolver in `MarkdownConverter`
+
 ## [0.10.5] - 2026-03-07
 
 ### Added
