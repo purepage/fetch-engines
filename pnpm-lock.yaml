@@ -15,7 +15,7 @@ importers:
         specifier: ^1.0.28
         version: 1.0.28(zod@4.1.8)
       '@kreuzberg/html-to-markdown':
-        specifier: ^2.27.2
+        specifier: 2.27.2
         version: 2.27.2
       ai:
         specifier: ^5.0.44
