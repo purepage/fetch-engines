@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "type": "module",
   "description": "Production-grade web extraction: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
@@ -30,7 +30,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^2.0.30",
     "@ai-sdk/openai-compatible": "^1.0.28",
-    "@kreuzberg/html-to-markdown": "^2.27.2",
+    "@kreuzberg/html-to-markdown": "2.27.2",
     "ai": "^5.0.44",
     "axios": "^1.12.0",
     "node-html-parser": "^7.0.1",

@@ -4,6 +4,14 @@ import { describe, it, expect } from "vitest";
 import { MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 describe("MarkdownConverter", () => {
+  it("pins Kreuzberg to an exact safe version in the published manifest", () => {
+    const packageJson = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+
+    expect(packageJson.dependencies?.["@kreuzberg/html-to-markdown"]).toBe("2.27.2");
+  });
+
   it("uses a namespace import for Kreuzberg interop compatibility", () => {
     const source = readFileSync(resolve(import.meta.dirname, "../src/utils/markdown-converter.ts"), "utf8");
 
