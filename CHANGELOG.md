@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
+- Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
+
 ## [0.10.2] - 2026-03-11
 
 ### Fixed
