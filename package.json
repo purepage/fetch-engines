@@ -32,7 +32,7 @@
     "@ai-sdk/openai-compatible": "^1.0.28",
     "@kreuzberg/html-to-markdown": "2.27.2",
     "ai": "^5.0.44",
-    "axios": "1.14.0",
+    "axios": "1.15.0",
     "node-html-parser": "^7.0.1",
     "p-queue": "^7.4.1",
     "playwright": "^1.55.1",
@@ -66,10 +66,10 @@
     "vitest": "^3.1.1"
   },
   "overrides": {
-    "axios": "1.14.0"
+    "axios": "1.15.0"
   },
   "resolutions": {
-    "axios": "1.14.0"
+    "axios": "1.15.0"
   },
   "pnpm": {
     "minimumReleaseAge": 1440
