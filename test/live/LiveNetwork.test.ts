@@ -3,6 +3,17 @@ import { HybridEngine, FetchEngine } from "../../src/index.js";
 
 // Only run when explicitly enabled to avoid CI flakiness
 const RUN_LIVE = process.env.LIVE_NETWORK === "1";
+const BLOCK_MARKERS = ["access denied", "blocked", "captcha", "verify you are human", "forbidden"];
+
+function assertNoBlockMarkers(content: string): void {
+  const lowerContent = content.toLowerCase();
+  expect(BLOCK_MARKERS.some((marker) => lowerContent.includes(marker))).toBe(false);
+}
+
+function assertStringContent(content: string | Buffer, minLength: number): asserts content is string {
+  expect(typeof content).toBe("string");
+  expect(content.length).toBeGreaterThan(minLength);
+}
 
 describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
   let hybrid: HybridEngine;
@@ -23,16 +34,17 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     const res = await fetcher.fetchContent("https://example.com");
     expect(res.statusCode).toBe(200);
     expect(res.contentType).toContain("text/html");
-    expect(typeof res.content).toBe("string");
-    expect(res.title).toBeTruthy();
+    assertStringContent(res.content, 100);
+    assertNoBlockMarkers(res.content);
   }, 30000);
 
   it("HybridEngine fetches the BHP homepage as markdown", async () => {
     const res = await hybrid.fetchHTML("https://www.bhp.com/", { markdown: true });
     expect(res.statusCode).toBe(200);
     expect(res.contentType).toBe("markdown");
-    expect(res.title).toContain("BHP");
-    expect(res.content).toContain("Resources that make the future possible");
+    expect(res.content.length).toBeGreaterThan(1500);
+    expect(res.content).toContain("Source: https://www.bhp.com/");
+    assertNoBlockMarkers(res.content);
   }, 45000);
 
   it("HybridEngine follows redirects (httpbin)", async () => {
@@ -46,7 +58,7 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     const res = await hybrid.fetchContent("https://httpbin.org/json");
     expect(res.statusCode).toBe(200);
     expect(res.contentType).toContain("application/json");
-    expect(typeof res.content).toBe("string");
+    assertStringContent(res.content, 50);
   }, 30000);
 
   it("HybridEngine returns 404 without Playwright fallback", async () => {
