@@ -4,6 +4,7 @@ import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, Playwrig
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
 export declare class HybridEngine implements IEngine {
+    private static readonly FETCH_ENGINE_RETRY_ATTEMPTS;
     private readonly fetchEngine;
     private readonly playwrightEngine;
     private readonly config;
@@ -11,6 +12,9 @@ export declare class HybridEngine implements IEngine {
     constructor(config?: PlaywrightEngineConfig);
     private _convertHtmlToMarkdown;
     private _shouldAutoRender;
+    private _shouldRetryFetchEngine;
+    private _fetchHtmlWithRetry;
+    private _fetchContentWithRetry;
     fetchHTML(url: string, options?: FetchOptions): Promise<HTMLFetchResult>;
     /**
      * Fetches raw content from the specified URL using the hybrid approach.

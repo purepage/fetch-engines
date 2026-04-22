@@ -1,6 +1,7 @@
 import { HybridEngine } from "../src/HybridEngine";
 import { FetchEngine } from "../src/FetchEngine";
 import { PlaywrightEngine } from "../src/PlaywrightEngine";
+import { FetchError } from "../src/errors";
 import { vi, describe, it, expect, beforeEach, SpyInstance } from "vitest";
 
 // Mock the engines
@@ -16,11 +17,53 @@ describe("HybridEngine - Headers Propagation", () => {
     vi.clearAllMocks(); 
 
     mockFetchEngineInstance = {
-      fetchHTML: vi.fn().mockResolvedValue({ content: "fetch-html", title: "Test", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
+      fetchHTML: vi
+        .fn()
+        .mockResolvedValue({
+          content: "fetch-html",
+          title: "Test",
+          contentType: "html",
+          url: MOCK_URL,
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
+      fetchContent: vi
+        .fn()
+        .mockResolvedValue({
+          content: "fetch-content",
+          title: "Test",
+          contentType: "text/plain",
+          url: MOCK_URL,
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
       cleanup: vi.fn().mockResolvedValue(undefined),
     };
     mockPlaywrightEngineInstance = {
-      fetchHTML: vi.fn().mockResolvedValue({ content: "playwright-html", title: "Test", contentType: "html", url: MOCK_URL, isFromCache: false, statusCode: 200, error: undefined }),
+      fetchHTML: vi
+        .fn()
+        .mockResolvedValue({
+          content: "playwright-html",
+          title: "Test",
+          contentType: "html",
+          url: MOCK_URL,
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
+      fetchContent: vi
+        .fn()
+        .mockResolvedValue({
+          content: "playwright-content",
+          title: "Test",
+          contentType: "text/plain",
+          url: MOCK_URL,
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
       cleanup: vi.fn().mockResolvedValue(undefined),
       getMetrics: vi.fn().mockReturnValue([]),
     };
@@ -200,6 +243,69 @@ describe("HybridEngine - Headers Propagation", () => {
     await engine.fetchHTML(MOCK_URL, {});
 
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
+  });
+
+  it("should retry a transient FetchEngine HTML failure before falling back to Playwright", async () => {
+    mockFetchEngineInstance.fetchHTML
+      .mockRejectedValueOnce(new FetchError("fetch failed", "ERR_FETCH_FAILED"))
+      .mockResolvedValueOnce({
+        content: `<!DOCTYPE html>
+          <html>
+            <head><title>Recovered</title></head>
+            <body>
+              <main>
+                <h1>Recovered content</h1>
+                <p>This page contains enough descriptive body copy to avoid render escalation.</p>
+                <p>HybridEngine should keep the second HTTP response instead of treating it like an app shell.</p>
+              </main>
+            </body>
+          </html>`,
+        title: "Recovered",
+        contentType: "html",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      });
+
+    const engine = new HybridEngine();
+    const result = await engine.fetchHTML(MOCK_URL, {});
+
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(2);
+    expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+    expect(result.title).toBe("Recovered");
+  });
+
+  it("should not retry a timed out FetchEngine HTML request before falling back to Playwright", async () => {
+    mockFetchEngineInstance.fetchHTML.mockRejectedValueOnce(new FetchError("Fetch timed out after 10000ms", "ERR_FETCH_TIMEOUT"));
+
+    const engine = new HybridEngine();
+    const result = await engine.fetchHTML(MOCK_URL, {});
+
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(1);
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledTimes(1);
+    expect(result.content).toBe("playwright-html");
+  });
+
+  it("should retry a transient FetchEngine content failure before falling back to Playwright", async () => {
+    mockFetchEngineInstance.fetchContent
+      .mockRejectedValueOnce(new FetchError("content failed", "ERR_FETCH_FAILED"))
+      .mockResolvedValueOnce({
+        content: "Recovered content",
+        contentType: "text/plain",
+        title: null,
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      });
+
+    const engine = new HybridEngine();
+    const result = await engine.fetchContent(MOCK_URL, {});
+
+    expect(mockFetchEngineInstance.fetchContent).toHaveBeenCalledTimes(2);
+    expect(mockPlaywrightEngineInstance.fetchContent).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(200);
   });
 
   it("should detect shells before markdown conversion", async () => {

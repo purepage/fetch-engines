@@ -55,6 +55,8 @@ Since this package is pre-1.0 (`0.x.x`), breaking changes are more acceptable bu
 
 ### Always Write/Update Tests
 
+Use red/green TDD.
+
 1. **New features MUST include tests**
 
    - Add tests in the appropriate test file (e.g., `test/StructuredContentEngine.test.ts`)

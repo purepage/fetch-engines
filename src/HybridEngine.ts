@@ -2,6 +2,7 @@ import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import { FetchError } from "./errors.js";
 import {
   assessHtmlRenderNeed,
   assessSerializedContent,
@@ -21,6 +22,7 @@ import type {
  * HybridEngine - Tries FetchEngine first, falls back to PlaywrightEngine on failure.
  */
 export class HybridEngine implements IEngine {
+  private static readonly FETCH_ENGINE_RETRY_ATTEMPTS = 2;
   private readonly fetchEngine: FetchEngine;
   private readonly playwrightEngine: PlaywrightEngine;
   private readonly config: PlaywrightEngineConfig; // Store config for potential per-request PW overrides
@@ -61,6 +63,64 @@ export class HybridEngine implements IEngine {
       return true;
     }
     return assessHtmlRenderNeed(fetchResult.content).renderLikelyNeeded;
+  }
+
+  private _shouldRetryFetchEngine(error: unknown): boolean {
+    return error instanceof FetchError && error.code === "ERR_FETCH_FAILED";
+  }
+
+  private async _fetchHtmlWithRetry(
+    url: string,
+    headers: Record<string, string> | undefined
+  ): Promise<HTMLFetchResult> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= HybridEngine.FETCH_ENGINE_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.fetchEngine.fetchHTML(url, {
+          markdown: false,
+          headers,
+        });
+      } catch (error: unknown) {
+        lastError = error;
+        const canRetry = attempt < HybridEngine.FETCH_ENGINE_RETRY_ATTEMPTS && this._shouldRetryFetchEngine(error);
+
+        if (!canRetry) {
+          throw error;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `HybridEngine: FetchEngine attempt ${attempt} for ${url} failed with a retryable error: ${message}. Retrying HTTP fetch.`
+        );
+      }
+    }
+
+    throw lastError;
+  }
+
+  private async _fetchContentWithRetry(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= HybridEngine.FETCH_ENGINE_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.fetchEngine.fetchContent(url, options);
+      } catch (error: unknown) {
+        lastError = error;
+        const canRetry = attempt < HybridEngine.FETCH_ENGINE_RETRY_ATTEMPTS && this._shouldRetryFetchEngine(error);
+
+        if (!canRetry) {
+          throw error;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `HybridEngine: FetchEngine content attempt ${attempt} for ${url} failed with a retryable error: ${message}. Retrying HTTP fetch.`
+        );
+      }
+    }
+
+    throw lastError;
   }
 
   async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
@@ -110,10 +170,7 @@ export class HybridEngine implements IEngine {
     }
 
     try {
-      const fetchResult = await this.fetchEngine.fetchHTML(url, {
-        markdown: false,
-        headers: options.headers,
-      });
+      const fetchResult = await this._fetchHtmlWithRetry(url, options.headers);
       const httpPreferredResult = effectiveMarkdown ? this._convertHtmlToMarkdown(fetchResult) : fetchResult;
 
       if (!this._shouldAutoRender(fetchResult, effectiveSpaMode)) {
@@ -193,7 +250,7 @@ export class HybridEngine implements IEngine {
 
     try {
       // Try FetchEngine first
-      const fetchResult = await this.fetchEngine.fetchContent(url, options);
+      const fetchResult = await this._fetchContentWithRetry(url, options);
       return fetchResult;
     } catch (fetchError: unknown) {
       // If FetchEngine returned a 404, do not attempt Playwright fallback
