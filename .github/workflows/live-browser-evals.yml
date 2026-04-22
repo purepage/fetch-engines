@@ -4,6 +4,18 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - ".github/workflows/live-browser-evals.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "scripts/eval-auto-render.mjs"
+      - "src/**"
+      - "test/live/**"
   push:
     branches:
       - main
