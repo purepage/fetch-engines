@@ -276,6 +276,17 @@ describe("HybridEngine - Headers Propagation", () => {
     expect(result.title).toBe("Recovered");
   });
 
+  it("should not retry a timed out FetchEngine HTML request before falling back to Playwright", async () => {
+    mockFetchEngineInstance.fetchHTML.mockRejectedValueOnce(new FetchError("Fetch timed out after 10000ms", "ERR_FETCH_TIMEOUT"));
+
+    const engine = new HybridEngine();
+    const result = await engine.fetchHTML(MOCK_URL, {});
+
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(1);
+    expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledTimes(1);
+    expect(result.content).toBe("playwright-html");
+  });
+
   it("should retry a transient FetchEngine content failure before falling back to Playwright", async () => {
     mockFetchEngineInstance.fetchContent
       .mockRejectedValueOnce(new FetchError("content failed", "ERR_FETCH_FAILED"))

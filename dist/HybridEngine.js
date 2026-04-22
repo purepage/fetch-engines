@@ -45,7 +45,7 @@ export class HybridEngine {
         return assessHtmlRenderNeed(fetchResult.content).renderLikelyNeeded;
     }
     _shouldRetryFetchEngine(error) {
-        return error instanceof FetchError && (error.code === "ERR_FETCH_FAILED" || error.code === "ERR_FETCH_TIMEOUT");
+        return error instanceof FetchError && error.code === "ERR_FETCH_FAILED";
     }
     async _fetchHtmlWithRetry(url, headers) {
         let lastError;

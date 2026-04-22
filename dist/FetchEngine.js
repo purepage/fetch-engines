@@ -120,8 +120,7 @@ export class FetchEngine {
         catch (error) {
             // Re-throw specific known errors directly
             if (error instanceof FetchEngineHttpError ||
-                (error instanceof FetchError &&
-                    (error.code === "ERR_NON_HTML_CONTENT" || error.code === "ERR_FETCH_TIMEOUT"))) {
+                (error instanceof FetchError && (error.code === "ERR_NON_HTML_CONTENT" || error.code === "ERR_FETCH_TIMEOUT"))) {
                 throw error;
             }
             // Wrap other/unexpected errors

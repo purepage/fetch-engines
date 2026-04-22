@@ -66,7 +66,7 @@ export class HybridEngine implements IEngine {
   }
 
   private _shouldRetryFetchEngine(error: unknown): boolean {
-    return error instanceof FetchError && (error.code === "ERR_FETCH_FAILED" || error.code === "ERR_FETCH_TIMEOUT");
+    return error instanceof FetchError && error.code === "ERR_FETCH_FAILED";
   }
 
   private async _fetchHtmlWithRetry(
