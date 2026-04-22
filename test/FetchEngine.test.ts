@@ -1,4 +1,5 @@
 import { FetchEngine } from "../src/FetchEngine"; // Adjust path if necessary
+import { DEFAULT_HTTP_TIMEOUT } from "../src/constants";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // Mock global fetch
@@ -204,5 +205,29 @@ describe("FetchEngine - Headers", () => {
     expect(result.contentType).toBe("markdown");
     expect(result.content).toContain("(https://example.com/product/123)");
     expect(result.content).toContain("(https://example.com/about)");
+  });
+
+  it("should abort fetchHTML requests that exceed the default timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetch.mockImplementationOnce((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal;
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      });
+
+      const engine = new FetchEngine();
+      const promise = expect(engine.fetchHTML(MOCK_URL)).rejects.toMatchObject({
+        code: "ERR_FETCH_TIMEOUT",
+        message: `Fetch timed out after ${DEFAULT_HTTP_TIMEOUT}ms`,
+      });
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_HTTP_TIMEOUT + 1);
+
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

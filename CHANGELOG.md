@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Marked the DVA pension rates live eval baseline as optional so runner-specific HTTP flakiness does not fail the gated static pass-rate check when Hybrid extraction still succeeds
 - Added a dedicated `pnpm test:live:smoke` command and workflow step so CI runs the live smoke suite separately from the auto-render gate
 - Added `https://www.bhp.com/` to the live smoke suite to cover markdown extraction for a real marketing site in the browser-enabled pipeline
+- `FetchEngine` now aborts stalled HTTP requests after the default timeout and `HybridEngine` retries those timeouts before falling back, preventing live smoke runs from hanging indefinitely on sites like BHP
 
 ## [0.10.2] - 2026-03-11
 

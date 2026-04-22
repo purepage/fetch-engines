@@ -1,5 +1,27 @@
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import { FetchError } from "./errors.js"; // Only import FetchError
+import { DEFAULT_HTTP_TIMEOUT } from "./constants.js";
+async function fetchWithTimeout(url, init, timeoutMs = DEFAULT_HTTP_TIMEOUT) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, {
+            ...init,
+            signal: controller.signal,
+        });
+    }
+    catch (error) {
+        const errorName = typeof error === "object" && error !== null && "name" in error ? String(error.name) : undefined;
+        const originalError = error instanceof Error ? error : undefined;
+        if (errorName === "AbortError") {
+            throw new FetchError(`Fetch timed out after ${timeoutMs}ms`, "ERR_FETCH_TIMEOUT", originalError);
+        }
+        throw error;
+    }
+    finally {
+        clearTimeout(timeout);
+    }
+}
 /**
  * Custom error class for HTTP errors from FetchEngine.
  */
@@ -57,10 +79,10 @@ export class FetchEngine {
                 ...constructorHeaders,
                 ...callSpecificHeaders, // Ensures callSpecificHeaders override constructorHeaders, which override baseHeaders
             };
-            response = await fetch(url, {
+            response = await fetchWithTimeout(url, {
                 redirect: "follow",
                 headers: finalHeaders,
-            });
+            }, DEFAULT_HTTP_TIMEOUT);
             if (!response.ok) {
                 throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
             }
@@ -98,7 +120,8 @@ export class FetchEngine {
         catch (error) {
             // Re-throw specific known errors directly
             if (error instanceof FetchEngineHttpError ||
-                (error instanceof FetchError && error.code === "ERR_NON_HTML_CONTENT")) {
+                (error instanceof FetchError &&
+                    (error.code === "ERR_NON_HTML_CONTENT" || error.code === "ERR_FETCH_TIMEOUT"))) {
                 throw error;
             }
             // Wrap other/unexpected errors
@@ -130,10 +153,10 @@ export class FetchEngine {
                 ...constructorHeaders,
                 ...callSpecificHeaders,
             };
-            response = await fetch(url, {
+            response = await fetchWithTimeout(url, {
                 redirect: "follow",
                 headers: finalHeaders,
-            });
+            }, DEFAULT_HTTP_TIMEOUT);
             if (!response.ok) {
                 throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
             }
@@ -171,7 +194,8 @@ export class FetchEngine {
         }
         catch (error) {
             // Re-throw specific known errors directly
-            if (error instanceof FetchEngineHttpError) {
+            if (error instanceof FetchEngineHttpError ||
+                (error instanceof FetchError && error.code === "ERR_FETCH_TIMEOUT")) {
                 throw error;
             }
             // Wrap other/unexpected errors
