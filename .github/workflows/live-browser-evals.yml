@@ -48,6 +48,9 @@ jobs:
       - name: Build project
         run: pnpm build
 
+      - name: Run live browser smoke tests
+        run: pnpm test:live:smoke
+
       - name: Run live browser auto-render gate
         run: pnpm test:live:auto-render
 

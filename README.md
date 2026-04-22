@@ -205,8 +205,9 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - Explore the [`examples`](./examples) directory for scripts you can run end-to-end.
 - Ready-to-use TypeScript types ship with the package.
 - `pnpm test` runs the automated suite when you are ready to contribute.
+- `pnpm test:live:smoke` runs the browser-backed live smoke suite, including a markdown fetch check for `https://www.bhp.com/`.
 - `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix across docs, government, knowledge, marketing, commerce, and access-guarded pages, using a stable gated core plus observe-only sentinels for harder domains.
-- `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`).
+- `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`) in a Node environment so it exercises the real network/browser stack instead of `jsdom`.
 - GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact.
 
 ## Contributing

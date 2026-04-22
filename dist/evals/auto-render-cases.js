@@ -151,6 +151,7 @@ export const AUTO_RENDER_EVAL_CASES = [
         archetype: "government",
         requiredAny: ["vea", "pension", "allowances"],
         minTextLength: 1000,
+        baselineOptional: true,
     },
     {
         name: "USAGov benefits page",

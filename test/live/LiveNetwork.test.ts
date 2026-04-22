@@ -27,6 +27,14 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     expect(res.title).toBeTruthy();
   }, 30000);
 
+  it("HybridEngine fetches the BHP homepage as markdown", async () => {
+    const res = await hybrid.fetchHTML("https://www.bhp.com/", { markdown: true });
+    expect(res.statusCode).toBe(200);
+    expect(res.contentType).toBe("markdown");
+    expect(res.title).toContain("BHP");
+    expect(res.content).toContain("Resources that make the future possible");
+  }, 45000);
+
   it("HybridEngine follows redirects (httpbin)", async () => {
     const res = await hybrid.fetchContent("https://httpbin.org/redirect/2");
     expect(res.statusCode).toBe(200);
@@ -45,4 +53,3 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     await expect(hybrid.fetchContent("https://httpbin.org/status/404")).rejects.toHaveProperty("statusCode", 404);
   }, 30000);
 });
-

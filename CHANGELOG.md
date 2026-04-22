@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
 - Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
+- Live browser eval scripts now force Vitest to use a Node environment, avoiding `jsdom`-specific network/preflight behavior in GitHub Actions
+- Marked the DVA pension rates live eval baseline as optional so runner-specific HTTP flakiness does not fail the gated static pass-rate check when Hybrid extraction still succeeds
+- Added a dedicated `pnpm test:live:smoke` command and workflow step so CI runs the live smoke suite separately from the auto-render gate
+- Added `https://www.bhp.com/` to the live smoke suite to cover markdown extraction for a real marketing site in the browser-enabled pipeline
 
 ## [0.10.2] - 2026-03-11
 
@@ -150,7 +154,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/purepage/fetch-engines/compare/v0.10.3...v0.11.0
+[0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/purepage/fetch-engines/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/purepage/fetch-engines/compare/v0.9.1...v0.10.0
