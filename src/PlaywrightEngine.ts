@@ -33,6 +33,7 @@ import {
   HUMAN_SIMULATION_SCROLL_DELAY_MS,
   HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS,
 } from "./constants.js"; // Corrected path
+import { isSoftBlockPage } from "./utils/render-detection.js";
 
 function delay(time: number): Promise<void> {
   // Added return type
@@ -109,6 +110,7 @@ export class PlaywrightEngine implements IEngine {
     markdown: true,
     spaMode: false,
     spaRenderDelayMs: 0,
+    challengeWaitMs: 5000,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,
   };
@@ -483,6 +485,11 @@ export class PlaywrightEngine implements IEngine {
    */
   private addToCache(url: string, result: HTMLFetchResult): void {
     if (this.config.cacheTTL <= 0) return; // Don't cache if TTL is zero or negative
+    if (result.contentType === "html" && isSoftBlockPage(result.content)) {
+      // Verification pages are short-lived and must never become the cached
+      // answer for a URL after an automatic challenge has cleared.
+      return;
+    }
 
     const entry: CacheEntry = {
       result: { ...result, isFromCache: true }, // Mark as cached
@@ -872,6 +879,7 @@ export class PlaywrightEngine implements IEngine {
 
       if (isHtmlDocument) {
         await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
+        await this.waitForAutomaticChallenge(page);
       }
 
       const title = await page.title();
@@ -968,6 +976,46 @@ export class PlaywrightEngine implements IEngine {
       if (page) {
         await pool.releasePage(page);
       }
+    }
+  }
+
+  /**
+   * Wait briefly for JavaScript-only browser verification interstitials to
+   * navigate away. Intentionally does not interact with CAPTCHA widgets or
+   * external solving services.
+   */
+  private async waitForAutomaticChallenge(page: Page): Promise<void> {
+    if (this.config.challengeWaitMs <= 0 || !isSoftBlockPage(await page.content())) {
+      return;
+    }
+
+    console.warn(`PlaywrightEngine: Waiting up to ${this.config.challengeWaitMs}ms for automatic verification.`);
+    try {
+      await page.waitForFunction(
+        () => {
+          const pageText = `${document.title} ${document.body?.innerText || ""}`.toLowerCase();
+          const challengeSelector = [
+            ".cf-challenge",
+            "#challenge-form",
+            ".g-recaptcha",
+            ".h-captcha",
+            "[data-sitekey]",
+            "iframe[src*='captcha']",
+          ].join(",");
+          const hasChallengeWidget = Boolean(document.querySelector(challengeSelector));
+          const hasChallengeText =
+            /checking your browser|verify you.{0,10}(?:are |'re )?(?:not a )?(?:ro)?bot|security check|captcha|just a moment/.test(
+              pageText
+            );
+          return !hasChallengeWidget && !hasChallengeText;
+        },
+        undefined,
+        { timeout: this.config.challengeWaitMs }
+      );
+    } catch {
+      // A real CAPTCHA may require user action. Keep the page result rather
+      // than failing the entire fetch, but do not cache it (see addToCache).
+      console.warn("PlaywrightEngine: Browser verification did not clear before the configured timeout.");
     }
   }
 

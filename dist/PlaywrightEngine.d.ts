@@ -107,6 +107,12 @@ export declare class PlaywrightEngine implements IEngine {
      * Ensures return type matches HTMLFetchResult.
      */
     private fetchWithPlaywright;
+    /**
+     * Wait briefly for JavaScript-only browser verification interstitials to
+     * navigate away. Intentionally does not interact with CAPTCHA widgets or
+     * external solving services.
+     */
+    private waitForAutomaticChallenge;
     private applyBlockingRules;
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.

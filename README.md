@@ -191,6 +191,7 @@ Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with def
 | `markdown`                 | `false`     | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal.   |
 | `spaMode`                  | `false`     | Force the more patient render path. Many shell-like pages are auto-detected even when this is off. |
 | `spaRenderDelayMs`         | `0`         | Minimum extra wait budget when `spaMode` is `true`.                                                |
+| `challengeWaitMs`          | `5000`      | Maximum wait for an automatic JavaScript verification page to clear; never solves CAPTCHAs.        |
 | `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.           |
 | `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                      |
 

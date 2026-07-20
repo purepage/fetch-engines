@@ -183,6 +183,13 @@ export interface PlaywrightEngineConfig {
      */
     spaRenderDelayMs?: number;
     /**
+     * Maximum time in milliseconds to wait for an automatic browser-verification
+     * interstitial to clear before serializing the page. This does not solve or
+     * submit CAPTCHAs; it only gives JavaScript-based checks time to complete.
+     * @default 5000
+     */
+    challengeWaitMs?: number;
+    /**
      * An array of string or RegExp patterns. If a URL matches any of these patterns,
      * the HybridEngine will use PlaywrightEngine directly, bypassing FetchEngine and the default
      * shell-detection pass. Useful when you already know a URL family is browser-only.

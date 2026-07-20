@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HybridEngine` now uses a full, non-fast Playwright pass for detected verification pages, waits up to the configurable `challengeWaitMs` (default: 5000 ms) for automatic JavaScript checks to clear, and never caches an unresolved challenge response. CAPTCHA widgets are not solved or submitted automatically.
+
 ### Fixed
 
 - Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
