@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, SpyInstance, vi } from "vi
 import { PlaywrightEngine } from "../src/PlaywrightEngine";
 import { PlaywrightBrowserPool } from "../src/browser/PlaywrightBrowserPool";
 import { COMMON_HEADERS as ENGINE_COMMON_HEADERS } from "../src/constants"; // Actual common headers from engine
-import { MarkdownConverter } from "../src/utils/markdown-converter.js";
+import { injectSourceUrl, MarkdownConverter } from "../src/utils/markdown-converter.js";
 
 // Mock dependencies
 vi.mock("../src/browser/PlaywrightBrowserPool");
@@ -126,6 +126,7 @@ describe("PlaywrightEngine - Headers", () => {
     });
 
     (MarkdownConverter.prototype.convert as SpyInstance).mockImplementation((html) => `markdown: ${html}`);
+    (injectSourceUrl as SpyInstance).mockImplementation((markdown) => markdown);
   });
 
   afterEach(async () => {
@@ -189,7 +190,9 @@ describe("PlaywrightEngine - Headers", () => {
   describe("automatic verification waits", () => {
     it("should wait for an automatic challenge to clear without attempting to solve it", async () => {
       const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
-      mockPage.content.mockResolvedValueOnce(challengePage).mockResolvedValue("<html><body>Verified content</body></html>");
+      mockPage.content
+        .mockResolvedValueOnce(challengePage)
+        .mockResolvedValue("<html><body>Verified content</body></html>");
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, challengeWaitMs: 321 });
 
       await engine.fetchHTML(MOCK_URL);
@@ -202,6 +205,23 @@ describe("PlaywrightEngine - Headers", () => {
       mockPage.content.mockResolvedValue(challengePage);
       mockPage.waitForFunction.mockRejectedValue(new Error("challenge remained"));
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, cacheTTL: 10_000, challengeWaitMs: 1 });
+
+      await engine.fetchHTML(MOCK_URL);
+      await engine.fetchHTML(MOCK_URL);
+
+      expect(mockPage.goto).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not cache an unresolved challenge page rendered as Markdown", async () => {
+      const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
+      mockPage.content.mockResolvedValue(challengePage);
+      mockPage.waitForFunction.mockRejectedValue(new Error("challenge remained"));
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        cacheTTL: 10_000,
+        challengeWaitMs: 1,
+        markdown: true,
+      });
 
       await engine.fetchHTML(MOCK_URL);
       await engine.fetchHTML(MOCK_URL);

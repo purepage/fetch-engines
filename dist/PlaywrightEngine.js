@@ -385,9 +385,10 @@ export class PlaywrightEngine {
     addToCache(url, result) {
         if (this.config.cacheTTL <= 0)
             return; // Don't cache if TTL is zero or negative
-        if (result.contentType === "html" && isSoftBlockPage(result.content)) {
+        if (isSoftBlockPage(result.content)) {
             // Verification pages are short-lived and must never become the cached
-            // answer for a URL after an automatic challenge has cleared.
+            // answer for a URL after an automatic challenge has cleared, whether
+            // the result was serialised as HTML or Markdown.
             return;
         }
         const entry = {
