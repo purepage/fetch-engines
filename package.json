@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "type": "module",
   "description": "Production-grade web extraction: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
@@ -33,7 +33,6 @@
     "@ai-sdk/openai-compatible": "^1.0.28",
     "@kreuzberg/html-to-markdown": "2.27.2",
     "ai": "^5.0.44",
-    "axios": "1.14.0",
     "node-html-parser": "^7.0.1",
     "p-queue": "^7.4.1",
     "playwright": "^1.55.1",
@@ -41,12 +40,11 @@
     "puppeteer-extra-plugin": "^3.2.3",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "user-agents": "^1.1.208",
-    "uuid": "^11.1.0",
+    "uuid": "^14.0.1",
     "zod": "^4.1.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "@types/axios": "^0.14.0",
     "@types/jsdom": "^21.1.6",
     "@types/node": "^18.0.0",
     "@types/user-agents": "^1.0.4",
@@ -64,13 +62,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.29.0",
-    "vitest": "^3.1.1"
-  },
-  "overrides": {
-    "axios": "1.14.0"
-  },
-  "resolutions": {
-    "axios": "1.14.0"
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "minimumReleaseAge": 1440

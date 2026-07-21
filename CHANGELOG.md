@@ -11,10 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `HybridEngine` now uses a full, non-fast Playwright pass for detected verification pages, waits up to the configurable `challengeWaitMs` (default: 5000 ms) for automatic JavaScript checks to clear, and never caches an unresolved challenge response. CAPTCHA widgets are not solved or submitted automatically.
 
+### Changed
+
+- PlaywrightEngine HTTP fallbacks now use native `fetch` (via shared `fetchWithTimeout`) instead of `axios`
+
+### Removed
+
+- `axios` dependency and related version pins/`overrides`/`resolutions` (Node 22+ provides native `fetch`)
+
 ### Fixed
 
 - Playwright no longer caches unresolved verification pages when the requested output is Markdown
-- Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
 - Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
 - Live browser eval scripts now force Vitest to use a Node environment, avoiding `jsdom`-specific network/preflight behavior in GitHub Actions
 - Marked the DVA pension rates live eval baseline as optional so runner-specific HTTP flakiness does not fail the gated static pass-rate check when Hybrid extraction still succeeds

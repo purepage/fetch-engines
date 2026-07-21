@@ -1,38 +1,37 @@
-import type {
-  HTMLFetchResult,
-  ContentFetchResult,
-  ContentFetchOptions,
-  BrowserMetrics,
-  PlaywrightEngineConfig,
-  FetchOptions,
-} from "./types.js";
-import type { IEngine } from "./IEngine.js";
-import { PlaywrightBrowserPool } from "./browser/PlaywrightBrowserPool.js";
 import PQueue from "p-queue";
 import type {
-  Route,
   Page,
   Request as PlaywrightRequest,
   /* BrowserContext, */ Response as PlaywrightResponse,
+  Route,
 } from "playwright"; // Removed unused BrowserContext
-import axios from "axios";
-import { FetchError } from "./errors.js"; // Import FetchError
-import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import type { IEngine } from "./IEngine.js";
+import { PlaywrightBrowserPool } from "./browser/PlaywrightBrowserPool.js";
 import {
-  DEFAULT_HTTP_TIMEOUT,
-  SHORT_DELAY_MS,
-  EVALUATION_TIMEOUT_MS,
   COMMON_HEADERS,
-  MAX_REDIRECTS,
-  REGEX_TITLE_TAG,
-  REGEX_SIMPLE_HTML_TITLE_FALLBACK,
-  REGEX_SANITIZE_HTML_TAGS,
-  REGEX_CHALLENGE_PAGE_KEYWORDS,
+  DEFAULT_HTTP_TIMEOUT,
+  EVALUATION_TIMEOUT_MS,
   HUMAN_SIMULATION_MIN_DELAY_MS,
   HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS,
-  HUMAN_SIMULATION_SCROLL_DELAY_MS,
   HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS,
+  HUMAN_SIMULATION_SCROLL_DELAY_MS,
+  REGEX_CHALLENGE_PAGE_KEYWORDS,
+  REGEX_SANITIZE_HTML_TAGS,
+  REGEX_SIMPLE_HTML_TITLE_FALLBACK,
+  REGEX_TITLE_TAG,
+  SHORT_DELAY_MS,
 } from "./constants.js"; // Corrected path
+import { FetchError } from "./errors.js"; // Import FetchError
+import type {
+  BrowserMetrics,
+  ContentFetchOptions,
+  ContentFetchResult,
+  FetchOptions,
+  HTMLFetchResult,
+  PlaywrightEngineConfig,
+} from "./types.js";
+import { fetchWithTimeout } from "./utils/fetch-with-timeout.js";
+import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import { isSoftBlockPage } from "./utils/render-detection.js";
 
 function delay(time: number): Promise<void> {
@@ -171,7 +170,7 @@ export class PlaywrightEngine implements IEngine {
   }
 
   /**
-   * Fallback method using simple HTTP requests via Axios.
+   * Fallback method using simple HTTP requests via fetch.
    * Ensures return type matches HTMLFetchResult.
    */
   private async fetchHTMLWithHttpFallback(
@@ -180,26 +179,33 @@ export class PlaywrightEngine implements IEngine {
     markdown: boolean = this.config.markdown
   ): Promise<HTMLFetchResult> {
     try {
-      const response = await axios.get(url, {
-        headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
-        maxRedirects: MAX_REDIRECTS,
-        timeout: DEFAULT_HTTP_TIMEOUT,
-        responseType: "text",
-        // Decompress response automatically
-        decompress: true,
-      });
+      const response = await fetchWithTimeout(
+        url,
+        {
+          redirect: "follow",
+          headers: { ...COMMON_HEADERS, ...headers },
+        },
+        DEFAULT_HTTP_TIMEOUT
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const html = await response.text();
+      const finalUrl = response.url || url;
 
       // Extract title using regex (more robust version needed for real HTML)
       // For testing, handle simple cases like <html>Title</html>
-      const titleMatch = response.data.match(REGEX_TITLE_TAG);
+      const titleMatch = html.match(REGEX_TITLE_TAG);
       let title = titleMatch ? titleMatch[1].trim() : "";
       // Simple fallback for testing mocks like <html>Fallback OK</html>
-      if (!title && REGEX_SIMPLE_HTML_TITLE_FALLBACK.test(response.data)) {
-        title = response.data.replace(REGEX_SANITIZE_HTML_TAGS, "").trim();
+      if (!title && REGEX_SIMPLE_HTML_TITLE_FALLBACK.test(html)) {
+        title = html.replace(REGEX_SANITIZE_HTML_TAGS, "").trim();
       }
 
       // Basic check for challenge pages
-      const lowerHtml = response.data.toLowerCase();
+      const lowerHtml = html.toLowerCase();
       const isChallengeOrBot = REGEX_CHALLENGE_PAGE_KEYWORDS.test(lowerHtml);
 
       if (isChallengeOrBot) {
@@ -207,21 +213,17 @@ export class PlaywrightEngine implements IEngine {
         throw new FetchError("Received challenge page via HTTP fallback", "ERR_CHALLENGE_PAGE");
       }
 
-      const originalHtml = response.data;
-      let finalContent = originalHtml;
+      let finalContent = html;
       let finalContentType: "html" | "markdown" = "html";
 
       // Apply markdown conversion based on resolved option
       if (markdown) {
         try {
           const converter = new MarkdownConverter();
-          finalContent = converter.convert(originalHtml, {
-            baseUrl: response.request?.res?.responseUrl || response.config.url || url,
+          finalContent = converter.convert(html, {
+            baseUrl: finalUrl,
           });
-          finalContent = injectSourceUrl(
-            finalContent,
-            response.request?.res?.responseUrl || response.config.url || url
-          );
+          finalContent = injectSourceUrl(finalContent, finalUrl);
           finalContentType = "markdown";
         } catch (conversionError) {
           console.error(`Markdown conversion failed for ${url} (HTTP fallback):`, conversionError);
@@ -233,7 +235,7 @@ export class PlaywrightEngine implements IEngine {
         content: finalContent,
         contentType: finalContentType,
         title: title, // title is extracted from original HTML
-        url: response.request?.res?.responseUrl || response.config.url || url,
+        url: finalUrl,
         isFromCache: false,
         statusCode: response.status,
         error: undefined,
@@ -1274,15 +1276,20 @@ export class PlaywrightEngine implements IEngine {
     if (!currentConfig.useHttpFallback) return null;
 
     try {
-      const response = await axios.get(url, {
-        headers: { ...COMMON_HEADERS, ...currentConfig.headers },
-        maxRedirects: MAX_REDIRECTS,
-        timeout: DEFAULT_HTTP_TIMEOUT,
-        responseType: "arraybuffer", // Get raw binary data
-        decompress: true,
-      });
+      const response = await fetchWithTimeout(
+        url,
+        {
+          redirect: "follow",
+          headers: { ...COMMON_HEADERS, ...currentConfig.headers },
+        },
+        DEFAULT_HTTP_TIMEOUT
+      );
 
-      const contentType = response.headers["content-type"] || "application/octet-stream";
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
 
       // Determine if content is text-based
       const isTextBased =
@@ -1295,9 +1302,9 @@ export class PlaywrightEngine implements IEngine {
 
       let content: string | Buffer;
       if (isTextBased) {
-        content = response.data.toString("utf-8");
+        content = await response.text();
       } else {
-        content = Buffer.from(response.data);
+        content = Buffer.from(await response.arrayBuffer());
       }
 
       // Extract title only if content is HTML
@@ -1311,7 +1318,7 @@ export class PlaywrightEngine implements IEngine {
         content,
         contentType,
         title,
-        url: response.request?.res?.responseUrl || response.config.url || url,
+        url: response.url || url,
         isFromCache: false,
         statusCode: response.status,
         error: undefined,

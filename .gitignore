@@ -78,3 +78,5 @@ build/Release
 *.sw?
 
 scripts/output
+
+.pnpm-store/

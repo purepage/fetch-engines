@@ -1,31 +1,53 @@
-import axios from "axios";
-import { afterEach, beforeEach, describe, expect, it, SpyInstance, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlaywrightEngine } from "../src/PlaywrightEngine";
 import { PlaywrightBrowserPool } from "../src/browser/PlaywrightBrowserPool";
 import { COMMON_HEADERS as ENGINE_COMMON_HEADERS } from "../src/constants"; // Actual common headers from engine
 import { injectSourceUrl, MarkdownConverter } from "../src/utils/markdown-converter.js";
 
+// Shared so the mocked constructor can return the per-test pool instance.
+let mockPoolInstance: {
+  acquirePage: ReturnType<typeof vi.fn>;
+  releasePage: ReturnType<typeof vi.fn>;
+  cleanup: ReturnType<typeof vi.fn>;
+  getMetrics: ReturnType<typeof vi.fn>;
+  initialize: ReturnType<typeof vi.fn>;
+};
+
 // Mock dependencies
-vi.mock("../src/browser/PlaywrightBrowserPool");
-vi.mock("axios");
+vi.mock("../src/browser/PlaywrightBrowserPool", () => {
+  return {
+    PlaywrightBrowserPool: class MockPlaywrightBrowserPool {
+      constructor() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return mockPoolInstance as any;
+      }
+    },
+  };
+});
 vi.mock("p-queue", () => {
   // Mock PQueue to execute tasks immediately for testing
   return {
-    default: vi.fn().mockImplementation(() => ({
-      add: vi.fn((task: () => Promise<any>) => task()), // Immediately execute the task
-      onIdle: vi.fn().mockResolvedValue(undefined),
-      clear: vi.fn(),
-      size: 0,
-      pending: 0,
-    })),
+    default: class MockPQueue {
+      size = 0;
+      pending = 0;
+      add(task: () => Promise<unknown>) {
+        return task();
+      }
+      onIdle() {
+        return Promise.resolve(undefined);
+      }
+      clear() {}
+    },
   };
 });
 vi.mock("../src/utils/markdown-converter.js");
 
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
 describe("PlaywrightEngine - Headers", () => {
   const MOCK_URL = "http://example.com";
   let mockPage: any;
-  let mockPoolInstance: any;
   let engine: PlaywrightEngine;
 
   const DEFAULT_ENGINE_CONFIG_BASE = {
@@ -116,17 +138,18 @@ describe("PlaywrightEngine - Headers", () => {
       getMetrics: vi.fn().mockReturnValue([]),
       initialize: vi.fn().mockResolvedValue(undefined),
     };
-    (PlaywrightBrowserPool as any as SpyInstance).mockImplementation(() => mockPoolInstance);
 
-    (axios.get as SpyInstance).mockResolvedValue({
-      data: "<html><body>Axios Fallback Content</body></html>",
+    mockFetch.mockResolvedValue({
+      ok: true,
       status: 200,
-      headers: { "content-type": "text/html" },
-      request: { res: { responseUrl: MOCK_URL } },
+      headers: new Headers({ "content-type": "text/html" }),
+      text: async () => "<html><body>Fetch Fallback Content</body></html>",
+      arrayBuffer: async () => new TextEncoder().encode("<html><body>Fetch Fallback Content</body></html>").buffer,
+      url: MOCK_URL,
     });
 
-    (MarkdownConverter.prototype.convert as SpyInstance).mockImplementation((html) => `markdown: ${html}`);
-    (injectSourceUrl as SpyInstance).mockImplementation((markdown) => markdown);
+    vi.mocked(MarkdownConverter.prototype.convert).mockImplementation((html) => `markdown: ${html}`);
+    vi.mocked(injectSourceUrl).mockImplementation((markdown) => markdown);
   });
 
   afterEach(async () => {
@@ -230,7 +253,7 @@ describe("PlaywrightEngine - Headers", () => {
     });
   });
 
-  describe("HTTP Fallback Headers (axios.get)", () => {
+  describe("HTTP Fallback Headers (fetch)", () => {
     // Helper to trigger fallback: Make Playwright page.goto fail
     const setupForFallback = () => {
       // This will cause the catch block in _fetchRecursive to be hit.
@@ -245,7 +268,7 @@ describe("PlaywrightEngine - Headers", () => {
       const constructorHeaders = { "X-FB-Construct": "fb-c", "X-Common-Custom": "construct" };
       const fetchOptionsHeaders = { "X-FB-Fetch": "fb-f", "X-Common-Custom": "fetch" };
       const effectiveCustomHeaders = { ...constructorHeaders, ...fetchOptionsHeaders };
-      const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...effectiveCustomHeaders };
+      const expectedFetchHeaders = { ...ENGINE_COMMON_HEADERS, ...effectiveCustomHeaders };
 
       engine = new PlaywrightEngine({
         ...DEFAULT_ENGINE_CONFIG_BASE,
@@ -256,13 +279,13 @@ describe("PlaywrightEngine - Headers", () => {
 
       await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
-      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
+      expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedFetchHeaders }));
     });
 
     it("should use only constructor headers combined with ENGINE_COMMON_HEADERS for fallback if no fetchHTML options headers", async () => {
       setupForFallback();
       const constructorHeaders = { "X-FB-Construct-Only": "val" };
-      const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...constructorHeaders };
+      const expectedFetchHeaders = { ...ENGINE_COMMON_HEADERS, ...constructorHeaders };
 
       engine = new PlaywrightEngine({
         ...DEFAULT_ENGINE_CONFIG_BASE,
@@ -272,13 +295,13 @@ describe("PlaywrightEngine - Headers", () => {
       });
       await engine.fetchHTML(MOCK_URL, { headers: {} });
 
-      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
+      expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedFetchHeaders }));
     });
 
     it("should use only fetchHTML options headers combined with ENGINE_COMMON_HEADERS for fallback if no constructor headers", async () => {
       setupForFallback();
       const fetchOptionsHeaders = { "X-FB-Fetch-Only": "val" };
-      const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...fetchOptionsHeaders };
+      const expectedFetchHeaders = { ...ENGINE_COMMON_HEADERS, ...fetchOptionsHeaders };
 
       engine = new PlaywrightEngine({
         ...DEFAULT_ENGINE_CONFIG_BASE,
@@ -288,7 +311,7 @@ describe("PlaywrightEngine - Headers", () => {
       });
       await engine.fetchHTML(MOCK_URL, { headers: fetchOptionsHeaders });
 
-      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
+      expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedFetchHeaders }));
     });
 
     it("should use only ENGINE_COMMON_HEADERS for fallback if no custom headers are provided at any level", async () => {
@@ -301,14 +324,14 @@ describe("PlaywrightEngine - Headers", () => {
       });
       await engine.fetchHTML(MOCK_URL, { headers: {} }); // Empty options
 
-      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: ENGINE_COMMON_HEADERS }));
+      expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: ENGINE_COMMON_HEADERS }));
     });
 
     it("should allow custom headers to override ENGINE_COMMON_HEADERS keys in fallback", async () => {
       setupForFallback();
       // Example: User-Agent is typically in ENGINE_COMMON_HEADERS
       const customHeaders = { "User-Agent": "MyCustomFallbackAgent/1.0", "X-Unique": "UniqueValue" };
-      const expectedAxiosHeaders = { ...ENGINE_COMMON_HEADERS, ...customHeaders };
+      const expectedFetchHeaders = { ...ENGINE_COMMON_HEADERS, ...customHeaders };
 
       engine = new PlaywrightEngine({
         ...DEFAULT_ENGINE_CONFIG_BASE,
@@ -318,7 +341,7 @@ describe("PlaywrightEngine - Headers", () => {
       });
       await engine.fetchHTML(MOCK_URL, { headers: {} });
 
-      expect(axios.get).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedAxiosHeaders }));
+      expect(mockFetch).toHaveBeenCalledWith(MOCK_URL, expect.objectContaining({ headers: expectedFetchHeaders }));
     });
 
     it("should not attempt HTTP fallback if useHttpFallback is false, even if Playwright fails", async () => {
@@ -331,7 +354,7 @@ describe("PlaywrightEngine - Headers", () => {
 
       // We expect fetchHTML to throw because Playwright fails and fallback is disabled
       await expect(engine.fetchHTML(MOCK_URL, {})).rejects.toThrow();
-      expect(axios.get).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
