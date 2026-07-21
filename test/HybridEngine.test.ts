@@ -374,7 +374,7 @@ describe("HybridEngine - Headers Propagation", () => {
 
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(
       MOCK_URL,
-      expect.objectContaining({ useHttpFallback: false, spaMode: true })
+      expect.objectContaining({ useHttpFallback: false, spaMode: true, fastMode: false })
     );
   });
 });

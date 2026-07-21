@@ -127,11 +127,16 @@ export class HybridEngine {
                 return httpPreferredResult;
             }
             console.warn(`HybridEngine: HTTP fetch for ${url} looks incomplete. Attempting Playwright render.`);
+            const detectedSoftBlock = isSoftBlockPage(fetchResult.content);
             // Skip HTTP fallback (we already know it's a shell) and use SPA rendering path for patient waits.
             const autoRenderOptions = {
                 ...playwrightOptions,
                 useHttpFallback: false,
                 spaMode: true,
+                // Challenge pages need their scripts, styles, and human simulation. Do
+                // not let a caller's fast-mode setting prevent the verification page
+                // from completing before the browser serializes it.
+                fastMode: detectedSoftBlock ? false : playwrightOptions.fastMode,
             };
             try {
                 const playwrightResult = await this.playwrightEngine.fetchHTML(url, autoRenderOptions);
