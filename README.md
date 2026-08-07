@@ -64,6 +64,8 @@ Choose `fetch-engines` when you want full control over extraction, data residenc
 pnpm add @purepageio/fetch-engines
 ```
 
+Repository development and CI require pnpm 11 or newer.
+
 If you plan to use `HybridEngine` or `PlaywrightEngine` (which launch a real browser), install the Playwright browsers once:
 
 ```bash
