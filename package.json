@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "type": "module",
   "description": "Production-grade web extraction: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
@@ -72,11 +72,9 @@
   "resolutions": {
     "axios": "1.14.0"
   },
-  "pnpm": {
-    "minimumReleaseAge": 1440
-  },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
   },
   "repository": {
     "type": "git",
