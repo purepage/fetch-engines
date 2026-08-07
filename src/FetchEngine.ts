@@ -227,8 +227,7 @@ export class FetchEngine implements IEngine {
       // Extract title only if content is HTML
       let title: string | null = null;
       if (typeof content === "string" && contentTypeHeader.includes("html")) {
-        const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-        title = titleMatch ? titleMatch[1].trim() : null;
+        title = extractHtmlTitle(content);
       }
 
       return {

@@ -3,7 +3,8 @@ import PQueue from "p-queue";
 import axios from "axios";
 import { FetchError } from "./errors.js"; // Import FetchError
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
-import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_TITLE_TAG, REGEX_SIMPLE_HTML_TITLE_FALLBACK, REGEX_SANITIZE_HTML_TAGS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, } from "./constants.js"; // Corrected path
+import { extractHtmlTitle } from "./utils/html-metadata.js";
+import { DEFAULT_HTTP_TIMEOUT, SHORT_DELAY_MS, EVALUATION_TIMEOUT_MS, COMMON_HEADERS, MAX_REDIRECTS, REGEX_CHALLENGE_PAGE_KEYWORDS, HUMAN_SIMULATION_MIN_DELAY_MS, HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS, HUMAN_SIMULATION_SCROLL_DELAY_MS, HUMAN_SIMULATION_RANDOM_SCROLL_DELAY_MS, } from "./constants.js"; // Corrected path
 import { isSoftBlockPage } from "./utils/render-detection.js";
 function delay(time) {
     // Added return type
@@ -123,14 +124,7 @@ export class PlaywrightEngine {
                 // Decompress response automatically
                 decompress: true,
             });
-            // Extract title using regex (more robust version needed for real HTML)
-            // For testing, handle simple cases like <html>Title</html>
-            const titleMatch = response.data.match(REGEX_TITLE_TAG);
-            let title = titleMatch ? titleMatch[1].trim() : "";
-            // Simple fallback for testing mocks like <html>Fallback OK</html>
-            if (!title && REGEX_SIMPLE_HTML_TITLE_FALLBACK.test(response.data)) {
-                title = response.data.replace(REGEX_SANITIZE_HTML_TAGS, "").trim();
-            }
+            const title = extractHtmlTitle(response.data);
             // Basic check for challenge pages
             const lowerHtml = response.data.toLowerCase();
             const isChallengeOrBot = REGEX_CHALLENGE_PAGE_KEYWORDS.test(lowerHtml);
@@ -1016,8 +1010,7 @@ export class PlaywrightEngine {
             // Extract title only if content is HTML
             let title = null;
             if (typeof content === "string" && contentType.includes("html")) {
-                const titleMatch = content.match(REGEX_TITLE_TAG);
-                title = titleMatch ? titleMatch[1].trim() : null;
+                title = extractHtmlTitle(content);
             }
             return {
                 content,
@@ -1088,8 +1081,7 @@ export class PlaywrightEngine {
             // Extract title only if content is HTML
             let extractedTitle = title || null;
             if (typeof content === "string" && contentType.includes("html") && !extractedTitle) {
-                const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-                extractedTitle = titleMatch ? titleMatch[1].trim() : null;
+                extractedTitle = extractHtmlTitle(content);
             }
             return {
                 content,

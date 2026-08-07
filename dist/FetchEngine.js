@@ -178,8 +178,7 @@ export class FetchEngine {
             // Extract title only if content is HTML
             let title = null;
             if (typeof content === "string" && contentTypeHeader.includes("html")) {
-                const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-                title = titleMatch ? titleMatch[1].trim() : null;
+                title = extractHtmlTitle(content);
             }
             return {
                 content,

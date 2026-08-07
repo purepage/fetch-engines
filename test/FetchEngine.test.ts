@@ -207,21 +207,6 @@ describe("FetchEngine - Headers", () => {
     expect(result.content).toContain("(https://example.com/about)");
   });
 
-  it("should decode HTML entities in the page title", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: new Headers({ "Content-Type": "text/html" }),
-      text: async () =>
-        "<html><head><title>Anzac Portal: Australia&#039;s military history &amp; veterans</title></head></html>",
-      url: MOCK_URL,
-    });
-
-    const result = await new FetchEngine().fetchHTML(MOCK_URL);
-
-    expect(result.title).toBe("Anzac Portal: Australia's military history & veterans");
-  });
-
   it("should abort fetchHTML requests that exceed the default timeout", async () => {
     vi.useFakeTimers();
     try {
@@ -244,5 +229,42 @@ describe("FetchEngine - Headers", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("FetchEngine - Titles", () => {
+  const MOCK_URL = "http://example.com";
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("should decode nested markup and entities in fetchHTML titles", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "Content-Type": "text/html" }),
+      text: async () =>
+        "<html><head><title>Anzac <em>Portal:</em> Australia&#039;s military history &amp; veterans</title></head></html>",
+      url: MOCK_URL,
+    });
+
+    const result = await new FetchEngine().fetchHTML(MOCK_URL);
+
+    expect(result.title).toBe("Anzac Portal: Australia's military history & veterans");
+  });
+
+  it("should decode nested markup and entities in fetchContent titles", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "Content-Type": "text/html" }),
+      text: async () => "<html><head><title>Content <strong>&#x26;</strong> title</title></head></html>",
+      url: MOCK_URL,
+    });
+
+    const result = await new FetchEngine().fetchContent(MOCK_URL);
+
+    expect(result.title).toBe("Content & title");
   });
 });
