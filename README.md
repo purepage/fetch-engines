@@ -117,6 +117,20 @@ await engine.cleanup();
 Relative links and image URLs in Markdown output are normalized to absolute URLs using the final fetched page URL. The converter strips generic UI chrome (nav/footer/button controls and dense link clusters) using domain-agnostic heuristics, while preserving content on pages without semantic `<main>`/`<article>` containers (e.g., Tailwind CSS docs).
 The extraction path is tuned for publicly accessible content. Paywalled or member-only pages may still return intentionally partial content unless you supply authenticated access yourself.
 
+### Cancellation and cleanup
+
+Pass an `AbortSignal` to cancel an individual request. Aborted requests do not retry or fall back to another engine:
+
+```typescript
+const controller = new AbortController();
+const request = engine.fetchHTML("https://example.com/slow", { signal: controller.signal });
+
+controller.abort();
+await request.catch((error) => console.log(error.code)); // ERR_FETCH_ABORTED
+```
+
+`cleanup()` is terminal and idempotent. Calls made after cleanup starts reject with `ERR_ENGINE_DISPOSED`, and concurrent cleanup calls share the same completion promise. Playwright shutdown waits for graceful browser closure up to `browserCloseTimeout` milliseconds (default `5000`) before terminating the owned browser process. A new Playwright pool waits for an earlier pool's cleanup to finish before launching browsers.
+
 ### Structured extraction
 
 ```typescript
@@ -185,6 +199,7 @@ Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with def
 | `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                                   |
 | `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                              |
 | `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                                  |
+| `browserCloseTimeout`      | `5000`      | Graceful browser shutdown deadline in ms before hard process termination.                          |
 | `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                                 |
 | `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).                  |
 | `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                                  |
@@ -197,11 +212,11 @@ Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with def
 | `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.           |
 | `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                      |
 
-Per-request overrides: `fetchHTML` accepts `fastMode`, `markdown`, `spaMode`, and `headers`, while `fetchContent` supports `fastMode` and `headers`.
+Per-request overrides: `fetchHTML` accepts `fastMode`, `markdown`, `spaMode`, `headers`, and `signal`, while `fetchContent` supports `fastMode`, `headers`, and `signal`.
 
 ## Error handling
 
-Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the underlying error. Log these fields to diagnose issues quickly and tune your retry policy.
+Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the underlying error. Aborted requests use `ERR_FETCH_ABORTED`; requests made after cleanup starts use `ERR_ENGINE_DISPOSED`. Log these fields to diagnose issues quickly and tune your retry policy.
 
 ## Tooling and examples
 

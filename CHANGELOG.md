@@ -10,14 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Repository development and CI now require pnpm 11 or newer, and pnpm workspace settings are defined in `pnpm-workspace.yaml` for pnpm 11 compatibility
-- Bumped the package version to `0.13.0`
+- Bumped the package version to `0.14.0`
+- Engine cleanup is terminal and idempotent: concurrent callers share one completion promise, new requests are rejected once cleanup begins, and replacement Playwright pools wait for the previous pool to finish shutting down
 
 ### Added
 
+- Optional `AbortSignal` support for `fetchHTML` and `fetchContent`, including HTTP and Playwright fallback paths
+- A configurable `browserCloseTimeout` deadline with a hard process-termination fallback for managed browser instances
+- Root exports for `FetchOptions`, `FetchEngineOptions`, and `PlaywrightEngineConfig`
 - `HybridEngine` now uses a full, non-fast Playwright pass for detected verification pages, waits up to the configurable `challengeWaitMs` (default: 5000 ms) for automatic JavaScript checks to clear, and never caches an unresolved challenge response. CAPTCHA widgets are not solved or submitted automatically.
 
 ### Fixed
 
+- Prevented stalled browser cleanup from allowing overlapping Chromium pools after a caller timeout
 - Playwright no longer caches unresolved verification pages when the requested output is Markdown
 - Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
 - Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
@@ -165,7 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.13.0...HEAD
 [0.11.0]: https://github.com/purepage/fetch-engines/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2

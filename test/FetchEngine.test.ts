@@ -230,4 +230,77 @@ describe("FetchEngine - Headers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("should abort fetchHTML when the caller abort signal fires", async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementationOnce((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    });
+
+    const engine = new FetchEngine();
+    const request = expect(engine.fetchHTML(MOCK_URL, { signal: controller.signal })).rejects.toMatchObject({
+      code: "ERR_FETCH_ABORTED",
+    });
+
+    controller.abort();
+    await request;
+  });
+
+  it("should keep caller cancellation active while reading the response body", async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementationOnce((_url, init) => {
+      const signal = init?.signal as AbortSignal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "Content-Type": "text/html" }),
+        url: MOCK_URL,
+        text: () =>
+          new Promise<string>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+          }),
+      });
+    });
+
+    const engine = new FetchEngine();
+    const request = expect(engine.fetchHTML(MOCK_URL, { signal: controller.signal })).rejects.toMatchObject({
+      code: "ERR_FETCH_ABORTED",
+    });
+
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await request;
+  });
+
+  it("should keep the timeout active while reading the response body", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetch.mockImplementationOnce((_url, init) => {
+        const signal = init?.signal as AbortSignal;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ "Content-Type": "text/html" }),
+          url: MOCK_URL,
+          text: () =>
+            new Promise<string>((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+            }),
+        });
+      });
+
+      const engine = new FetchEngine();
+      const request = expect(engine.fetchHTML(MOCK_URL)).rejects.toMatchObject({
+        code: "ERR_FETCH_TIMEOUT",
+      });
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_HTTP_TIMEOUT + 1);
+      await request;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -2,7 +2,13 @@ import { FetchEngine, FetchEngineHttpError } from "./FetchEngine.js";
 import { PlaywrightEngine } from "./PlaywrightEngine.js";
 import type { IEngine } from "./IEngine.js";
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
-import { FetchError } from "./errors.js";
+import {
+  combineAbortSignals,
+  createFetchAbortedError,
+  ENGINE_DISPOSED_CODE,
+  FetchError,
+  isFetchAbortedError,
+} from "./errors.js";
 import {
   assessHtmlRenderNeed,
   assessSerializedContent,
@@ -27,6 +33,9 @@ export class HybridEngine implements IEngine {
   private readonly playwrightEngine: PlaywrightEngine;
   private readonly config: PlaywrightEngineConfig; // Store config for potential per-request PW overrides
   private readonly playwrightOnlyPatterns: (string | RegExp)[];
+  private readonly lifecycleController = new AbortController();
+  private disposed = false;
+  private cleanupPromise: Promise<void> | null = null;
 
   constructor(config: PlaywrightEngineConfig = {}) {
     // Pass relevant config parts to each engine
@@ -35,6 +44,20 @@ export class HybridEngine implements IEngine {
     this.playwrightEngine = new PlaywrightEngine(config);
     this.config = config; // Store for merging later
     this.playwrightOnlyPatterns = config.playwrightOnlyPatterns || [];
+  }
+
+  private requestSignal(signal?: AbortSignal): AbortSignal {
+    if (!signal) return this.lifecycleController.signal;
+    return combineAbortSignals([this.lifecycleController.signal, signal]);
+  }
+
+  private assertUsable(signal?: AbortSignal): void {
+    if (this.disposed) {
+      throw new FetchError("Engine has already been cleaned up", ENGINE_DISPOSED_CODE);
+    }
+    if (signal?.aborted || this.lifecycleController.signal.aborted) {
+      throw createFetchAbortedError();
+    }
   }
 
   private _convertHtmlToMarkdown(htmlResult: HTMLFetchResult): HTMLFetchResult {
@@ -71,7 +94,8 @@ export class HybridEngine implements IEngine {
 
   private async _fetchHtmlWithRetry(
     url: string,
-    headers: Record<string, string> | undefined
+    headers: Record<string, string> | undefined,
+    signal: AbortSignal
   ): Promise<HTMLFetchResult> {
     let lastError: unknown;
 
@@ -80,6 +104,7 @@ export class HybridEngine implements IEngine {
         return await this.fetchEngine.fetchHTML(url, {
           markdown: false,
           headers,
+          signal,
         });
       } catch (error: unknown) {
         lastError = error;
@@ -124,6 +149,8 @@ export class HybridEngine implements IEngine {
   }
 
   async fetchHTML(url: string, options: FetchOptions = {}): Promise<HTMLFetchResult> {
+    const signal = this.requestSignal(options.signal);
+    this.assertUsable(signal);
     // Determine effective SPA mode and markdown options
     // HybridEngine defaults to false for these if not otherwise specified in its own config or per-request options.
     const effectiveSpaMode =
@@ -154,6 +181,7 @@ export class HybridEngine implements IEngine {
       headers: mergedHeadersForPlaywright, // Assign the correctly merged headers
       markdown: effectiveMarkdown,
       spaMode: effectiveSpaMode,
+      signal,
     };
 
     // Check playwrightOnlyPatterns first
@@ -170,7 +198,7 @@ export class HybridEngine implements IEngine {
     }
 
     try {
-      const fetchResult = await this._fetchHtmlWithRetry(url, options.headers);
+      const fetchResult = await this._fetchHtmlWithRetry(url, options.headers, signal);
       const httpPreferredResult = effectiveMarkdown ? this._convertHtmlToMarkdown(fetchResult) : fetchResult;
 
       if (!this._shouldAutoRender(fetchResult, effectiveSpaMode)) {
@@ -203,11 +231,17 @@ export class HybridEngine implements IEngine {
 
         return playwrightResult;
       } catch (playwrightError: unknown) {
+        if (isFetchAbortedError(playwrightError) || signal.aborted) {
+          throw createFetchAbortedError(playwrightError instanceof Error ? playwrightError : undefined);
+        }
         const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
         console.warn(`HybridEngine: Playwright render failed for ${url}: ${pwMessage}. Returning HTTP result.`);
         return httpPreferredResult;
       }
     } catch (fetchError: unknown) {
+      if (isFetchAbortedError(fetchError) || signal.aborted) {
+        throw createFetchAbortedError(fetchError instanceof Error ? fetchError : undefined);
+      }
       // If FetchEngine returned a 404, do not attempt Playwright fallback
       if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
         console.warn(`HybridEngine: FetchEngine returned 404 for ${url}. Not falling back.`);
@@ -238,26 +272,32 @@ export class HybridEngine implements IEngine {
    * @throws {FetchError} If both engines fail to fetch the content.
    */
   async fetchContent(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+    const signal = this.requestSignal(options.signal);
+    this.assertUsable(signal);
+    const requestOptions = { ...options, signal };
     // Check playwrightOnlyPatterns first
     for (const pattern of this.playwrightOnlyPatterns) {
       if (typeof pattern === "string" && url.includes(pattern)) {
         console.warn(
           `HybridEngine: URL ${url} matches string pattern "${pattern}". Using PlaywrightEngine directly for content fetch.`
         );
-        return this.playwrightEngine.fetchContent(url, options);
+        return this.playwrightEngine.fetchContent(url, requestOptions);
       } else if (pattern instanceof RegExp && pattern.test(url)) {
         console.warn(
           `HybridEngine: URL ${url} matches regex pattern "${pattern.toString()}". Using PlaywrightEngine directly for content fetch.`
         );
-        return this.playwrightEngine.fetchContent(url, options);
+        return this.playwrightEngine.fetchContent(url, requestOptions);
       }
     }
 
     try {
       // Try FetchEngine first
-      const fetchResult = await this._fetchContentWithRetry(url, options);
+      const fetchResult = await this._fetchContentWithRetry(url, requestOptions);
       return fetchResult;
     } catch (fetchError: unknown) {
+      if (isFetchAbortedError(fetchError) || signal.aborted) {
+        throw createFetchAbortedError(fetchError instanceof Error ? fetchError : undefined);
+      }
       // If FetchEngine returned a 404, do not attempt Playwright fallback
       if (fetchError instanceof FetchEngineHttpError && fetchError.statusCode === 404) {
         console.warn(`HybridEngine: FetchEngine returned 404 for content fetch ${url}. Not falling back.`);
@@ -269,7 +309,7 @@ export class HybridEngine implements IEngine {
       );
       try {
         // Fallback to PlaywrightEngine
-        const playwrightResult = await this.playwrightEngine.fetchContent(url, options);
+        const playwrightResult = await this.playwrightEngine.fetchContent(url, requestOptions);
         return playwrightResult;
       } catch (playwrightError: unknown) {
         const pwMessage = playwrightError instanceof Error ? playwrightError.message : String(playwrightError);
@@ -289,10 +329,15 @@ export class HybridEngine implements IEngine {
   /**
    * Calls cleanup on both underlying engines.
    */
-  async cleanup(): Promise<void> {
-    await Promise.allSettled([
+  cleanup(): Promise<void> {
+    if (this.cleanupPromise) return this.cleanupPromise;
+
+    this.disposed = true;
+    this.lifecycleController.abort();
+    this.cleanupPromise = Promise.all([
       this.fetchEngine.cleanup(), // Although a no-op, call for consistency
       this.playwrightEngine.cleanup(),
-    ]);
+    ]).then(() => undefined);
+    return this.cleanupPromise;
   }
 }

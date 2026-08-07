@@ -16,10 +16,18 @@ import type {
   /* BrowserContext, */ Response as PlaywrightResponse,
 } from "playwright"; // Removed unused BrowserContext
 import axios from "axios";
-import { FetchError } from "./errors.js"; // Import FetchError
+import {
+  createFetchAbortedError,
+  combineAbortSignals,
+  ENGINE_DISPOSED_CODE,
+  FetchError,
+  isFetchAbortedError,
+  waitForAbortSignal,
+} from "./errors.js";
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
 import {
   DEFAULT_HTTP_TIMEOUT,
+  DEFAULT_BROWSER_CLOSE_TIMEOUT,
   SHORT_DELAY_MS,
   EVALUATION_TIMEOUT_MS,
   COMMON_HEADERS,
@@ -35,9 +43,24 @@ import {
 } from "./constants.js"; // Corrected path
 import { isSoftBlockPage } from "./utils/render-detection.js";
 
-function delay(time: number): Promise<void> {
-  // Added return type
-  return new Promise((resolve) => setTimeout(resolve, time));
+function delay(time: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createFetchAbortedError());
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, time);
+    const abort = (): void => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(createFetchAbortedError());
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 interface RenderedDomSnapshot {
@@ -82,6 +105,9 @@ export class PlaywrightEngine implements IEngine {
   private readonly queue: PQueue;
   private readonly cache: Map<string, CacheEntry> = new Map();
   private readonly config: ResolvedPlaywrightEngineConfig;
+  private readonly lifecycleController = new AbortController();
+  private disposed = false;
+  private cleanupPromise: Promise<void> | null = null;
 
   // Browser pooling safety flags
   private initializingBrowserPool: boolean = false;
@@ -102,6 +128,7 @@ export class PlaywrightEngine implements IEngine {
     maxBrowsers: 2,
     maxPagesPerContext: 6,
     maxBrowserAge: 20 * 60 * 1000,
+    browserCloseTimeout: DEFAULT_BROWSER_CLOSE_TIMEOUT,
     healthCheckInterval: 60 * 1000,
     poolBlockedDomains: [],
     poolBlockedResourceTypes: [],
@@ -127,32 +154,51 @@ export class PlaywrightEngine implements IEngine {
     this.queue = new PQueue({ concurrency: this.config.concurrentPages });
   }
 
+  private requestSignal(signal?: AbortSignal): AbortSignal {
+    if (!signal) return this.lifecycleController.signal;
+    return combineAbortSignals([this.lifecycleController.signal, signal]);
+  }
+
+  private assertUsable(signal?: AbortSignal): void {
+    if (this.disposed) {
+      throw new FetchError("Engine has already been cleaned up", ENGINE_DISPOSED_CODE);
+    }
+    if (signal?.aborted || this.lifecycleController.signal.aborted) {
+      throw createFetchAbortedError();
+    }
+  }
+
   /**
    * Initialize the browser pool with improved error handling and mode switching.
    */
   private async initializeBrowserPool(useHeadedMode: boolean = false): Promise<void> {
+    this.assertUsable();
     if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
       return;
     }
     if (this.initializingBrowserPool) {
       while (this.initializingBrowserPool) {
-        await delay(SHORT_DELAY_MS);
+        await delay(SHORT_DELAY_MS, this.lifecycleController.signal);
       }
+      this.assertUsable();
       if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
         return;
       }
     }
     this.initializingBrowserPool = true;
+    let candidatePool: PlaywrightBrowserPool | null = null;
     try {
       if (this.browserPool && this.isUsingHeadedMode !== useHeadedMode) {
         await this.browserPool.cleanup();
         this.browserPool = null;
       }
+      this.assertUsable();
       this.isUsingHeadedMode = useHeadedMode;
-      this.browserPool = new PlaywrightBrowserPool({
+      candidatePool = new PlaywrightBrowserPool({
         maxBrowsers: this.config.maxBrowsers,
         maxPagesPerContext: this.config.maxPagesPerContext,
         maxBrowserAge: this.config.maxBrowserAge,
+        browserCloseTimeout: this.config.browserCloseTimeout,
         healthCheckInterval: this.config.healthCheckInterval,
         useHeadedMode: useHeadedMode,
         blockedDomains: this.config.poolBlockedDomains,
@@ -160,12 +206,18 @@ export class PlaywrightEngine implements IEngine {
         proxy: this.config.proxy,
         launchOptions: this.config.playwrightLaunchOptions,
       });
-      await this.browserPool.initialize();
+      await candidatePool.initialize();
+      this.assertUsable();
+      this.browserPool = candidatePool;
+      candidatePool = null;
     } catch (error) {
       this.browserPool = null;
       this.isUsingHeadedMode = false;
       throw error;
     } finally {
+      if (candidatePool) {
+        await candidatePool.cleanup();
+      }
       this.initializingBrowserPool = false;
     }
   }
@@ -177,14 +229,17 @@ export class PlaywrightEngine implements IEngine {
   private async fetchHTMLWithHttpFallback(
     url: string,
     headers: Record<string, string> = {},
-    markdown: boolean = this.config.markdown
+    markdown: boolean = this.config.markdown,
+    signal?: AbortSignal
   ): Promise<HTMLFetchResult> {
+    this.assertUsable(signal);
     try {
       const response = await axios.get(url, {
         headers: { ...COMMON_HEADERS, ...headers }, // Merge provided headers with common headers
         maxRedirects: MAX_REDIRECTS,
         timeout: DEFAULT_HTTP_TIMEOUT,
         responseType: "text",
+        signal,
         // Decompress response automatically
         decompress: true,
       });
@@ -239,6 +294,9 @@ export class PlaywrightEngine implements IEngine {
         error: undefined,
       };
     } catch (error: unknown) {
+      if (signal?.aborted) {
+        throw createFetchAbortedError(error instanceof Error ? error : undefined);
+      }
       if (!(error instanceof FetchError)) {
         const message = error instanceof Error ? error.message : String(error);
         const cause = error instanceof Error ? error : undefined;
@@ -513,6 +571,8 @@ export class PlaywrightEngine implements IEngine {
     url: string,
     options: FetchOptions & { markdown?: boolean; spaMode?: boolean } = {} // options includes headers?
   ): Promise<HTMLFetchResult> {
+    const signal = this.requestSignal(options.signal);
+    this.assertUsable(signal);
     const constructorHeaders = this.config.headers || {};
     const requestSpecificHeaders = options.headers || {};
     const effectiveHeaders = { ...constructorHeaders, ...requestSpecificHeaders };
@@ -523,6 +583,7 @@ export class PlaywrightEngine implements IEngine {
       fastMode: options.fastMode === undefined ? this.config.defaultFastMode : options.fastMode,
       spaMode: options.spaMode === undefined ? this.config.spaMode : options.spaMode,
       headers: effectiveHeaders, // Ensure effectiveHeaders are part of the config for _fetchRecursive
+      signal,
       // Ensure all fields expected by _fetchRecursive's currentConfig are present
       // Most come from this.config, which is ResolvedPlaywrightEngineConfig
       // Check if playwrightOnlyPatterns is needed in _fetchRecursive context (likely not)
@@ -617,7 +678,12 @@ export class PlaywrightEngine implements IEngine {
     }
 
     try {
-      const httpResult = await this.fetchHTMLWithHttpFallback(url, currentConfig.headers, currentConfig.markdown);
+      const httpResult = await this.fetchHTMLWithHttpFallback(
+        url,
+        currentConfig.headers,
+        currentConfig.markdown,
+        currentConfig.signal
+      );
       // If successful, cache it (addToCache handles TTL check)
       this.addToCache(url, httpResult);
       return httpResult;
@@ -647,8 +713,9 @@ export class PlaywrightEngine implements IEngine {
    */
   private async _ensureBrowserPoolInitialized(
     useHeadedMode: boolean,
-    currentConfig: Required<{ retryDelay: number }>
+    currentConfig: Required<{ retryDelay: number }> & { signal?: AbortSignal }
   ): Promise<void> {
+    this.assertUsable(currentConfig.signal);
     // This check is slightly different from initializeBrowserPool internal check,
     // as it needs to be called before attempting initialization within _fetchRecursive
     if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
@@ -656,15 +723,18 @@ export class PlaywrightEngine implements IEngine {
     }
 
     try {
-      await this.initializeBrowserPool(useHeadedMode);
+      await waitForAbortSignal(this.initializeBrowserPool(useHeadedMode), currentConfig.signal);
     } catch (initError) {
+      if (isFetchAbortedError(initError) || currentConfig.signal?.aborted) {
+        throw createFetchAbortedError(initError instanceof Error ? initError : undefined);
+      }
       // Allow one retry for pool initialization failure as per original _fetchRecursive logic
       console.warn(
         `Browser pool initialization failed. Retrying once after delay... Error: ${(initError as Error).message}`
       );
-      await delay(currentConfig.retryDelay);
+      await delay(currentConfig.retryDelay, currentConfig.signal);
       try {
-        await this.initializeBrowserPool(useHeadedMode);
+        await waitForAbortSignal(this.initializeBrowserPool(useHeadedMode), currentConfig.signal);
       } catch (secondInitError) {
         throw new FetchError(
           `Pool initialization failed after retry: ${(secondInitError as Error).message}`,
@@ -704,6 +774,7 @@ export class PlaywrightEngine implements IEngine {
     >,
     retryAttempt: number
   ): Promise<HTMLFetchResult> {
+    this.assertUsable(currentConfig.signal);
     const isSpaMode = currentConfig.spaMode;
 
     // 1. Cache Check (only on the very first attempt)
@@ -730,18 +801,23 @@ export class PlaywrightEngine implements IEngine {
 
       await this._ensureBrowserPoolInitialized(useHeadedMode, currentConfig);
 
-      // browserPool is guaranteed to be non-null here by _ensureBrowserPoolInitialized
-      // The non-null assertion operator (!) is safe to use here.
-      const result = await this.queue.add(() =>
-        this.fetchWithPlaywright(
-          url,
-          this.browserPool!,
-          currentConfig.fastMode, // Pass the current fastMode setting
-          currentConfig.markdown,
-          isSpaMode,
-          currentConfig.spaRenderDelayMs,
-          currentConfig.headers // Pass effective headers
-        )
+      const browserPool = this.browserPool;
+      if (!browserPool) {
+        throw new FetchError("Browser pool unavailable after initialization attempt.", "ERR_POOL_UNAVAILABLE");
+      }
+      const result = await this.queue.add(
+        () =>
+          this.fetchWithPlaywright(
+            url,
+            browserPool,
+            currentConfig.fastMode,
+            currentConfig.markdown,
+            isSpaMode,
+            currentConfig.spaRenderDelayMs,
+            currentConfig.headers,
+            currentConfig.signal
+          ),
+        { signal: currentConfig.signal }
       );
 
       if (!result) {
@@ -752,6 +828,9 @@ export class PlaywrightEngine implements IEngine {
       this.addToCache(url, result); // Cache successful Playwright result
       return result;
     } catch (error: unknown) {
+      if (isFetchAbortedError(error) || currentConfig.signal.aborted) {
+        throw createFetchAbortedError(error instanceof Error ? error : undefined);
+      }
       // Retry logic:
       // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
       if (currentConfig.fastMode && retryAttempt === 0) {
@@ -765,7 +844,7 @@ export class PlaywrightEngine implements IEngine {
         console.warn(
           `Fetch attempt ${retryAttempt + 1} for ${url} failed. Retrying after delay... Error: ${errorMessage}`
         );
-        await delay(currentConfig.retryDelay);
+        await delay(currentConfig.retryDelay, currentConfig.signal);
         return this._fetchRecursive(url, currentConfig, retryAttempt + 1);
       }
 
@@ -813,12 +892,21 @@ export class PlaywrightEngine implements IEngine {
     convertToMarkdown: boolean,
     isSpaMode: boolean, // Added isSpaMode parameter
     spaRenderDelayMs: number, // Added spaRenderDelayMs parameter
-    headers?: Record<string, string> // Added headers parameter
+    headers: Record<string, string> | undefined,
+    signal: AbortSignal
   ): Promise<HTMLFetchResult> {
     let page: Page | null = null;
+    const abortPage = (): void => {
+      if (page && !page.isClosed()) {
+        void page.close().catch(() => undefined);
+      }
+    };
     try {
+      this.assertUsable(signal);
       try {
-        page = await pool.acquirePage();
+        page = await pool.acquirePage(signal);
+        signal.addEventListener("abort", abortPage, { once: true });
+        this.assertUsable(signal);
       } catch (acquireError: unknown) {
         if (acquireError instanceof FetchError) throw acquireError;
         const message = acquireError instanceof Error ? acquireError.message : String(acquireError);
@@ -830,6 +918,7 @@ export class PlaywrightEngine implements IEngine {
       }
 
       // If SPA mode is active, force fastMode to false to ensure all resources load
+      this.assertUsable(signal);
       const actualFastMode = isSpaMode ? false : fastMode;
       await this.applyBlockingRules(page, actualFastMode);
 
@@ -845,11 +934,15 @@ export class PlaywrightEngine implements IEngine {
 
       let response: PlaywrightResponse | null = null;
       try {
+        this.assertUsable(signal);
         response = await page.goto(url, {
           waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
           timeout: isSpaMode ? 20000 : 12000, // Keep under typical test timeouts
         });
       } catch (navigationError: unknown) {
+        if (signal.aborted) {
+          throw createFetchAbortedError(navigationError instanceof Error ? navigationError : undefined);
+        }
         const message = navigationError instanceof Error ? navigationError.message : String(navigationError);
         throw new FetchError(
           `Playwright navigation failed: ${message}`,
@@ -879,10 +972,12 @@ export class PlaywrightEngine implements IEngine {
         actualContentTypeHeader.startsWith("text/html") || actualContentTypeHeader.startsWith("application/xhtml+xml");
 
       if (isHtmlDocument) {
+        this.assertUsable(signal);
         await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
         await this.waitForAutomaticChallenge(page);
       }
 
+      this.assertUsable(signal);
       const title = await page.title();
       const finalUrl = page.url();
       const status = response.status();
@@ -974,6 +1069,7 @@ export class PlaywrightEngine implements IEngine {
         error: undefined,
       };
     } finally {
+      signal.removeEventListener("abort", abortPage);
       if (page) {
         await pool.releasePage(page);
       }
@@ -1067,16 +1163,27 @@ export class PlaywrightEngine implements IEngine {
    * It is crucial to call this method when finished with the engine instance to release resources.
    * @returns A Promise that resolves when cleanup is complete.
    */
-  async cleanup(): Promise<void> {
+  private async cleanupInternal(pool: PlaywrightBrowserPool | null): Promise<void> {
     try {
-      await this.queue.onIdle(); // Wait for active tasks
-      this.queue.clear(); // Clear pending tasks
-
-      if (this.browserPool) {
-        await this.browserPool.cleanup();
-        this.browserPool = null;
+      const poolCleanup = pool?.cleanup();
+      const queueIdle = this.queue.onIdle();
+      while (this.initializingBrowserPool) {
+        await delay(SHORT_DELAY_MS);
       }
-      this.isUsingHeadedMode = false; // Reset mode flag
+      await poolCleanup;
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, this.config.browserCloseTimeout);
+        void queueIdle.then(
+          () => {
+            clearTimeout(timeout);
+            resolve();
+          },
+          () => {
+            clearTimeout(timeout);
+            resolve();
+          }
+        );
+      });
     } catch (cleanupError: unknown) {
       const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
       // Errors during cleanup are logged as warnings, as they might indicate resource leak issues.
@@ -1084,7 +1191,20 @@ export class PlaywrightEngine implements IEngine {
         `Error during PlaywrightEngine cleanup: ${message}`,
         cleanupError instanceof Error ? cleanupError : undefined
       );
+      throw cleanupError;
     }
+  }
+
+  cleanup(): Promise<void> {
+    if (this.cleanupPromise) return this.cleanupPromise;
+
+    this.disposed = true;
+    this.lifecycleController.abort();
+    const pool = this.browserPool;
+    this.browserPool = null;
+    this.isUsingHeadedMode = false;
+    this.cleanupPromise = this.cleanupInternal(pool);
+    return this.cleanupPromise;
   }
 
   /**
@@ -1119,6 +1239,8 @@ export class PlaywrightEngine implements IEngine {
    * @throws {FetchError} If the fetch operation fails after all retries.
    */
   async fetchContent(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+    const signal = this.requestSignal(options.signal);
+    this.assertUsable(signal);
     // Build current config by merging defaults with per-request options
     const currentConfig: Required<
       ContentFetchOptions & {
@@ -1140,6 +1262,7 @@ export class PlaywrightEngine implements IEngine {
       // From per-request options
       fastMode: options.fastMode !== undefined ? options.fastMode : this.config.defaultFastMode,
       headers: options.headers || this.config.headers || {},
+      signal,
     };
 
     // Check cache first
@@ -1221,6 +1344,7 @@ export class PlaywrightEngine implements IEngine {
     >,
     retryAttempt: number
   ): Promise<ContentFetchResult> {
+    this.assertUsable(currentConfig.signal);
     try {
       // Try HTTP fallback first if enabled
       if (currentConfig.useHttpFallback) {
@@ -1230,6 +1354,9 @@ export class PlaywrightEngine implements IEngine {
             return httpResult;
           }
         } catch (httpError) {
+          if (isFetchAbortedError(httpError) || currentConfig.signal.aborted) {
+            throw createFetchAbortedError(httpError instanceof Error ? httpError : undefined);
+          }
           // Log but don't throw - will try Playwright next
           const msg = httpError instanceof Error ? httpError.message : String(httpError);
           console.warn(`HTTP fallback failed for ${url}: ${msg}. Trying Playwright.`);
@@ -1240,22 +1367,27 @@ export class PlaywrightEngine implements IEngine {
       const useHeadedMode = currentConfig.useHeadedMode || this.shouldUseHeadedMode(url);
       await this._ensureBrowserPoolInitialized(useHeadedMode, currentConfig);
 
-      if (!this.browserPool) {
+      const browserPool = this.browserPool;
+      if (!browserPool) {
         throw new FetchError("Browser pool initialization failed", "ERR_BROWSER_POOL_EXHAUSTED");
       }
 
       // Use Playwright to fetch content
       return await this.fetchContentWithPlaywright(
         url,
-        this.browserPool,
+        browserPool,
         currentConfig.fastMode,
-        currentConfig.headers
+        currentConfig.headers,
+        currentConfig.signal
       );
     } catch (error: unknown) {
+      if (isFetchAbortedError(error) || currentConfig.signal.aborted) {
+        throw createFetchAbortedError(error instanceof Error ? error : undefined);
+      }
       // Handle retry logic
       if (retryAttempt < currentConfig.maxRetries) {
         console.warn(`Content fetch attempt ${retryAttempt + 1} failed for ${url}, retrying...`);
-        await delay(currentConfig.retryDelay);
+        await delay(currentConfig.retryDelay, currentConfig.signal);
         return this._fetchContentRecursive(url, currentConfig, retryAttempt + 1);
       }
 
@@ -1280,6 +1412,7 @@ export class PlaywrightEngine implements IEngine {
         timeout: DEFAULT_HTTP_TIMEOUT,
         responseType: "arraybuffer", // Get raw binary data
         decompress: true,
+        signal: currentConfig.signal,
       });
 
       const contentType = response.headers["content-type"] || "application/octet-stream";
@@ -1317,6 +1450,9 @@ export class PlaywrightEngine implements IEngine {
         error: undefined,
       };
     } catch (error: unknown) {
+      if (currentConfig.signal.aborted) {
+        throw createFetchAbortedError(error instanceof Error ? error : undefined);
+      }
       // Let caller handle fallback to Playwright
       const message = error instanceof Error ? error.message : String(error);
       throw new FetchError(
@@ -1334,11 +1470,20 @@ export class PlaywrightEngine implements IEngine {
     url: string,
     pool: PlaywrightBrowserPool,
     fastMode: boolean,
-    headers?: Record<string, string>
+    headers: Record<string, string> | undefined,
+    signal: AbortSignal
   ): Promise<ContentFetchResult> {
     let page: Page | null = null;
+    const abortPage = (): void => {
+      if (page && !page.isClosed()) {
+        void page.close().catch(() => undefined);
+      }
+    };
     try {
-      page = await pool.acquirePage();
+      this.assertUsable(signal);
+      page = await pool.acquirePage(signal);
+      signal.addEventListener("abort", abortPage, { once: true });
+      this.assertUsable(signal);
 
       // Set headers if provided
       if (headers && Object.keys(headers).length > 0) {
@@ -1351,10 +1496,18 @@ export class PlaywrightEngine implements IEngine {
       }
 
       // Navigate to the page
-      const response = await page.goto(url, {
-        waitUntil: "domcontentloaded",
-        timeout: 10000,
-      });
+      let response: PlaywrightResponse | null = null;
+      try {
+        response = await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 10000,
+        });
+      } catch (navigationError: unknown) {
+        if (signal.aborted) {
+          throw createFetchAbortedError(navigationError instanceof Error ? navigationError : undefined);
+        }
+        throw navigationError;
+      }
 
       if (!response) {
         throw new FetchError(`Failed to get response for ${url}`, "ERR_NAVIGATION");
@@ -1375,9 +1528,11 @@ export class PlaywrightEngine implements IEngine {
         normalizedContentType.startsWith("text/html") || normalizedContentType.startsWith("application/xhtml+xml");
 
       if (isHtmlDocument) {
+        this.assertUsable(signal);
         await this.waitForRenderedDomIfNeeded(page, false, 0);
       }
 
+      this.assertUsable(signal);
       const title = await page.title();
       const finalUrl = page.url();
       const status = response.status();
@@ -1416,6 +1571,7 @@ export class PlaywrightEngine implements IEngine {
         error: undefined,
       };
     } finally {
+      signal.removeEventListener("abort", abortPage);
       if (page) {
         await pool.releasePage(page);
       }

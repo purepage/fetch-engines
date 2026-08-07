@@ -136,6 +136,12 @@ export interface PlaywrightEngineConfig {
    */
   maxBrowserAge?: number;
   /**
+   * Maximum time in milliseconds allowed for graceful browser shutdown before
+   * a hard process termination is attempted.
+   * @default 5000
+   */
+  browserCloseTimeout?: number;
+  /**
    * How often (in ms) the pool checks browser health.
    * Passed to PlaywrightBrowserPool.
    * @default 60000 (1 minute)
@@ -229,6 +235,8 @@ export interface PlaywrightEngineConfig {
 export interface FetchOptions {
   /** Overrides the engine's defaultFastMode for this specific request. (Playwright/Hybrid only) */
   fastMode?: boolean;
+  /** Cancels this request when the signal is aborted. */
+  signal?: AbortSignal;
   /** Overrides the engine's markdown setting for this specific request. (Playwright/Hybrid only) */
   markdown?: boolean;
   /** Overrides the engine's spaMode setting for this specific request. (Playwright/Hybrid only) */
@@ -246,6 +254,8 @@ export interface ContentFetchOptions {
   headers?: Record<string, string>;
   /** Overrides the engine's defaultFastMode for this specific request. (Playwright/Hybrid only) */
   fastMode?: boolean;
+  /** Cancels this request when the signal is aborted. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -256,5 +266,7 @@ export interface FetchEngineOptions {
   markdown?: boolean;
   /** Optional headers to include in the request. */
   headers?: Record<string, string>;
+  /** Cancels this request when the signal is aborted. */
+  signal?: AbortSignal;
   // Add other FetchEngine-specific options here if needed
 }

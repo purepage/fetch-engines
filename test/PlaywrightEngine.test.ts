@@ -83,6 +83,7 @@ describe("PlaywrightEngine - Headers", () => {
       content: vi.fn().mockResolvedValue("<html><body>Playwright Content</body></html>"),
       url: vi.fn().mockReturnValue(MOCK_URL), // Added this line
       close: vi.fn().mockResolvedValue(undefined),
+      isClosed: vi.fn(() => false),
       context: vi.fn(() => ({
         browser: vi.fn(() => ({
           isConnected: vi.fn(() => true),
@@ -353,5 +354,45 @@ describe("PlaywrightEngine - Headers", () => {
       expect(result.content).toBe("<html><body>Playwright Content</body></html>");
       expect(mockPage.content).toHaveBeenCalled();
     });
+  });
+
+  it("should cancel an in-flight Playwright navigation when the caller aborts", async () => {
+    let rejectNavigation: ((reason?: unknown) => void) | undefined;
+    mockPage.goto.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectNavigation = reject;
+        })
+    );
+    mockPage.close.mockImplementationOnce(async () => {
+      rejectNavigation?.(new Error("page closed"));
+    });
+
+    const controller = new AbortController();
+    engine = new PlaywrightEngine({
+      ...DEFAULT_ENGINE_CONFIG_BASE,
+      useHttpFallback: false,
+      maxRetries: 0,
+    });
+
+    const request = engine.fetchHTML(MOCK_URL, { signal: controller.signal });
+    await vi.waitFor(() => expect(mockPage.goto).toHaveBeenCalled());
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ code: "ERR_FETCH_ABORTED" });
+    expect(mockPage.close).toHaveBeenCalled();
+    await engine.cleanup();
+    expect(mockPoolInstance.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("should make cleanup terminal and share the cleanup promise", async () => {
+    engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE });
+    const firstCleanup = engine.cleanup();
+    const secondCleanup = engine.cleanup();
+
+    expect(secondCleanup).toBe(firstCleanup);
+    await firstCleanup;
+    await expect(engine.fetchHTML(MOCK_URL)).rejects.toMatchObject({ code: "ERR_ENGINE_DISPOSED" });
+    expect(PlaywrightBrowserPool).not.toHaveBeenCalled();
   });
 });

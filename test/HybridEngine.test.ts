@@ -14,56 +14,48 @@ describe("HybridEngine - Headers Propagation", () => {
   let mockPlaywrightEngineInstance: any;
 
   beforeEach(() => {
-    vi.clearAllMocks(); 
+    vi.clearAllMocks();
 
     mockFetchEngineInstance = {
-      fetchHTML: vi
-        .fn()
-        .mockResolvedValue({
-          content: "fetch-html",
-          title: "Test",
-          contentType: "html",
-          url: MOCK_URL,
-          isFromCache: false,
-          statusCode: 200,
-          error: undefined,
-        }),
-      fetchContent: vi
-        .fn()
-        .mockResolvedValue({
-          content: "fetch-content",
-          title: "Test",
-          contentType: "text/plain",
-          url: MOCK_URL,
-          isFromCache: false,
-          statusCode: 200,
-          error: undefined,
-        }),
+      fetchHTML: vi.fn().mockResolvedValue({
+        content: "fetch-html",
+        title: "Test",
+        contentType: "html",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      }),
+      fetchContent: vi.fn().mockResolvedValue({
+        content: "fetch-content",
+        title: "Test",
+        contentType: "text/plain",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      }),
       cleanup: vi.fn().mockResolvedValue(undefined),
     };
     mockPlaywrightEngineInstance = {
-      fetchHTML: vi
-        .fn()
-        .mockResolvedValue({
-          content: "playwright-html",
-          title: "Test",
-          contentType: "html",
-          url: MOCK_URL,
-          isFromCache: false,
-          statusCode: 200,
-          error: undefined,
-        }),
-      fetchContent: vi
-        .fn()
-        .mockResolvedValue({
-          content: "playwright-content",
-          title: "Test",
-          contentType: "text/plain",
-          url: MOCK_URL,
-          isFromCache: false,
-          statusCode: 200,
-          error: undefined,
-        }),
+      fetchHTML: vi.fn().mockResolvedValue({
+        content: "playwright-html",
+        title: "Test",
+        contentType: "html",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      }),
+      fetchContent: vi.fn().mockResolvedValue({
+        content: "playwright-content",
+        title: "Test",
+        contentType: "text/plain",
+        url: MOCK_URL,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      }),
       cleanup: vi.fn().mockResolvedValue(undefined),
       getMetrics: vi.fn().mockReturnValue([]),
     };
@@ -78,9 +70,7 @@ describe("HybridEngine - Headers Propagation", () => {
     const hybridConstructorHeaders = { "X-Hybrid-Construct": "val1" };
     new HybridEngine({ headers: hybridConstructorHeaders });
 
-    expect(FetchEngine).toHaveBeenCalledWith(
-      expect.objectContaining({ headers: hybridConstructorHeaders })
-    );
+    expect(FetchEngine).toHaveBeenCalledWith(expect.objectContaining({ headers: hybridConstructorHeaders }));
   });
 
   it("should pass HybridEngine fetchHTML options headers to FetchEngine.fetchHTML call", async () => {
@@ -91,7 +81,7 @@ describe("HybridEngine - Headers Propagation", () => {
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(
       MOCK_URL,
       // FetchEngine.fetchHTML options should contain the headers passed to HybridEngine.fetchHTML
-      expect.objectContaining({ headers: hybridFetchHtmlOptionsHeaders }) 
+      expect.objectContaining({ headers: hybridFetchHtmlOptionsHeaders })
     );
   });
 
@@ -101,11 +91,9 @@ describe("HybridEngine - Headers Propagation", () => {
 
     const engine = new HybridEngine({ headers: constructorHeaders });
     await engine.fetchHTML(MOCK_URL, { headers: fetchHtmlHeaders });
-    
+
     // Assert FetchEngine constructor was called with Hybrid's constructor headers
-    expect(FetchEngine).toHaveBeenCalledWith(
-      expect.objectContaining({ headers: constructorHeaders })
-    );
+    expect(FetchEngine).toHaveBeenCalledWith(expect.objectContaining({ headers: constructorHeaders }));
     // Assert FetchEngine.fetchHTML was called with Hybrid's fetchHTML headers
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(
       MOCK_URL,
@@ -116,11 +104,11 @@ describe("HybridEngine - Headers Propagation", () => {
 
   it("should pass undefined to FetchEngine constructor if no headers in HybridEngine constructor", () => {
     new HybridEngine({}); // No headers in constructor
-    
-     const fetchEngineArgs = (FetchEngine as any as SpyInstance).mock.calls[0][0];
-     // HybridEngine passes { markdown: config.markdown, headers: config.headers } to FetchEngine constructor.
-     // If config.headers is undefined, then fetchEngineArgs.headers will be undefined.
-     expect(fetchEngineArgs.headers).toBeUndefined();
+
+    const fetchEngineArgs = (FetchEngine as any as SpyInstance).mock.calls[0][0];
+    // HybridEngine passes { markdown: config.markdown, headers: config.headers } to FetchEngine constructor.
+    // If config.headers is undefined, then fetchEngineArgs.headers will be undefined.
+    expect(fetchEngineArgs.headers).toBeUndefined();
   });
 
   it("should pass undefined to FetchEngine.fetchHTML if no headers in HybridEngine.fetchHTML options", async () => {
@@ -131,7 +119,7 @@ describe("HybridEngine - Headers Propagation", () => {
     // options.headers would be undefined, so fetchEngineCallSpecificOptions.headers will be undefined.
     expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledWith(
       MOCK_URL,
-      expect.objectContaining({ headers: undefined }) 
+      expect.objectContaining({ headers: undefined })
     );
   });
 
@@ -143,9 +131,9 @@ describe("HybridEngine - Headers Propagation", () => {
     // HybridEngine merges these before passing to PlaywrightEngine
     const expectedMergedHeadersForPlaywright = { ...hybridConstructorHeaders, ...hybridFetchHtmlOptionsHeaders };
 
-    const engine = new HybridEngine({ 
+    const engine = new HybridEngine({
       headers: hybridConstructorHeaders,
-      playwrightOnlyPatterns: [MOCK_URL] // Trigger PlaywrightEngine directly
+      playwrightOnlyPatterns: [MOCK_URL], // Trigger PlaywrightEngine directly
     });
     await engine.fetchHTML(MOCK_URL, { headers: hybridFetchHtmlOptionsHeaders });
 
@@ -155,7 +143,10 @@ describe("HybridEngine - Headers Propagation", () => {
     // { ...this.config, ...options, markdown: effectiveMarkdown, spaMode: effectiveSpaMode }
     // So, headers from 'options' (hybridFetchHtmlOptionsHeaders) override headers from 'this.config' (hybridConstructorHeaders).
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsPatternMatch = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsPatternMatch =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsPatternMatch.headers).toEqual(expectedMergedHeadersForPlaywright);
     expect(mockFetchEngineInstance.fetchHTML).not.toHaveBeenCalled();
   });
@@ -164,57 +155,69 @@ describe("HybridEngine - Headers Propagation", () => {
     const hybridConstructorHeaders = { "X-PW-Fail-C": "val-c", "X-Common": "construct-fail" };
     const hybridFetchHtmlOptionsHeaders = { "X-PW-Fail-F": "val-f", "X-Common": "fetch-fail" };
     const expectedMergedHeadersForPlaywright = { ...hybridConstructorHeaders, ...hybridFetchHtmlOptionsHeaders };
-    
+
     mockFetchEngineInstance.fetchHTML.mockRejectedValueOnce(new Error("Fetch engine deliberately failed"));
 
     const engine = new HybridEngine({ headers: hybridConstructorHeaders });
     await engine.fetchHTML(MOCK_URL, { headers: hybridFetchHtmlOptionsHeaders });
 
-    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(1); 
+    expect(mockFetchEngineInstance.fetchHTML).toHaveBeenCalledTimes(1);
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsFailure =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsFailure.headers).toEqual(expectedMergedHeadersForPlaywright);
   });
 
   it("should pass only constructor headers to PlaywrightEngine if no fetchHTML options headers (pattern match)", async () => {
     const hybridConstructorHeaders = { "X-PW-Construct-Only": "pw-c-only" };
-    const engine = new HybridEngine({ 
+    const engine = new HybridEngine({
       headers: hybridConstructorHeaders,
-      playwrightOnlyPatterns: [MOCK_URL]
+      playwrightOnlyPatterns: [MOCK_URL],
     });
     await engine.fetchHTML(MOCK_URL, {}); // No headers in fetchHTML options
 
     // playwrightOptions will be { ...this.config (with headers), ...options (no headers) }
     // So, headers from this.config (hybridConstructorHeaders) should be used.
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsConstructOnly = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsConstructOnly =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsConstructOnly.headers).toEqual(hybridConstructorHeaders);
   });
-  
+
   it("should pass only fetchHTML options headers to PlaywrightEngine if no constructor headers (pattern match)", async () => {
     const hybridFetchHtmlOptionsHeaders = { "X-PW-Fetch-Only": "pw-f-only" };
-    const engine = new HybridEngine({ 
-      playwrightOnlyPatterns: [MOCK_URL] // No constructor headers
+    const engine = new HybridEngine({
+      playwrightOnlyPatterns: [MOCK_URL], // No constructor headers
     });
     await engine.fetchHTML(MOCK_URL, { headers: hybridFetchHtmlOptionsHeaders });
 
     // playwrightOptions will be { ...this.config (no headers), ...options (with headers) }
     // So, headers from options (hybridFetchHtmlOptionsHeaders) should be used.
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsFetchOnly = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsFetchOnly =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsFetchOnly.headers).toEqual(hybridFetchHtmlOptionsHeaders);
   });
 
   it("should pass undefined headers to PlaywrightEngine if no headers anywhere (pattern match)", async () => {
-    const engine = new HybridEngine({ 
-      playwrightOnlyPatterns: [MOCK_URL] // No constructor headers
+    const engine = new HybridEngine({
+      playwrightOnlyPatterns: [MOCK_URL], // No constructor headers
     });
     await engine.fetchHTML(MOCK_URL, {}); // No fetchHTML options headers
 
     // playwrightOptions will be { ...this.config (no headers), ...options (no headers) }
     // So, playwrightOptions.headers will be {}.
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsUndefinedPattern = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsUndefinedPattern =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsUndefinedPattern.headers).toEqual({});
   });
 
@@ -224,13 +227,17 @@ describe("HybridEngine - Headers Propagation", () => {
     await engine.fetchHTML(MOCK_URL, {}); // No fetchHTML options headers
 
     expect(mockPlaywrightEngineInstance.fetchHTML).toHaveBeenCalledWith(MOCK_URL, expect.any(Object));
-    const actualOptionsUndefinedFailure = mockPlaywrightEngineInstance.fetchHTML.mock.calls[mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1][1];
+    const actualOptionsUndefinedFailure =
+      mockPlaywrightEngineInstance.fetchHTML.mock.calls[
+        mockPlaywrightEngineInstance.fetchHTML.mock.calls.length - 1
+      ][1];
     expect(actualOptionsUndefinedFailure.headers).toEqual({});
   });
 
   it("should auto-render a shell-like HTTP response even when spaMode is not enabled", async () => {
     mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
-      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      content:
+        '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
       title: "",
       contentType: "html",
       url: MOCK_URL,
@@ -277,7 +284,9 @@ describe("HybridEngine - Headers Propagation", () => {
   });
 
   it("should not retry a timed out FetchEngine HTML request before falling back to Playwright", async () => {
-    mockFetchEngineInstance.fetchHTML.mockRejectedValueOnce(new FetchError("Fetch timed out after 10000ms", "ERR_FETCH_TIMEOUT"));
+    mockFetchEngineInstance.fetchHTML.mockRejectedValueOnce(
+      new FetchError("Fetch timed out after 10000ms", "ERR_FETCH_TIMEOUT")
+    );
 
     const engine = new HybridEngine();
     const result = await engine.fetchHTML(MOCK_URL, {});
@@ -310,7 +319,8 @@ describe("HybridEngine - Headers Propagation", () => {
 
   it("should detect shells before markdown conversion", async () => {
     mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
-      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      content:
+        '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
       title: "",
       contentType: "html",
       url: MOCK_URL,
@@ -331,7 +341,8 @@ describe("HybridEngine - Headers Propagation", () => {
 
   it("should fall back to the HTTP result when Playwright render fails after a successful fetch", async () => {
     const httpShellResult = {
-      content: '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
+      content:
+        '<html><head><title></title></head><body><div id="app"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/runtime.js"></script></body></html>',
       title: "",
       contentType: "html" as const,
       url: MOCK_URL,
@@ -376,5 +387,76 @@ describe("HybridEngine - Headers Propagation", () => {
       MOCK_URL,
       expect.objectContaining({ useHttpFallback: false, spaMode: true, fastMode: false })
     );
+  });
+
+  it("should share cleanup and reject new fetches after cleanup starts", async () => {
+    let resolveCleanup: (() => void) | undefined;
+    const cleanupFinished = new Promise<void>((resolve) => {
+      resolveCleanup = resolve;
+    });
+    mockFetchEngineInstance.cleanup.mockReturnValue(cleanupFinished);
+    mockPlaywrightEngineInstance.cleanup.mockReturnValue(cleanupFinished);
+
+    const engine = new HybridEngine();
+    const firstCleanup = engine.cleanup();
+    const secondCleanup = engine.cleanup();
+
+    expect(secondCleanup).toBe(firstCleanup);
+    expect(mockFetchEngineInstance.cleanup).toHaveBeenCalledTimes(1);
+    expect(mockPlaywrightEngineInstance.cleanup).toHaveBeenCalledTimes(1);
+
+    await expect(engine.fetchHTML(MOCK_URL)).rejects.toMatchObject({ code: "ERR_ENGINE_DISPOSED" });
+    await expect(engine.fetchContent(MOCK_URL)).rejects.toMatchObject({ code: "ERR_ENGINE_DISPOSED" });
+
+    resolveCleanup?.();
+    await firstCleanup;
+  });
+
+  it("should not retry or fall back after a caller aborts an HTML request", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const engine = new HybridEngine();
+    await expect(engine.fetchHTML(MOCK_URL, { signal: controller.signal })).rejects.toMatchObject({
+      code: "ERR_FETCH_ABORTED",
+    });
+
+    expect(mockFetchEngineInstance.fetchHTML).not.toHaveBeenCalled();
+    expect(mockPlaywrightEngineInstance.fetchHTML).not.toHaveBeenCalled();
+  });
+
+  it("should not fall back after a caller aborts a content request", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const engine = new HybridEngine();
+    await expect(engine.fetchContent(MOCK_URL, { signal: controller.signal })).rejects.toMatchObject({
+      code: "ERR_FETCH_ABORTED",
+    });
+
+    expect(mockFetchEngineInstance.fetchContent).not.toHaveBeenCalled();
+    expect(mockPlaywrightEngineInstance.fetchContent).not.toHaveBeenCalled();
+  });
+
+  it("should propagate an abort from the Playwright shell-render fallback", async () => {
+    const controller = new AbortController();
+    mockFetchEngineInstance.fetchHTML.mockResolvedValueOnce({
+      content: '<html><body><div id="root"></div></body></html>',
+      title: null,
+      contentType: "html",
+      url: MOCK_URL,
+      isFromCache: false,
+      statusCode: 200,
+      error: undefined,
+    });
+    mockPlaywrightEngineInstance.fetchHTML.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new FetchError("Fetch was aborted", "ERR_FETCH_ABORTED");
+    });
+
+    const engine = new HybridEngine();
+    await expect(engine.fetchHTML(MOCK_URL, { signal: controller.signal })).rejects.toMatchObject({
+      code: "ERR_FETCH_ABORTED",
+    });
   });
 });

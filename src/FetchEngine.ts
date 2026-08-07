@@ -8,32 +8,54 @@ import type {
 import type { IEngine } from "./IEngine.js"; // Added .js extension
 
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
-import { FetchError } from "./errors.js"; // Only import FetchError
+import { createFetchAbortedError, FetchError, isFetchAbortedError } from "./errors.js";
 import { DEFAULT_HTTP_TIMEOUT } from "./constants.js";
 
-async function fetchWithTimeout(
+type ResolvedFetchEngineOptions = Required<Omit<FetchEngineOptions, "signal">> & {
+  signal: AbortSignal | undefined;
+};
+
+async function fetchWithTimeout<T>(
   url: string,
   init: RequestInit,
-  timeoutMs: number = DEFAULT_HTTP_TIMEOUT
-): Promise<Response> {
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+  consume: (response: Response) => Promise<T>
+): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortFromCaller = (): void => controller.abort();
+
+  if (signal?.aborted) {
+    clearTimeout(timeout);
+    throw createFetchAbortedError();
+  }
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+    return await consume(response);
   } catch (error: unknown) {
     const errorName = typeof error === "object" && error !== null && "name" in error ? String(error.name) : undefined;
     const originalError = error instanceof Error ? error : undefined;
 
-    if (errorName === "AbortError") {
+    if (signal?.aborted && !timedOut) {
+      throw createFetchAbortedError(originalError);
+    }
+    if (timedOut || errorName === "AbortError") {
       throw new FetchError(`Fetch timed out after ${timeoutMs}ms`, "ERR_FETCH_TIMEOUT", originalError);
     }
     throw error;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -57,11 +79,12 @@ export class FetchEngineHttpError extends FetchError {
  * It does not support advanced configurations like retries, caching, or proxies directly.
  */
 export class FetchEngine implements IEngine {
-  private readonly options: Required<FetchEngineOptions>;
+  private readonly options: ResolvedFetchEngineOptions;
 
-  private static readonly DEFAULT_OPTIONS: Required<FetchEngineOptions> = {
+  private static readonly DEFAULT_OPTIONS: ResolvedFetchEngineOptions = {
     markdown: false,
     headers: {},
+    signal: undefined,
   };
 
   /**
@@ -82,7 +105,6 @@ export class FetchEngine implements IEngine {
    */
   async fetchHTML(url: string, options?: FetchEngineOptions): Promise<HTMLFetchResult> {
     const effectiveOptions = { ...this.options, ...options }; // Combine constructor and call options
-    let response: Response;
     try {
       const baseHeaders = {
         "User-Agent":
@@ -104,57 +126,59 @@ export class FetchEngine implements IEngine {
         ...callSpecificHeaders, // Ensures callSpecificHeaders override constructorHeaders, which override baseHeaders
       };
 
-      response = await fetchWithTimeout(
+      return await fetchWithTimeout(
         url,
         {
           redirect: "follow",
           headers: finalHeaders,
         },
-        DEFAULT_HTTP_TIMEOUT
-      );
+        DEFAULT_HTTP_TIMEOUT,
+        effectiveOptions.signal,
+        async (response) => {
+          if (!response.ok) {
+            throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
+          }
 
-      if (!response.ok) {
-        throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
-      }
+          const contentTypeHeader = response.headers.get("content-type");
+          if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
+            throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
+          }
 
-      const contentTypeHeader = response.headers.get("content-type");
-      if (!contentTypeHeader || !contentTypeHeader.includes("text/html")) {
-        throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
-      }
+          const html = await response.text();
+          const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const title = titleMatch ? titleMatch[1].trim() : null;
+          let finalContent = html;
+          let finalContentType: "html" | "markdown" = "html";
 
-      const html = await response.text();
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : null;
+          if (effectiveOptions.markdown) {
+            try {
+              const converter = new MarkdownConverter();
+              finalContent = converter.convert(html, { baseUrl: response.url || url });
+              finalContent = injectSourceUrl(finalContent, response.url || url);
+              finalContentType = "markdown";
+            } catch (conversionError: unknown) {
+              console.error(`Markdown conversion failed for ${url} (FetchEngine):`, conversionError);
+            }
+          }
 
-      let finalContent = html;
-      let finalContentType: "html" | "markdown" = "html";
-
-      if (effectiveOptions.markdown) {
-        try {
-          const converter = new MarkdownConverter();
-          finalContent = converter.convert(html, { baseUrl: response.url || url });
-          finalContent = injectSourceUrl(finalContent, response.url || url);
-          finalContentType = "markdown";
-        } catch (conversionError: unknown) {
-          console.error(`Markdown conversion failed for ${url} (FetchEngine):`, conversionError);
-          // Fallback to original HTML on conversion error
+          return {
+            content: finalContent,
+            contentType: finalContentType,
+            title,
+            url: response.url,
+            isFromCache: false,
+            statusCode: response.status,
+            error: undefined,
+          };
         }
-      }
-
-      return {
-        content: finalContent,
-        contentType: finalContentType,
-        title: title,
-        url: response.url, // Use the final URL after redirects
-        isFromCache: false,
-        statusCode: response.status,
-        error: undefined,
-      };
+      );
     } catch (error: unknown) {
       // Re-throw specific known errors directly
       if (
         error instanceof FetchEngineHttpError ||
-        (error instanceof FetchError && (error.code === "ERR_NON_HTML_CONTENT" || error.code === "ERR_FETCH_TIMEOUT"))
+        (error instanceof FetchError &&
+          (error.code === "ERR_NON_HTML_CONTENT" || error.code === "ERR_FETCH_TIMEOUT")) ||
+        isFetchAbortedError(error)
       ) {
         throw error;
       }
@@ -174,7 +198,7 @@ export class FetchEngine implements IEngine {
    * @throws {Error} For network errors or other fetch failures.
    */
   async fetchContent(url: string, options?: ContentFetchOptions): Promise<ContentFetchResult> {
-    let response: Response;
+    const signal = options?.signal ?? this.options.signal;
     try {
       const baseHeaders = {
         "User-Agent":
@@ -192,59 +216,54 @@ export class FetchEngine implements IEngine {
         ...callSpecificHeaders,
       };
 
-      response = await fetchWithTimeout(
+      return await fetchWithTimeout(
         url,
         {
           redirect: "follow",
           headers: finalHeaders,
         },
-        DEFAULT_HTTP_TIMEOUT
+        DEFAULT_HTTP_TIMEOUT,
+        signal,
+        async (response) => {
+          if (!response.ok) {
+            throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
+          }
+
+          const contentTypeHeader = response.headers.get("content-type") || "application/octet-stream";
+          const isTextBased =
+            contentTypeHeader.startsWith("text/") ||
+            contentTypeHeader.includes("json") ||
+            contentTypeHeader.includes("xml") ||
+            contentTypeHeader.includes("javascript") ||
+            contentTypeHeader.includes("html") ||
+            contentTypeHeader.includes("css");
+          const content: string | Buffer = isTextBased
+            ? await response.text()
+            : Buffer.from(await response.arrayBuffer());
+
+          let title: string | null = null;
+          if (typeof content === "string" && contentTypeHeader.includes("html")) {
+            const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
+            title = titleMatch ? titleMatch[1].trim() : null;
+          }
+
+          return {
+            content,
+            contentType: contentTypeHeader,
+            title,
+            url: response.url,
+            isFromCache: false,
+            statusCode: response.status,
+            error: undefined,
+          };
+        }
       );
-
-      if (!response.ok) {
-        throw new FetchEngineHttpError(`HTTP error! status: ${response.status}`, response.status);
-      }
-
-      const contentTypeHeader = response.headers.get("content-type") || "application/octet-stream";
-
-      // Determine if content is text-based or binary
-      const isTextBased =
-        contentTypeHeader.startsWith("text/") ||
-        contentTypeHeader.includes("json") ||
-        contentTypeHeader.includes("xml") ||
-        contentTypeHeader.includes("javascript") ||
-        contentTypeHeader.includes("html") ||
-        contentTypeHeader.includes("css");
-
-      let content: string | Buffer;
-      if (isTextBased) {
-        content = await response.text();
-      } else {
-        const arrayBuffer = await response.arrayBuffer();
-        content = Buffer.from(arrayBuffer);
-      }
-
-      // Extract title only if content is HTML
-      let title: string | null = null;
-      if (typeof content === "string" && contentTypeHeader.includes("html")) {
-        const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-        title = titleMatch ? titleMatch[1].trim() : null;
-      }
-
-      return {
-        content,
-        contentType: contentTypeHeader,
-        title,
-        url: response.url, // Use the final URL after redirects
-        isFromCache: false,
-        statusCode: response.status,
-        error: undefined,
-      };
     } catch (error: unknown) {
       // Re-throw specific known errors directly
       if (
         error instanceof FetchEngineHttpError ||
-        (error instanceof FetchError && error.code === "ERR_FETCH_TIMEOUT")
+        (error instanceof FetchError && error.code === "ERR_FETCH_TIMEOUT") ||
+        isFetchAbortedError(error)
       ) {
         throw error;
       }
