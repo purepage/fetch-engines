@@ -8,6 +8,7 @@ import type {
 import type { IEngine } from "./IEngine.js"; // Added .js extension
 
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import { extractHtmlTitle } from "./utils/html-metadata.js";
 import { FetchError } from "./errors.js"; // Only import FetchError
 import { DEFAULT_HTTP_TIMEOUT } from "./constants.js";
 
@@ -123,8 +124,7 @@ export class FetchEngine implements IEngine {
       }
 
       const html = await response.text();
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : null;
+      const title = extractHtmlTitle(html);
 
       let finalContent = html;
       let finalContentType: "html" | "markdown" = "html";
@@ -227,8 +227,7 @@ export class FetchEngine implements IEngine {
       // Extract title only if content is HTML
       let title: string | null = null;
       if (typeof content === "string" && contentTypeHeader.includes("html")) {
-        const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-        title = titleMatch ? titleMatch[1].trim() : null;
+        title = extractHtmlTitle(content);
       }
 
       return {

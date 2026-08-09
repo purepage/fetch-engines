@@ -1,4 +1,5 @@
 import { MarkdownConverter, injectSourceUrl } from "./utils/markdown-converter.js";
+import { extractHtmlTitle } from "./utils/html-metadata.js";
 import { FetchError } from "./errors.js"; // Only import FetchError
 import { DEFAULT_HTTP_TIMEOUT } from "./constants.js";
 async function fetchWithTimeout(url, init, timeoutMs = DEFAULT_HTTP_TIMEOUT) {
@@ -91,8 +92,7 @@ export class FetchEngine {
                 throw new FetchError("Content-Type is not text/html", "ERR_NON_HTML_CONTENT");
             }
             const html = await response.text();
-            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-            const title = titleMatch ? titleMatch[1].trim() : null;
+            const title = extractHtmlTitle(html);
             let finalContent = html;
             let finalContentType = "html";
             if (effectiveOptions.markdown) {
@@ -178,8 +178,7 @@ export class FetchEngine {
             // Extract title only if content is HTML
             let title = null;
             if (typeof content === "string" && contentTypeHeader.includes("html")) {
-                const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
-                title = titleMatch ? titleMatch[1].trim() : null;
+                title = extractHtmlTitle(content);
             }
             return {
                 content,

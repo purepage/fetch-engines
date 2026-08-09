@@ -355,3 +355,133 @@ describe("PlaywrightEngine - Headers", () => {
     });
   });
 });
+
+describe("PlaywrightEngine - Titles", () => {
+  const MOCK_URL = "http://example.com";
+  const createMockPage = () => ({
+    goto: vi.fn().mockResolvedValue({
+      ok: () => true,
+      status: () => 200,
+      headers: () => ({ "content-type": "text/html" }),
+      text: async () => "<html><head><title>Response title</title></head></html>",
+    }),
+    title: vi.fn().mockResolvedValue("Browser title"),
+    content: vi.fn().mockResolvedValue("<html><head><title>Raw HTML title</title></head></html>"),
+    url: vi.fn().mockReturnValue(MOCK_URL),
+    context: vi.fn(() => ({ browser: vi.fn(() => ({ isConnected: vi.fn(() => true) })) })),
+    evaluate: vi.fn().mockResolvedValue({
+      titleLength: 10,
+      textLength: 320,
+      mainLikeTextLength: 220,
+      headingTextLength: 24,
+      htmlLength: 5200,
+      hasRootContainer: false,
+      rootChildCount: 0,
+      appChildCount: 0,
+      qualityScore: 7,
+      shellScore: 0,
+    }),
+    waitForFunction: vi.fn(),
+    setExtraHTTPHeaders: vi.fn(),
+    route: vi.fn(),
+    mouse: { move: vi.fn(), wheel: vi.fn() },
+    keyboard: { press: vi.fn() },
+    viewportSize: vi.fn(() => ({ width: 1920, height: 1080 })),
+  });
+  let mockPage: ReturnType<typeof createMockPage>;
+
+  const DEFAULT_ENGINE_CONFIG_BASE = {
+    concurrentPages: 1,
+    maxRetries: 0,
+    retryDelay: 10,
+    cacheTTL: 0,
+    useHttpFallback: false,
+    useHeadedModeFallback: false,
+    defaultFastMode: true,
+    simulateHumanBehavior: false,
+    maxBrowsers: 1,
+    maxPagesPerContext: 1,
+    maxBrowserAge: 0,
+    healthCheckInterval: 0,
+    poolBlockedDomains: [],
+    poolBlockedResourceTypes: [],
+    proxy: undefined,
+    useHeadedMode: false,
+    markdown: false,
+    spaMode: false,
+    spaRenderDelayMs: 0,
+    challengeWaitMs: 0,
+    playwrightOnlyPatterns: [],
+    playwrightLaunchOptions: undefined,
+    headers: {},
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockPage = createMockPage();
+    const mockPoolInstance = {
+      acquirePage: vi.fn().mockResolvedValue(mockPage),
+      releasePage: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      getMetrics: vi.fn().mockReturnValue([]),
+      initialize: vi.fn().mockResolvedValue(undefined),
+    };
+    (PlaywrightBrowserPool as unknown as SpyInstance).mockImplementation(() => mockPoolInstance);
+  });
+
+  it("uses a non-empty browser title instead of the raw HTML title for fetchHTML", async () => {
+    const result = await new PlaywrightEngine(DEFAULT_ENGINE_CONFIG_BASE).fetchHTML(MOCK_URL);
+
+    expect(mockPage.title).toHaveBeenCalled();
+    expect(result.title).toBe("Browser title");
+  });
+
+  it("uses a non-empty browser title instead of the raw HTML title for fetchContent", async () => {
+    const result = await new PlaywrightEngine(DEFAULT_ENGINE_CONFIG_BASE).fetchContent(MOCK_URL);
+
+    expect(mockPage.title).toHaveBeenCalled();
+    expect(result.title).toBe("Browser title");
+  });
+
+  it("normalizes browser titles in both browser paths", async () => {
+    mockPage.title.mockResolvedValue(" \n Browser title \t");
+
+    const engine = new PlaywrightEngine(DEFAULT_ENGINE_CONFIG_BASE);
+    expect((await engine.fetchHTML(MOCK_URL)).title).toBe("Browser title");
+    expect((await engine.fetchContent(MOCK_URL)).title).toBe("Browser title");
+
+    mockPage.title.mockResolvedValue(" \n\t ");
+    mockPage.content.mockResolvedValue("<html><head></head><body>Content</body></html>");
+
+    expect((await engine.fetchHTML(MOCK_URL)).title).toBeNull();
+    expect((await engine.fetchContent(MOCK_URL)).title).toBeNull();
+  });
+
+  it("uses the shared extractor only when page.title() is empty", async () => {
+    mockPage.title.mockResolvedValue("");
+    mockPage.content.mockResolvedValue("<html><head><title>Raw <em>&amp;</em> title</title></head></html>");
+
+    const result = await new PlaywrightEngine(DEFAULT_ENGINE_CONFIG_BASE).fetchContent(MOCK_URL);
+
+    expect(mockPage.title).toHaveBeenCalled();
+    expect(result.title).toBe("Raw & title");
+  });
+
+  it("extracts the same decoded nested title for HTML and content HTTP fallbacks", async () => {
+    const html = "<html><head><title>Fallback <em>&amp;</em> title</title></head></html>";
+    (axios.get as SpyInstance).mockResolvedValue({
+      data: html,
+      status: 200,
+      headers: { "content-type": "text/html" },
+      request: { res: { responseUrl: MOCK_URL } },
+    });
+    const engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, useHttpFallback: true });
+
+    const htmlResult = await engine.fetchHTML(MOCK_URL);
+    const contentResult = await engine.fetchContent(MOCK_URL);
+
+    expect(htmlResult.title).toBe("Fallback & title");
+    expect(contentResult.title).toBe("Fallback & title");
+  });
+});

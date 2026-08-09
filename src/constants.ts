@@ -24,9 +24,6 @@ export const COMMON_HEADERS = {
 export const MAX_REDIRECTS = 5;
 
 // Regex
-export const REGEX_TITLE_TAG = /<title[^>]*>([^<]+)<\/title>/i;
-export const REGEX_SIMPLE_HTML_TITLE_FALLBACK = /<html>([^<]+)<\/html>/;
-export const REGEX_SANITIZE_HTML_TAGS = /<\/?html>/g;
 export const REGEX_CHALLENGE_PAGE_KEYWORDS =
   /cloudflare|checking your browser|please wait|verification|captcha|attention required/i;
 

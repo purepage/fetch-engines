@@ -18,9 +18,6 @@ export declare const COMMON_HEADERS: {
     Connection: string;
 };
 export declare const MAX_REDIRECTS = 5;
-export declare const REGEX_TITLE_TAG: RegExp;
-export declare const REGEX_SIMPLE_HTML_TITLE_FALLBACK: RegExp;
-export declare const REGEX_SANITIZE_HTML_TAGS: RegExp;
 export declare const REGEX_CHALLENGE_PAGE_KEYWORDS: RegExp;
 export declare const HUMAN_SIMULATION_MIN_DELAY_MS = 150;
 export declare const HUMAN_SIMULATION_RANDOM_MOUSE_DELAY_MS = 200;
