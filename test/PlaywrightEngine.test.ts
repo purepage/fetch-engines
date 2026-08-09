@@ -444,6 +444,20 @@ describe("PlaywrightEngine - Titles", () => {
     expect(result.title).toBe("Browser title");
   });
 
+  it("normalizes browser titles in both browser paths", async () => {
+    mockPage.title.mockResolvedValue(" \n Browser title \t");
+
+    const engine = new PlaywrightEngine(DEFAULT_ENGINE_CONFIG_BASE);
+    expect((await engine.fetchHTML(MOCK_URL)).title).toBe("Browser title");
+    expect((await engine.fetchContent(MOCK_URL)).title).toBe("Browser title");
+
+    mockPage.title.mockResolvedValue(" \n\t ");
+    mockPage.content.mockResolvedValue("<html><head></head><body>Content</body></html>");
+
+    expect((await engine.fetchHTML(MOCK_URL)).title).toBeNull();
+    expect((await engine.fetchContent(MOCK_URL)).title).toBeNull();
+  });
+
   it("uses the shared extractor only when page.title() is empty", async () => {
     mockPage.title.mockResolvedValue("");
     mockPage.content.mockResolvedValue("<html><head><title>Raw <em>&amp;</em> title</title></head></html>");

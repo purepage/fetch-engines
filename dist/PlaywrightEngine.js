@@ -669,7 +669,7 @@ export class PlaywrightEngine {
                 await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
                 await this.waitForAutomaticChallenge(page);
             }
-            const title = await page.title();
+            const title = (await page.title()).trim() || null;
             const finalUrl = page.url();
             const status = response.status();
             // Simulate human behavior after potential SPA rendering
@@ -742,7 +742,7 @@ export class PlaywrightEngine {
             return {
                 content: finalContent,
                 contentType: finalContentType,
-                title: title || null,
+                title,
                 url: finalUrl,
                 isFromCache: false,
                 statusCode: status,
@@ -1060,7 +1060,7 @@ export class PlaywrightEngine {
             if (isHtmlDocument) {
                 await this.waitForRenderedDomIfNeeded(page, false, 0);
             }
-            const title = await page.title();
+            const title = (await page.title()).trim() || null;
             const finalUrl = page.url();
             const status = response.status();
             // Get raw content based on content type
@@ -1079,7 +1079,7 @@ export class PlaywrightEngine {
                 content = Buffer.from(bodyBuffer);
             }
             // Extract title only if content is HTML
-            let extractedTitle = title || null;
+            let extractedTitle = title;
             if (typeof content === "string" && contentType.includes("html") && !extractedTitle) {
                 extractedTitle = extractHtmlTitle(content);
             }

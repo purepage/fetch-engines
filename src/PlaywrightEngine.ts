@@ -874,7 +874,7 @@ export class PlaywrightEngine implements IEngine {
         await this.waitForAutomaticChallenge(page);
       }
 
-      const title = await page.title();
+      const title = (await page.title()).trim() || null;
       const finalUrl = page.url();
       const status = response.status();
 
@@ -958,7 +958,7 @@ export class PlaywrightEngine implements IEngine {
       return {
         content: finalContent,
         contentType: finalContentType,
-        title: title || null,
+        title,
         url: finalUrl,
         isFromCache: false,
         statusCode: status,
@@ -1368,7 +1368,7 @@ export class PlaywrightEngine implements IEngine {
         await this.waitForRenderedDomIfNeeded(page, false, 0);
       }
 
-      const title = await page.title();
+      const title = (await page.title()).trim() || null;
       const finalUrl = page.url();
       const status = response.status();
 
@@ -1390,7 +1390,7 @@ export class PlaywrightEngine implements IEngine {
       }
 
       // Extract title only if content is HTML
-      let extractedTitle: string | null = title || null;
+      let extractedTitle = title;
       if (typeof content === "string" && contentType.includes("html") && !extractedTitle) {
         extractedTitle = extractHtmlTitle(content);
       }
