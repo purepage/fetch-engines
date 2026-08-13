@@ -231,10 +231,10 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - Explore the [`examples`](./examples) directory for scripts you can run end-to-end.
 - Ready-to-use TypeScript types ship with the package.
 - `pnpm test` runs the automated suite when you are ready to contribute.
-- `pnpm test:live:smoke` runs the browser-backed live smoke suite, including markdown fetch checks for `https://www.bhp.com/` and the Juno Pure Devotion product page. CI treats the direct GitHub-runner Juno probe as observe-only because datacenter IPs are blocked; configuring `LIVE_CDP_ENDPOINT` makes the managed-browser Juno probe required.
+- `pnpm test:live:smoke` runs the browser-backed live smoke suite, including markdown fetch checks for `https://www.bhp.com/` and the Juno Pure Devotion product page. The Juno probe is observe-only in ordinary CI because a hosted runner's network reputation is outside the library's control. Maintainers can explicitly enable a configured, provider-neutral `LIVE_CDP_ENDPOINT` when manually dispatching the workflow.
 - `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix across docs, government, knowledge, marketing, commerce, and access-guarded pages, using a stable gated core plus observe-only sentinels for harder domains.
 - `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`) in a Node environment so it exercises the real network/browser stack instead of `jsdom`.
-- GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact.
+- GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact. The default workflow requires no paid browser service.
 
 ## Contributing
 

@@ -2,6 +2,12 @@ name: Live Browser Evals
 
 on:
   workflow_dispatch:
+    inputs:
+      use_cdp_endpoint:
+        description: "Use the configured generic CDP endpoint for the Juno probe"
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 3 * * *"
   pull_request:
@@ -38,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      LIVE_CDP_ENDPOINT: ${{ secrets.LIVE_CDP_ENDPOINT }}
+      LIVE_CDP_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cdp_endpoint && secrets.LIVE_CDP_ENDPOINT || '' }}
 
     steps:
       - name: Checkout code
@@ -64,7 +70,7 @@ jobs:
       - name: Run general live browser smoke tests
         run: pnpm test:live:smoke -- --testNamePattern='^(?!.*Juno Pure Devotion)'
 
-      - name: Require the Juno Patchright probe through managed CDP
+      - name: Run the Juno probe through an explicitly requested CDP endpoint
         if: ${{ env.LIVE_CDP_ENDPOINT != '' }}
         run: pnpm test:live:smoke -- --testNamePattern='Juno Pure Devotion'
 
