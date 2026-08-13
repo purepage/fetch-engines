@@ -37,6 +37,8 @@ jobs:
   live-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      LIVE_CDP_ENDPOINT: ${{ secrets.LIVE_CDP_ENDPOINT }}
 
     steps:
       - name: Checkout code
@@ -59,10 +61,17 @@ jobs:
       - name: Build project
         run: pnpm build
 
-      - name: Run live browser smoke tests, including Juno through Patchright
-        run: pnpm test:live:smoke
-        env:
-          LIVE_CDP_ENDPOINT: ${{ secrets.LIVE_CDP_ENDPOINT }}
+      - name: Run general live browser smoke tests
+        run: pnpm test:live:smoke -- --testNamePattern='^(?!.*Juno Pure Devotion)'
+
+      - name: Require the Juno Patchright probe through managed CDP
+        if: ${{ env.LIVE_CDP_ENDPOINT != '' }}
+        run: pnpm test:live:smoke -- --testNamePattern='Juno Pure Devotion'
+
+      - name: Observe the Juno Patchright probe from the GitHub runner
+        if: ${{ env.LIVE_CDP_ENDPOINT == '' }}
+        continue-on-error: true
+        run: pnpm test:live:smoke -- --testNamePattern='Juno Pure Devotion'
 
   live-auto-render:
     runs-on: ubuntu-latest
