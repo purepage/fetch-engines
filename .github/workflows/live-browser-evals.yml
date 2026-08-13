@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      USE_CDP_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cdp_endpoint }}
+      USE_CDP_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cdp_endpoint && secrets.LIVE_CDP_ENDPOINT != '' }}
 
     steps:
       - name: Checkout code

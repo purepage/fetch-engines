@@ -373,6 +373,8 @@ export class PlaywrightBrowserPool {
     // This prevents race conditions when checking pool capacity, creating new browser instances,
     // or selecting an instance from the pool, thus maintaining a consistent state for the pool.
     acquireQueue = new PQueue({ concurrency: 1 });
+    pendingRecoveryInstances = new Set();
+    recoveryBarrier = null;
     constructor(config = {}) {
         this.maxBrowsers = config.cdpEndpoint ? 1 : (config.maxBrowsers ?? 2);
         this.maxPagesPerContext = config.maxPagesPerContext ?? 6;
@@ -449,20 +451,7 @@ export class PlaywrightBrowserPool {
             cdpConnectionOptions: this.cdpConnectionOptions,
             browserDriver: this.browserDriver,
             onDisconnect: (instanceId) => {
-                const replacement = this.acquireQueue.add(async () => {
-                    if (this.isCleaningUp)
-                        return;
-                    const instanceToRemove = [...this.pool].find((instance) => instance.id === instanceId);
-                    if (!instanceToRemove)
-                        return;
-                    await this.closeAndRemoveInstance(instanceToRemove, `instance ${instanceId} disconnected`);
-                    console.warn(`Removed disconnected instance ${instanceId} from pool.`);
-                    await this.ensureMinimumInstances();
-                });
-                replacement.catch((error) => {
-                    const message = error instanceof Error ? error.message : String(error);
-                    console.error(`Error replacing disconnected instance ${instanceId}: ${message}`, error);
-                });
+                this.handleUnexpectedDisconnect(instanceId);
             },
         });
         try {
@@ -475,8 +464,55 @@ export class PlaywrightBrowserPool {
         this.pool.add(instance);
         return instance;
     }
+    handleUnexpectedDisconnect(instanceId) {
+        if (this.isCleaningUp)
+            return;
+        const instanceToRemove = [...this.pool].find((instance) => instance.id === instanceId);
+        if (!instanceToRemove)
+            return;
+        // Release pool capacity before queued acquisitions get a chance to inspect
+        // it. The recovery barrier below keeps those acquisitions from racing the
+        // asynchronous close and replacement.
+        this.pool.delete(instanceToRemove);
+        this.pendingRecoveryInstances.add(instanceToRemove);
+        console.warn(`Removed disconnected instance ${instanceId} from pool.`);
+        this.startRecovery();
+    }
+    startRecovery() {
+        if (this.recoveryBarrier)
+            return;
+        const recovery = this.recoverDisconnectedInstances().catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`Error recovering disconnected browser instances: ${message}`, error);
+        });
+        this.recoveryBarrier = recovery;
+        void recovery.then(() => {
+            if (this.recoveryBarrier !== recovery)
+                return;
+            this.recoveryBarrier = null;
+            if (this.pendingRecoveryInstances.size > 0) {
+                this.startRecovery();
+            }
+        });
+    }
+    async recoverDisconnectedInstances() {
+        while (this.pendingRecoveryInstances.size > 0) {
+            const instancesToClose = [...this.pendingRecoveryInstances];
+            this.pendingRecoveryInstances.clear();
+            await Promise.allSettled(instancesToClose.map((instance) => instance.close(`instance ${instance.id} disconnected`)));
+        }
+        if (!this.isCleaningUp) {
+            await this.ensureMinimumInstances();
+        }
+    }
+    async waitForRecovery() {
+        while (this.recoveryBarrier) {
+            await this.recoveryBarrier;
+        }
+    }
     acquirePage() {
         return this.acquireQueue.add(async () => {
+            await this.waitForRecovery();
             if (this.isCleaningUp) {
                 throw new Error("Pool is shutting down.");
             }
@@ -617,6 +653,7 @@ export class PlaywrightBrowserPool {
         }
         this.acquireQueue.clear();
         await this.acquireQueue.onIdle();
+        await this.waitForRecovery();
         // Create a copy of the pool to iterate over, as closeAndRemoveInstance modifies the original set.
         const instancesToClose = Array.from(this.pool);
         const closePromises = instancesToClose.map((instance) => this.closeAndRemoveInstance(instance, "pool cleanup"));

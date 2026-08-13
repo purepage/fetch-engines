@@ -215,6 +215,7 @@ describe("PlaywrightBrowserPool CDP connections", () => {
         )?.[1] as (() => void) | undefined;
         expect(disconnectedHandler).toBeDefined();
         disconnectedHandler?.();
+        disconnectedHandler?.();
       } else {
         await pool.acquirePage();
         const crashHandler = mocks.page.on.mock.calls.find(([event]) => event === "crash")?.[1] as
@@ -222,9 +223,11 @@ describe("PlaywrightBrowserPool CDP connections", () => {
           | undefined;
         expect(crashHandler).toBeDefined();
         crashHandler?.();
+        crashHandler?.();
       }
 
-      await vi.waitFor(() => expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(mocks.context.close).toHaveBeenCalledTimes(1));
+      expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(1);
       releaseClose();
       await vi.waitFor(() => expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(2));
 
@@ -235,6 +238,92 @@ describe("PlaywrightBrowserPool CDP connections", () => {
       await pool.cleanup();
     }
   );
+
+  it("should make queued acquisitions wait for disconnect recovery", async () => {
+    let rejectInFlightPage!: () => void;
+    const inFlightPage = new Promise<void>((resolve) => {
+      rejectInFlightPage = resolve;
+    });
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+
+    mocks.context.newPage
+      .mockImplementationOnce(async () => {
+        await inFlightPage;
+        throw new Error("browser disconnected during page creation");
+      })
+      .mockResolvedValueOnce(mocks.page);
+    mocks.context.close.mockImplementationOnce(async () => {
+      await closeGate;
+    });
+
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      maxBrowsers: 1,
+    });
+    await pool.initialize();
+
+    const firstAcquisition = pool.acquirePage();
+    const firstResult = firstAcquisition.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(mocks.context.newPage).toHaveBeenCalledTimes(1));
+    const queuedAcquisition = pool.acquirePage();
+
+    const disconnectedHandler = mocks.browser.on.mock.calls.find(
+      ([event]) => event === "disconnected"
+    )?.[1] as (() => void) | undefined;
+    expect(disconnectedHandler).toBeDefined();
+    disconnectedHandler?.();
+
+    rejectInFlightPage();
+    await expect(firstResult).resolves.toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(mocks.context.close).toHaveBeenCalledTimes(1));
+
+    const queuedResult = vi.fn();
+    void queuedAcquisition.then(queuedResult, queuedResult);
+    await Promise.resolve();
+    expect(queuedResult).not.toHaveBeenCalled();
+    expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(1);
+
+    releaseClose();
+    await expect(queuedAcquisition).resolves.toBe(mocks.page);
+    expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(2);
+
+    await pool.cleanup();
+  });
+
+  it("should finish disconnect cleanup without replacement when pool cleanup starts", async () => {
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    mocks.context.close.mockImplementationOnce(async () => {
+      await closeGate;
+    });
+
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      maxBrowsers: 1,
+    });
+    await pool.initialize();
+    const firstProfile = mocks.patchrightLaunchPersistentContext.mock.calls[0][0] as string;
+
+    const disconnectedHandler = mocks.browser.on.mock.calls.find(
+      ([event]) => event === "disconnected"
+    )?.[1] as (() => void) | undefined;
+    disconnectedHandler?.();
+    await vi.waitFor(() => expect(mocks.context.close).toHaveBeenCalledTimes(1));
+
+    const cleanup = pool.cleanup();
+    releaseClose();
+    await cleanup;
+
+    expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(1);
+    await expect(access(firstProfile)).rejects.toThrow();
+  });
 
   it("should close only the persistent context during Patchright cleanup", async () => {
     const pool = new PlaywrightBrowserPool({
