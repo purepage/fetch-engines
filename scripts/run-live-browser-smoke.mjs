@@ -22,15 +22,17 @@ const browserExecutable = await firstAvailableExecutable([
   process.platform === "linux" ? "/usr/bin/google-chrome-stable" : undefined,
   process.platform === "linux" ? "/usr/bin/google-chrome" : undefined,
 ]);
-const vitestExecutable = path.resolve("node_modules", ".bin", process.platform === "win32" ? "vitest.cmd" : "vitest");
+const vitestModule = path.resolve("node_modules", "vitest", "vitest.mjs");
 const forwardedArguments = process.argv.slice(2);
 if (forwardedArguments[0] === "--") {
   forwardedArguments.shift();
 }
 const vitestArguments = ["run", "--environment", "node", "test/live/LiveNetwork.test.ts", ...forwardedArguments];
-const command = process.platform === "linux" ? "xvfb-run" : vitestExecutable;
+const command = process.platform === "linux" ? "xvfb-run" : process.execPath;
 const commandArguments =
-  process.platform === "linux" ? ["--auto-servernum", vitestExecutable, ...vitestArguments] : vitestArguments;
+  process.platform === "linux"
+    ? ["--auto-servernum", process.execPath, vitestModule, ...vitestArguments]
+    : [vitestModule, ...vitestArguments];
 const testProcess = spawn(command, commandArguments, {
   env: {
     ...process.env,

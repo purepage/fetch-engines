@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Patchright now follows its recommended persistent Chrome-context setup with a native viewport and no fingerprint injection
+- Successful automatic verification is detected before rendered-DOM polling, while ordinary HTML 403, 429, and 503 responses fail immediately without challenge waits or retries
+- CDP mode now forces one pooled browser connection, and standard Playwright keeps configured request routing when attached over CDP
+- Live smoke tests run in a dedicated CI job, and their launcher invokes Vitest through Node on Windows
+- Live HTTP behavior checks now use `httpbingo.org` after `httpbin.org` returned service-wide 503 responses in GitHub Actions
 - Markdown conversion now falls back to the typed JavaScript converter when the native Rust converter panics on malformed real-world DOM, preserving Markdown output for the Juno product page
 - Playwright no longer caches unresolved verification pages when the requested output is Markdown
 - Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions

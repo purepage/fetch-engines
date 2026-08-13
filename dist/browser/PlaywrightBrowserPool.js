@@ -3,6 +3,9 @@ import { chromium as playwrightChromiumLauncher, } from "playwright";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 // Import addExtra from playwright-extra
 import { addExtra } from "playwright-extra";
 let augmentedLauncher;
@@ -54,6 +57,7 @@ class ManagedBrowserInstance {
     cdpConnectionOptions;
     browserDriver;
     connectedOverCDP;
+    persistentUserDataDir;
     constructor(config) {
         this.id = uuidv4();
         this.useHeadedMode = config.useHeadedMode;
@@ -127,15 +131,22 @@ class ManagedBrowserInstance {
                 await loadDependencies();
             }
             const launchDriver = this.browserDriver === "patchright" ? directLauncher : augmentedLauncher;
-            this.browser = await launchDriver.launch(mergedLaunchOptions);
-            this.context = await this.browser.newContext(this.browserDriver === "patchright"
-                ? {
-                    viewport: { width: 1365, height: 768 },
-                    locale: "en-GB",
-                    javaScriptEnabled: true,
-                    ignoreHTTPSErrors: true,
+            if (this.browserDriver === "patchright") {
+                this.persistentUserDataDir = await mkdtemp(join(tmpdir(), "purepage-patchright-"));
+                const persistentOptions = {
+                    ...mergedLaunchOptions,
+                    viewport: null,
+                };
+                this.context = await launchDriver.launchPersistentContext(this.persistentUserDataDir, persistentOptions);
+                const persistentBrowser = this.context.browser();
+                if (!persistentBrowser) {
+                    throw new Error("The Patchright persistent context did not expose its browser.");
                 }
-                : {
+                this.browser = persistentBrowser;
+            }
+            else {
+                this.browser = await launchDriver.launch(mergedLaunchOptions);
+                this.context = await this.browser.newContext({
                     userAgent: new UserAgent().toString(),
                     viewport: {
                         width: 1280 + Math.floor(Math.random() * 120),
@@ -144,8 +155,9 @@ class ManagedBrowserInstance {
                     javaScriptEnabled: true,
                     ignoreHTTPSErrors: true,
                 });
+            }
         }
-        if (!this.connectedOverCDP && this.browserDriver === "playwright") {
+        if (this.browserDriver === "playwright") {
             await this.context.route("**/*", (route) => this.routeRequest(route));
         }
         this.disconnectedHandler = () => {
@@ -289,6 +301,18 @@ class ManagedBrowserInstance {
                 console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
             }
         }
+        if (this.persistentUserDataDir) {
+            try {
+                await rm(this.persistentUserDataDir, { recursive: true, force: true });
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Error removing Patchright profile ${this.persistentUserDataDir}: ${message}`);
+            }
+            finally {
+                this.persistentUserDataDir = undefined;
+            }
+        }
     }
 }
 /**
@@ -343,7 +367,7 @@ export class PlaywrightBrowserPool {
     // or selecting an instance from the pool, thus maintaining a consistent state for the pool.
     acquireQueue = new PQueue({ concurrency: 1 });
     constructor(config = {}) {
-        this.maxBrowsers = config.maxBrowsers ?? 2;
+        this.maxBrowsers = config.cdpEndpoint ? 1 : (config.maxBrowsers ?? 2);
         this.maxPagesPerContext = config.maxPagesPerContext ?? 6;
         this.maxBrowserAge = config.maxBrowserAge ?? 20 * 60 * 1000;
         this.healthCheckInterval = config.healthCheckInterval ?? 60 * 1000;

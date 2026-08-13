@@ -96,21 +96,21 @@ describe.runIf(RUN_LIVE).sequential("Live Network Smoke", () => {
     90000
   );
 
-  it("HybridEngine follows redirects (httpbin)", async () => {
-    const res = await hybrid.fetchContent("https://httpbin.org/redirect/2");
+  it("HybridEngine follows redirects (httpbingo)", async () => {
+    const res = await hybrid.fetchContent("https://httpbingo.org/redirect/2");
     expect(res.statusCode).toBe(200);
-    // Final redirect destination for 2 redirects on httpbin is /get
+    // Final redirect destination for 2 redirects on httpbingo is /get
     expect(res.url).toContain("/get");
   }, 45000);
 
-  it("HybridEngine fetches JSON raw content (httpbin)", async () => {
-    const res = await hybrid.fetchContent("https://httpbin.org/json");
+  it("HybridEngine fetches JSON raw content (httpbingo)", async () => {
+    const res = await hybrid.fetchContent("https://httpbingo.org/json");
     expect(res.statusCode).toBe(200);
     expect(res.contentType).toContain("application/json");
     assertStringContent(res.content, 50);
   }, 30000);
 
   it("HybridEngine returns 404 without Playwright fallback", async () => {
-    await expect(hybrid.fetchContent("https://httpbin.org/status/404")).rejects.toHaveProperty("statusCode", 404);
+    await expect(hybrid.fetchContent("https://httpbingo.org/status/404")).rejects.toHaveProperty("statusCode", 404);
   }, 30000);
 });

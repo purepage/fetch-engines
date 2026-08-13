@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     url: vi.fn().mockReturnValue("about:blank"),
   };
   const context = {
+    browser: vi.fn(),
     close: vi.fn().mockResolvedValue(undefined),
     newPage: vi.fn().mockResolvedValue(page),
     pages: vi.fn().mockReturnValue([page]),
@@ -22,12 +23,14 @@ const mocks = vi.hoisted(() => {
     off: vi.fn(),
     on: vi.fn(),
   };
+  context.browser.mockReturnValue(browser);
   return {
     browser,
     connectOverCDP: vi.fn().mockResolvedValue(browser),
     context,
     launch: vi.fn(),
     patchrightLaunch: vi.fn().mockResolvedValue(browser),
+    patchrightLaunchPersistentContext: vi.fn().mockResolvedValue(context),
     page,
   };
 });
@@ -43,6 +46,7 @@ vi.mock("patchright", () => ({
   chromium: {
     connectOverCDP: mocks.connectOverCDP,
     launch: mocks.patchrightLaunch,
+    launchPersistentContext: mocks.patchrightLaunchPersistentContext,
   },
 }));
 
@@ -68,6 +72,7 @@ describe("PlaywrightBrowserPool CDP connections", () => {
     mocks.page.isClosed.mockReturnValue(false);
     mocks.page.url.mockReturnValue("about:blank");
     mocks.patchrightLaunch.mockResolvedValue(mocks.browser);
+    mocks.patchrightLaunchPersistentContext.mockResolvedValue(mocks.context);
   });
 
   it("should attach to the existing default context instead of launching a browser", async () => {
@@ -90,6 +95,19 @@ describe("PlaywrightBrowserPool CDP connections", () => {
     expect(mocks.context.newPage).not.toHaveBeenCalled();
     expect(mocks.context.close).not.toHaveBeenCalled();
     expect(mocks.browser.close).toHaveBeenCalledTimes(1);
+    expect(mocks.context.route).toHaveBeenCalledWith("**/*", expect.any(Function));
+  });
+
+  it("should force a single browser connection when CDP is configured", async () => {
+    const pool = new PlaywrightBrowserPool({
+      healthCheckInterval: 0,
+      cdpEndpoint: "http://127.0.0.1:9222",
+    });
+
+    await pool.initialize();
+    await pool.cleanup();
+
+    expect(mocks.connectOverCDP).toHaveBeenCalledTimes(1);
   });
 
   it("should leave existing non-blank CDP pages untouched", async () => {
@@ -130,7 +148,7 @@ describe("PlaywrightBrowserPool CDP connections", () => {
     expect(mocks.browser.close).toHaveBeenCalledTimes(1);
   });
 
-  it("should launch Patchright without the standard stealth launcher or context routing", async () => {
+  it("should launch Patchright with a persistent native-viewport context", async () => {
     const pool = new PlaywrightBrowserPool({
       browserDriver: "patchright",
       healthCheckInterval: 0,
@@ -144,12 +162,15 @@ describe("PlaywrightBrowserPool CDP connections", () => {
     await pool.initialize();
     await pool.cleanup();
 
-    expect(mocks.patchrightLaunch).toHaveBeenCalledWith(
+    expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledWith(
+      expect.stringContaining("purepage-patchright-"),
       expect.objectContaining({
         executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
         headless: false,
+        viewport: null,
       })
     );
+    expect(mocks.patchrightLaunch).not.toHaveBeenCalled();
     expect(mocks.launch).not.toHaveBeenCalled();
     expect(mocks.context.route).not.toHaveBeenCalled();
   });

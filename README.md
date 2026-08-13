@@ -195,7 +195,7 @@ Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with def
 | `spaRenderDelayMs`         | `0`          | Minimum extra wait budget when `spaMode` is `true`.                                                     |
 | `challengeWaitMs`          | `5000`       | Maximum wait for an automatic JavaScript verification page to clear; never solves CAPTCHAs.             |
 | `playwrightOnlyPatterns`   | `[]`         | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.                |
-| `playwrightLaunchOptions`  | `undefined`  | Options passed to `browserType.launch` (see Playwright docs).                                           |
+| `playwrightLaunchOptions`  | `undefined`  | Options passed to the browser launch; Patchright uses them with a persistent context.                   |
 | `browserDriver`            | `playwright` | Browser driver: standard Playwright with JS stealth, or opt-in `patchright` for Chromium-level patches. |
 | `cdpEndpoint`              | `undefined`  | Optional HTTP/WebSocket endpoint for an existing Chromium browser or remote browser provider.           |
 | `cdpConnectionOptions`     | `undefined`  | Optional CDP connection headers, timeout, and `slowMo`.                                                 |
@@ -220,7 +220,7 @@ const result = await juno.fetchHTML("https://www.juno.co.uk/products/overmono-pu
 await juno.cleanup();
 ```
 
-`patchright` does not solve or submit CAPTCHAs. `cdpEndpoint` can instead attach Hybrid to an existing Chromium session or a managed browser endpoint; CDP mode preserves the endpoint's default context and cookies and uses a single pooled browser connection.
+`patchright` launches a temporary persistent profile with the browser's native viewport and without custom user-agent or locale injection. It does not solve or submit CAPTCHAs. `cdpEndpoint` can instead attach Hybrid to an existing Chromium session or a managed browser endpoint; CDP mode preserves the endpoint's default context and cookies and uses a single pooled browser connection.
 
 ## Error handling
 
