@@ -1,0 +1,156 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  const page = {
+    close: vi.fn().mockResolvedValue(undefined),
+    isClosed: vi.fn().mockReturnValue(false),
+    on: vi.fn(),
+    route: vi.fn().mockResolvedValue(undefined),
+    url: vi.fn().mockReturnValue("about:blank"),
+  };
+  const context = {
+    close: vi.fn().mockResolvedValue(undefined),
+    newPage: vi.fn().mockResolvedValue(page),
+    pages: vi.fn().mockReturnValue([page]),
+    route: vi.fn().mockResolvedValue(undefined),
+  };
+  const browser = {
+    close: vi.fn().mockResolvedValue(undefined),
+    contexts: vi.fn().mockReturnValue([context]),
+    isConnected: vi.fn().mockReturnValue(true),
+    newContext: vi.fn().mockResolvedValue(context),
+    off: vi.fn(),
+    on: vi.fn(),
+  };
+  return {
+    browser,
+    connectOverCDP: vi.fn().mockResolvedValue(browser),
+    context,
+    launch: vi.fn(),
+    patchrightLaunch: vi.fn().mockResolvedValue(browser),
+    page,
+  };
+});
+
+vi.mock("playwright", () => ({
+  chromium: {
+    connectOverCDP: mocks.connectOverCDP,
+    launch: mocks.launch,
+  },
+}));
+
+vi.mock("patchright", () => ({
+  chromium: {
+    connectOverCDP: mocks.connectOverCDP,
+    launch: mocks.patchrightLaunch,
+  },
+}));
+
+vi.mock("playwright-extra", () => ({
+  addExtra: vi.fn(() => ({
+    launch: mocks.launch,
+    use: vi.fn(),
+  })),
+}));
+
+vi.mock("puppeteer-extra-plugin-stealth", () => ({
+  default: vi.fn(() => ({})),
+}));
+
+import { PlaywrightBrowserPool } from "../src/browser/PlaywrightBrowserPool";
+
+describe("PlaywrightBrowserPool CDP connections", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.browser.contexts.mockReturnValue([mocks.context]);
+    mocks.browser.isConnected.mockReturnValue(true);
+    mocks.context.pages.mockReturnValue([mocks.page]);
+    mocks.page.isClosed.mockReturnValue(false);
+    mocks.page.url.mockReturnValue("about:blank");
+    mocks.patchrightLaunch.mockResolvedValue(mocks.browser);
+  });
+
+  it("should attach to the existing default context instead of launching a browser", async () => {
+    const cdpEndpoint = "http://127.0.0.1:9222";
+    const cdpConnectionOptions = { headers: { Authorization: "Bearer test" }, timeout: 12_345 };
+    const pool = new PlaywrightBrowserPool({
+      maxBrowsers: 1,
+      healthCheckInterval: 0,
+      cdpEndpoint,
+      cdpConnectionOptions,
+    } as any);
+
+    await pool.initialize();
+    const page = await pool.acquirePage();
+    await pool.releasePage(page);
+    await pool.cleanup();
+
+    expect(mocks.connectOverCDP).toHaveBeenCalledWith(cdpEndpoint, cdpConnectionOptions);
+    expect(mocks.launch).not.toHaveBeenCalled();
+    expect(mocks.context.newPage).not.toHaveBeenCalled();
+    expect(mocks.context.close).not.toHaveBeenCalled();
+    expect(mocks.browser.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("should leave existing non-blank CDP pages untouched", async () => {
+    const externalPage = {
+      close: vi.fn().mockResolvedValue(undefined),
+      isClosed: vi.fn().mockReturnValue(false),
+      url: vi.fn().mockReturnValue("https://example.com/already-open"),
+    };
+    mocks.context.pages.mockReturnValue([externalPage as any]);
+    const pool = new PlaywrightBrowserPool({
+      maxBrowsers: 1,
+      healthCheckInterval: 0,
+      cdpEndpoint: "http://127.0.0.1:9222",
+    } as any);
+
+    await pool.initialize();
+    const enginePage = await pool.acquirePage();
+    await pool.releasePage(enginePage);
+    await pool.cleanup();
+
+    expect(mocks.context.newPage).toHaveBeenCalledTimes(1);
+    expect(mocks.page.close).toHaveBeenCalledTimes(1);
+    expect(externalPage.close).not.toHaveBeenCalled();
+  });
+
+  it("should reject a CDP browser with no default context without creating one", async () => {
+    mocks.browser.contexts.mockReturnValue([]);
+    const pool = new PlaywrightBrowserPool({
+      maxBrowsers: 1,
+      healthCheckInterval: 0,
+      cdpEndpoint: "ws://browser.example/devtools/browser/test",
+    } as any);
+
+    await expect(pool.initialize()).rejects.toThrow("did not expose a default context");
+
+    expect(mocks.browser.newContext).not.toHaveBeenCalled();
+    expect(mocks.context.close).not.toHaveBeenCalled();
+    expect(mocks.browser.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("should launch Patchright without the standard stealth launcher or context routing", async () => {
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      launchOptions: {
+        executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+      },
+      maxBrowsers: 1,
+      useHeadedMode: true,
+    });
+
+    await pool.initialize();
+    await pool.cleanup();
+
+    expect(mocks.patchrightLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        headless: false,
+      })
+    );
+    expect(mocks.launch).not.toHaveBeenCalled();
+    expect(mocks.context.route).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,5 @@
 import { Page, LaunchOptions } from "playwright";
-import type { BrowserMetrics } from "../types.js";
+import type { BrowserMetrics, CDPConnectionOptions, PlaywrightBrowserDriver } from "../types.js";
 /**
  * Manages a pool of Playwright Browser instances for efficient reuse.
  */
@@ -17,6 +17,9 @@ export declare class PlaywrightBrowserPool {
     private readonly blockedResourceTypes;
     private readonly proxyConfig?;
     private readonly launchOptions?;
+    private readonly cdpEndpoint?;
+    private readonly cdpConnectionOptions?;
+    private readonly browserDriver;
     private static readonly DEFAULT_BLOCKED_DOMAINS;
     private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES;
     private readonly acquireQueue;
@@ -35,6 +38,9 @@ export declare class PlaywrightBrowserPool {
         };
         maxIdleTime?: number;
         launchOptions?: LaunchOptions;
+        cdpEndpoint?: string;
+        cdpConnectionOptions?: CDPConnectionOptions;
+        browserDriver?: PlaywrightBrowserDriver;
     });
     initialize(): Promise<void>;
     private scheduleHealthCheck;

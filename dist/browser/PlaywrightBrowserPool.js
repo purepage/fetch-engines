@@ -20,6 +20,10 @@ async function loadDependencies() {
         augmentedLauncher = tempLauncher; // Cast to our augmented type
     }
 }
+async function loadPatchrightLauncher() {
+    const { chromium } = await import("patchright");
+    return chromium;
+}
 // Define structure for browser instance managed by this pool -- THIS INTERFACE IS NO LONGER USED AND CAN BE REMOVED
 /*
 interface PlaywrightBrowserInstance {
@@ -46,6 +50,10 @@ class ManagedBrowserInstance {
     proxyConfig;
     onDisconnect;
     launchOptions;
+    cdpEndpoint;
+    cdpConnectionOptions;
+    browserDriver;
+    connectedOverCDP;
     constructor(config) {
         this.id = uuidv4();
         this.useHeadedMode = config.useHeadedMode;
@@ -54,6 +62,10 @@ class ManagedBrowserInstance {
         this.proxyConfig = config.proxyConfig;
         this.onDisconnect = config.onDisconnect;
         this.launchOptions = config.launchOptions;
+        this.cdpEndpoint = config.cdpEndpoint;
+        this.cdpConnectionOptions = config.cdpConnectionOptions;
+        this.browserDriver = config.browserDriver;
+        this.connectedOverCDP = Boolean(config.cdpEndpoint);
         const now = new Date();
         this.metrics = {
             id: this.id,
@@ -66,7 +78,6 @@ class ManagedBrowserInstance {
         };
     }
     async initialize() {
-        await loadDependencies(); // Ensure augmentedLauncher is ready
         const defaultLaunchArgs = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -78,54 +89,65 @@ class ManagedBrowserInstance {
             "--mute-audio",
             "--disable-background-networking",
         ];
-        // Start with default headless state based on useHeadedMode, and default args
-        // Then merge with provided launchOptions, which can override headless and args.
-        const mergedLaunchOptions = {
-            headless: !this.useHeadedMode, // Default based on pool mode
-            args: [...defaultLaunchArgs], // Default args
-            proxy: this.proxyConfig, // Proxy from pool config (can be overridden by this.launchOptions.proxy)
-            ...this.launchOptions, // User-provided options (can override headless, args, proxy)
-        };
+        // Patchright already adjusts Chromium's launch flags, so avoid adding the
+        // standard pool's automation-oriented defaults on that path.
+        const mergedLaunchOptions = this.browserDriver === "patchright"
+            ? {
+                headless: !this.useHeadedMode,
+                proxy: this.proxyConfig,
+                ...this.launchOptions,
+            }
+            : {
+                headless: !this.useHeadedMode,
+                args: [...defaultLaunchArgs],
+                proxy: this.proxyConfig,
+                ...this.launchOptions,
+            };
         // If user-provided launchOptions include args, ensure they are merged, not just replaced.
         // User args should ideally be additive or replace specific conflicting args intelligently.
         // For simplicity, we'll concatenate and de-duplicate, giving preference to user args for duplicates if any.
-        if (this.launchOptions && this.launchOptions.args) {
+        if (this.browserDriver === "playwright" && this.launchOptions?.args) {
             mergedLaunchOptions.args = Array.from(new Set([...defaultLaunchArgs, ...this.launchOptions.args]));
         }
         // Explicitly set headless from this.launchOptions if provided, otherwise default based on this.useHeadedMode
         if (this.launchOptions && typeof this.launchOptions.headless === "boolean") {
             mergedLaunchOptions.headless = this.launchOptions.headless;
         }
-        this.browser = await augmentedLauncher.launch(mergedLaunchOptions);
-        this.context = await this.browser.newContext({
-            userAgent: new UserAgent().toString(),
-            viewport: {
-                width: 1280 + Math.floor(Math.random() * 120),
-                height: 720 + Math.floor(Math.random() * 80),
-            },
-            javaScriptEnabled: true,
-            ignoreHTTPSErrors: true,
-        });
-        await this.context.route("**/*", async (route) => {
-            const request = route.request();
-            const url = request.url();
-            const resourceType = request.resourceType();
-            try {
-                const hostname = new URL(url).hostname.toLowerCase();
-                if (this.blockedDomains.some((domain) => hostname.includes(domain)) ||
-                    this.blockedResourceTypes.includes(resourceType)) {
-                    await route.abort("aborted");
-                }
-                else {
-                    await route.continue();
-                }
+        const directLauncher = this.browserDriver === "patchright" ? await loadPatchrightLauncher() : playwrightChromiumLauncher;
+        if (this.cdpEndpoint) {
+            this.browser = await directLauncher.connectOverCDP(this.cdpEndpoint, this.cdpConnectionOptions);
+            const defaultContext = this.browser.contexts()[0];
+            if (!defaultContext) {
+                throw new Error("The CDP browser did not expose a default context.");
             }
-            catch (routeError) {
-                const message = routeError instanceof Error ? routeError.message : String(routeError);
-                console.debug(`Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${message}. Request continued.`, routeError instanceof Error ? routeError : undefined);
-                await route.continue();
+            this.context = defaultContext;
+        }
+        else {
+            if (this.browserDriver === "playwright") {
+                await loadDependencies();
             }
-        });
+            const launchDriver = this.browserDriver === "patchright" ? directLauncher : augmentedLauncher;
+            this.browser = await launchDriver.launch(mergedLaunchOptions);
+            this.context = await this.browser.newContext(this.browserDriver === "patchright"
+                ? {
+                    viewport: { width: 1365, height: 768 },
+                    locale: "en-GB",
+                    javaScriptEnabled: true,
+                    ignoreHTTPSErrors: true,
+                }
+                : {
+                    userAgent: new UserAgent().toString(),
+                    viewport: {
+                        width: 1280 + Math.floor(Math.random() * 120),
+                        height: 720 + Math.floor(Math.random() * 80),
+                    },
+                    javaScriptEnabled: true,
+                    ignoreHTTPSErrors: true,
+                });
+        }
+        if (!this.connectedOverCDP && this.browserDriver === "playwright") {
+            await this.context.route("**/*", (route) => this.routeRequest(route));
+        }
         this.disconnectedHandler = () => {
             if (this.isHealthy) {
                 this.isHealthy = false;
@@ -137,6 +159,26 @@ class ManagedBrowserInstance {
         this.browser.on("disconnected", this.disconnectedHandler);
         this.isHealthy = true; // Mark as healthy after successful initialization
     }
+    async routeRequest(route) {
+        const request = route.request();
+        const url = request.url();
+        const resourceType = request.resourceType();
+        try {
+            const hostname = new URL(url).hostname.toLowerCase();
+            if (this.blockedDomains.some((domain) => hostname.includes(domain)) ||
+                this.blockedResourceTypes.includes(resourceType)) {
+                await route.abort("aborted");
+            }
+            else {
+                await route.continue();
+            }
+        }
+        catch (routeError) {
+            const message = routeError instanceof Error ? routeError.message : String(routeError);
+            console.debug(`Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${message}. Request continued.`, routeError instanceof Error ? routeError : undefined);
+            await route.continue();
+        }
+    }
     canCreateMorePages(maxPagesPerContext) {
         return this.isHealthy && this.pages.size < maxPagesPerContext;
     }
@@ -145,7 +187,10 @@ class ManagedBrowserInstance {
             throw new Error(`Browser instance ${this.id} is not healthy.`);
         }
         try {
-            const page = await this.context.newPage();
+            const reusableBlankPage = this.connectedOverCDP
+                ? this.context.pages().find((candidate) => candidate.url() === "about:blank" && !this.pages.has(candidate))
+                : undefined;
+            const page = reusableBlankPage || (await this.context.newPage());
             this.pages.add(page);
             this.metrics.pagesCreated++;
             this.metrics.activePages = this.pages.size;
@@ -177,7 +222,9 @@ class ManagedBrowserInstance {
         }
     }
     async releasePage(page) {
-        if (this.pages.has(page) && !page.isClosed()) {
+        if (!this.pages.has(page))
+            return;
+        if (!page.isClosed()) {
             try {
                 await page.close();
             }
@@ -189,7 +236,9 @@ class ManagedBrowserInstance {
                 // Consider if this should mark instance unhealthy immediately
             }
         }
-        // The page.on('close') handler will update metrics.pages and activePages
+        this.pages.delete(page);
+        this.metrics.activePages = this.pages.size;
+        this.metrics.lastUsed = new Date();
     }
     checkHealth(now, maxBrowserAgeMs, maxIdleTimeMs) {
         if (!this.isHealthy) {
@@ -200,10 +249,15 @@ class ManagedBrowserInstance {
             this.metrics.isHealthy = false;
             return { shouldRemove: true, reason: "browser disconnected" };
         }
-        if (maxBrowserAgeMs > 0 && now.getTime() - this.metrics.createdAt.getTime() > maxBrowserAgeMs) {
+        if (!this.connectedOverCDP &&
+            maxBrowserAgeMs > 0 &&
+            now.getTime() - this.metrics.createdAt.getTime() > maxBrowserAgeMs) {
             return { shouldRemove: true, reason: "max age reached" };
         }
-        if (this.pages.size === 0 && maxIdleTimeMs > 0 && now.getTime() - this.metrics.lastUsed.getTime() > maxIdleTimeMs) {
+        if (!this.connectedOverCDP &&
+            this.pages.size === 0 &&
+            maxIdleTimeMs > 0 &&
+            now.getTime() - this.metrics.lastUsed.getTime() > maxIdleTimeMs) {
             return { shouldRemove: true, reason: "idle timeout" };
         }
         return { shouldRemove: false, reason: "" };
@@ -213,13 +267,19 @@ class ManagedBrowserInstance {
         this.metrics.isHealthy = false;
         console.log(`Closing browser instance ${this.id}, reason: ${reason || "cleanup"}`);
         if (this.browser) {
-            this.browser.off("disconnected", this.disconnectedHandler); // Important to remove listener
-            try {
-                await this.context.close();
+            if (this.disconnectedHandler) {
+                this.browser.off("disconnected", this.disconnectedHandler);
             }
-            catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
+            await Promise.allSettled(Array.from(this.pages).map((page) => this.releasePage(page)));
+            this.pages.clear();
+            if (!this.connectedOverCDP && this.context) {
+                try {
+                    await this.context.close();
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
+                }
             }
             try {
                 await this.browser.close();
@@ -248,6 +308,9 @@ export class PlaywrightBrowserPool {
     blockedResourceTypes;
     proxyConfig;
     launchOptions;
+    cdpEndpoint;
+    cdpConnectionOptions;
+    browserDriver;
     static DEFAULT_BLOCKED_DOMAINS = [
         "doubleclick.net",
         "google-analytics.com",
@@ -296,9 +359,14 @@ export class PlaywrightBrowserPool {
                 : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
         this.proxyConfig = config.proxy;
         this.launchOptions = config.launchOptions;
+        this.cdpEndpoint = config.cdpEndpoint;
+        this.cdpConnectionOptions = config.cdpConnectionOptions;
+        this.browserDriver = config.browserDriver ?? "playwright";
     }
     async initialize() {
-        await loadDependencies(); // Load dependencies first
+        if (this.browserDriver === "playwright" && !this.cdpEndpoint) {
+            await loadDependencies();
+        }
         if (this.isCleaningUp)
             return;
         await this.ensureMinimumInstances();
@@ -322,23 +390,33 @@ export class PlaywrightBrowserPool {
     async ensureMinimumInstances() {
         if (this.isCleaningUp)
             return;
+        let initializationError;
         while (this.pool.size < this.maxBrowsers) {
             try {
                 await this.createBrowserInstance();
             }
-            catch {
+            catch (error) {
+                initializationError = error;
                 break;
             }
         }
+        if (this.pool.size === 0 && initializationError) {
+            throw initializationError;
+        }
     }
     async createBrowserInstance() {
-        await loadDependencies(); // Ensure dependencies are loaded
+        if (this.browserDriver === "playwright" && !this.cdpEndpoint) {
+            await loadDependencies();
+        }
         const instance = new ManagedBrowserInstance({
             useHeadedMode: this.useHeadedMode,
             blockedDomains: this.blockedDomains,
             blockedResourceTypes: this.blockedResourceTypes,
             proxyConfig: this.proxyConfig,
             launchOptions: this.launchOptions,
+            cdpEndpoint: this.cdpEndpoint,
+            cdpConnectionOptions: this.cdpConnectionOptions,
+            browserDriver: this.browserDriver,
             onDisconnect: (instanceId) => {
                 // Find the instance by ID and remove it from the pool
                 let instanceToRemove;
@@ -358,7 +436,13 @@ export class PlaywrightBrowserPool {
                 }
             },
         });
-        await instance.initialize();
+        try {
+            await instance.initialize();
+        }
+        catch (error) {
+            await instance.close("initialization failed");
+            throw error;
+        }
         this.pool.add(instance);
         return instance;
     }

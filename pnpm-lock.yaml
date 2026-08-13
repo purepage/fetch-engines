@@ -23,12 +23,18 @@ importers:
       axios:
         specifier: 1.14.0
         version: 1.14.0(debug@4.4.0(supports-color@7.2.0))
+      node-html-markdown:
+        specifier: 2.0.0
+        version: 2.0.0
       node-html-parser:
         specifier: ^7.0.1
         version: 7.0.1
       p-queue:
         specifier: ^7.4.1
         version: 7.4.1
+      patchright:
+        specifier: 1.61.1
+        version: 1.61.1
       playwright:
         specifier: ^1.55.1
         version: 1.55.1
@@ -1361,6 +1367,13 @@ packages:
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
 
+  node-html-markdown@2.0.0:
+    resolution: {integrity: sha512-DqUC3GGP7pwSYxS93SwHoP+qCw78xcMP6C6H2DuC8rPD2AweJRjBzQb5SdXpKtDlqAQ7hVotJcfhgU7hU5Gthw==}
+    engines: {node: '>=20.0.0'}
+
+  node-html-parser@6.1.13:
+    resolution: {integrity: sha512-qIsTMOY4C/dAa5Q5vsobRpOOvPfC4pB61UVW2uSwZNUp0QU/jCekTal1vMmbO0DgdHeLUJpv/ARmDqErVxA3Sg==}
+
   node-html-parser@7.0.1:
     resolution: {integrity: sha512-KGtmPY2kS0thCWGK0VuPyOS+pBKhhe8gXztzA2ilAOhbUbxa9homF1bOyKvhGzMLXUoRds9IOmr/v5lr/lqNmA==}
 
@@ -1399,6 +1412,16 @@ packages:
 
   parse5@7.2.1:
     resolution: {integrity: sha512-BuBYQYlv1ckiPdQi/ohiivi9Sagc9JG+Ozs0r7b/0iK3sKmrb0b9FdWdBbOdx6hBCM/F9Ir82ofnBhtZOjCRPQ==}
+
+  patchright-core@1.61.1:
+    resolution: {integrity: sha512-d6Ju67DE6OzqlEX3WPvUX2SLEs6iMY1WERit//mpsrT98VHcztaUo0CBw2Lpxq25VdufVEiWEdcc0HnLwdiq6A==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  patchright@1.61.1:
+    resolution: {integrity: sha512-kZWNZ2tunsBMTBWtARFVWaNvB739GOybTlIPLT91eyx0YERjtUjESawomwO0hnOh6jt1L3Sru0PK62ylYOfqQw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   path-exists@4.0.0:
     resolution: {integrity: sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==}
@@ -3012,6 +3035,15 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
+  node-html-markdown@2.0.0:
+    dependencies:
+      node-html-parser: 6.1.13
+
+  node-html-parser@6.1.13:
+    dependencies:
+      css-select: 5.1.0
+      he: 1.2.0
+
   node-html-parser@7.0.1:
     dependencies:
       css-select: 5.1.0
@@ -3058,6 +3090,14 @@ snapshots:
   parse5@7.2.1:
     dependencies:
       entities: 4.5.0
+
+  patchright-core@1.61.1: {}
+
+  patchright@1.61.1:
+    dependencies:
+      patchright-core: 1.61.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   path-exists@4.0.0: {}
 

@@ -113,6 +113,7 @@ export declare class PlaywrightEngine implements IEngine {
      * external solving services.
      */
     private waitForAutomaticChallenge;
+    private navigateWithChallengeRecovery;
     private applyBlockingRules;
     /**
      * Cleans up resources used by the engine, primarily closing browser instances in the pool.
