@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { access } from "node:fs/promises";
 
 const mocks = vi.hoisted(() => {
   const page = {
@@ -168,10 +169,99 @@ describe("PlaywrightBrowserPool CDP connections", () => {
         executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
         headless: false,
         viewport: null,
+        ignoreHTTPSErrors: true,
       })
     );
     expect(mocks.patchrightLaunch).not.toHaveBeenCalled();
     expect(mocks.launch).not.toHaveBeenCalled();
     expect(mocks.context.route).not.toHaveBeenCalled();
+  });
+
+  it.each(["browser disconnect", "page crash"] as const)(
+    "should close a failed Patchright instance before creating its replacement after %s",
+    async (failure) => {
+      const events: string[] = [];
+      let releaseClose!: () => void;
+      const closeGate = new Promise<void>((resolve) => {
+        releaseClose = resolve;
+      });
+
+      mocks.patchrightLaunchPersistentContext
+        .mockImplementationOnce(async () => {
+          events.push("launch-first");
+          return mocks.context;
+        })
+        .mockImplementationOnce(async () => {
+          events.push("launch-replacement");
+          return mocks.context;
+        });
+      mocks.context.close.mockImplementationOnce(async () => {
+        events.push("close-first");
+        await closeGate;
+      });
+
+      const pool = new PlaywrightBrowserPool({
+        browserDriver: "patchright",
+        healthCheckInterval: 0,
+        maxBrowsers: 1,
+      });
+
+      await pool.initialize();
+      const firstProfile = mocks.patchrightLaunchPersistentContext.mock.calls[0][0] as string;
+
+      if (failure === "browser disconnect") {
+        const disconnectedHandler = mocks.browser.on.mock.calls.find(
+          ([event]) => event === "disconnected"
+        )?.[1] as (() => void) | undefined;
+        expect(disconnectedHandler).toBeDefined();
+        disconnectedHandler?.();
+      } else {
+        await pool.acquirePage();
+        const crashHandler = mocks.page.on.mock.calls.find(([event]) => event === "crash")?.[1] as
+          | (() => void)
+          | undefined;
+        expect(crashHandler).toBeDefined();
+        crashHandler?.();
+      }
+
+      await vi.waitFor(() => expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(1));
+      releaseClose();
+      await vi.waitFor(() => expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(2));
+
+      expect(events.indexOf("close-first")).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf("launch-replacement")).toBeGreaterThan(events.indexOf("close-first"));
+      await expect(access(firstProfile)).rejects.toThrow();
+
+      await pool.cleanup();
+    }
+  );
+
+  it("should close only the persistent context during Patchright cleanup", async () => {
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      maxBrowsers: 1,
+    });
+
+    await pool.initialize();
+    await pool.cleanup();
+
+    expect(mocks.context.close).toHaveBeenCalledTimes(1);
+    expect(mocks.browser.close).not.toHaveBeenCalled();
+  });
+
+  it("should close the browser when persistent-context cleanup fails", async () => {
+    mocks.context.close.mockRejectedValueOnce(new Error("context close failed"));
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      maxBrowsers: 1,
+    });
+
+    await pool.initialize();
+    await pool.cleanup();
+
+    expect(mocks.context.close).toHaveBeenCalledTimes(1);
+    expect(mocks.browser.close).toHaveBeenCalledTimes(1);
   });
 });

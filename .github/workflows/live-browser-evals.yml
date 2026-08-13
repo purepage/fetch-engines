@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      LIVE_CDP_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cdp_endpoint && secrets.LIVE_CDP_ENDPOINT || '' }}
+      USE_CDP_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cdp_endpoint }}
 
     steps:
       - name: Checkout code
@@ -61,8 +61,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chrome Stable
-        run: pnpm exec playwright install --with-deps chrome
+      - name: Install Playwright Chromium and Chrome Stable
+        run: pnpm exec playwright install --with-deps chromium chrome
 
       - name: Build project
         run: pnpm build
@@ -71,11 +71,13 @@ jobs:
         run: pnpm test:live:smoke -- --testNamePattern='^(?!.*Juno Pure Devotion)'
 
       - name: Run the Juno probe through an explicitly requested CDP endpoint
-        if: ${{ env.LIVE_CDP_ENDPOINT != '' }}
+        if: ${{ env.USE_CDP_ENDPOINT == 'true' }}
+        env:
+          LIVE_CDP_ENDPOINT: ${{ secrets.LIVE_CDP_ENDPOINT }}
         run: pnpm test:live:smoke -- --testNamePattern='Juno Pure Devotion'
 
       - name: Observe the Juno Patchright probe from the GitHub runner
-        if: ${{ env.LIVE_CDP_ENDPOINT == '' }}
+        if: ${{ env.USE_CDP_ENDPOINT != 'true' }}
         continue-on-error: true
         run: pnpm test:live:smoke -- --testNamePattern='Juno Pure Devotion'
 

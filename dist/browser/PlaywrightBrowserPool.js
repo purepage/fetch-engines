@@ -136,6 +136,7 @@ class ManagedBrowserInstance {
                 const persistentOptions = {
                     ...mergedLaunchOptions,
                     viewport: null,
+                    ignoreHTTPSErrors: true,
                 };
                 this.context = await launchDriver.launchPersistentContext(this.persistentUserDataDir, persistentOptions);
                 const persistentBrowser = this.context.browser();
@@ -213,6 +214,8 @@ class ManagedBrowserInstance {
                 this.metrics.lastUsed = new Date();
             });
             page.on("crash", () => {
+                if (!this.isHealthy)
+                    return;
                 console.warn(`Page crashed in instance ${this.id}, URL: ${page.url()}`);
                 this.metrics.errors++;
                 this.pages.delete(page); // Remove from active pages
@@ -284,21 +287,25 @@ class ManagedBrowserInstance {
             }
             await Promise.allSettled(Array.from(this.pages).map((page) => this.releasePage(page)));
             this.pages.clear();
+            let contextClosed = false;
             if (!this.connectedOverCDP && this.context) {
                 try {
                     await this.context.close();
+                    contextClosed = true;
                 }
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
                 }
             }
-            try {
-                await this.browser.close();
-            }
-            catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
+            if (!this.persistentUserDataDir || !contextClosed) {
+                try {
+                    await this.browser.close();
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
+                }
             }
         }
         if (this.persistentUserDataDir) {
@@ -442,22 +449,20 @@ export class PlaywrightBrowserPool {
             cdpConnectionOptions: this.cdpConnectionOptions,
             browserDriver: this.browserDriver,
             onDisconnect: (instanceId) => {
-                // Find the instance by ID and remove it from the pool
-                let instanceToRemove;
-                for (const inst of this.pool) {
-                    if (inst.id === instanceId) {
-                        instanceToRemove = inst;
-                        break;
-                    }
-                }
-                if (instanceToRemove) {
-                    this.pool.delete(instanceToRemove);
+                const replacement = this.acquireQueue.add(async () => {
+                    if (this.isCleaningUp)
+                        return;
+                    const instanceToRemove = [...this.pool].find((instance) => instance.id === instanceId);
+                    if (!instanceToRemove)
+                        return;
+                    await this.closeAndRemoveInstance(instanceToRemove, `instance ${instanceId} disconnected`);
                     console.warn(`Removed disconnected instance ${instanceId} from pool.`);
-                    // Ensure minimum instances are maintained
-                    this.ensureMinimumInstances().catch((err) => {
-                        console.error(`Error ensuring minimum instances after removing disconnected instance ${instanceId}: ${err.message}`, err);
-                    });
-                }
+                    await this.ensureMinimumInstances();
+                });
+                replacement.catch((error) => {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.error(`Error replacing disconnected instance ${instanceId}: ${message}`, error);
+                });
             },
         });
         try {
