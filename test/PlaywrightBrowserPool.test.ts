@@ -325,6 +325,63 @@ describe("PlaywrightBrowserPool CDP connections", () => {
     await expect(access(firstProfile)).rejects.toThrow();
   });
 
+  it("should reserve replacement capacity across overlapping recovery and health-check creation", async () => {
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    let releaseReplacementLaunch!: () => void;
+    const replacementLaunchGate = new Promise<void>((resolve) => {
+      releaseReplacementLaunch = resolve;
+    });
+    let signalCompetingLaunch!: () => void;
+    const competingLaunch = new Promise<void>((resolve) => {
+      signalCompetingLaunch = resolve;
+    });
+
+    mocks.context.close.mockImplementationOnce(async () => {
+      await closeGate;
+    });
+    mocks.patchrightLaunchPersistentContext
+      .mockResolvedValueOnce(mocks.context)
+      .mockImplementation(async () => {
+        if (mocks.patchrightLaunchPersistentContext.mock.calls.length > 2) {
+          signalCompetingLaunch();
+        }
+        await replacementLaunchGate;
+        return mocks.context;
+      });
+
+    const pool = new PlaywrightBrowserPool({
+      browserDriver: "patchright",
+      healthCheckInterval: 0,
+      maxBrowsers: 1,
+    });
+    await pool.initialize();
+
+    const disconnectedHandler = mocks.browser.on.mock.calls.find(
+      ([event]) => event === "disconnected"
+    )?.[1] as (() => void) | undefined;
+    disconnectedHandler?.();
+    await vi.waitFor(() => expect(mocks.context.close).toHaveBeenCalledTimes(1));
+
+    const overlappingHealthCheck = (pool as unknown as { healthCheck(): Promise<void> }).healthCheck();
+    await vi.waitFor(() => expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(2));
+
+    releaseClose();
+    await Promise.race([competingLaunch, new Promise((resolve) => setTimeout(resolve, 50))]);
+    releaseReplacementLaunch();
+    await overlappingHealthCheck;
+    const recoveredPage = await pool.acquirePage();
+
+    expect(mocks.patchrightLaunchPersistentContext).toHaveBeenCalledTimes(2);
+    expect(pool.getMetrics()).toHaveLength(1);
+    expect(pool.getMetrics().length).toBeLessThanOrEqual(1);
+
+    await pool.releasePage(recoveredPage);
+    await pool.cleanup();
+  });
+
   it("should close only the persistent context during Patchright cleanup", async () => {
     const pool = new PlaywrightBrowserPool({
       browserDriver: "patchright",

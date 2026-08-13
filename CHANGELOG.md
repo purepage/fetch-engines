@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Patchright now follows its recommended persistent Chrome-context setup with a native viewport and no fingerprint injection
+- Browser-pool creation is now serialized across initialization, acquisition, health checks, and disconnect recovery so overlapping replacements cannot exceed `maxBrowsers`
 - Successful automatic verification is detected before rendered-DOM polling, while ordinary HTML 403, 429, and 503 responses fail immediately without challenge waits or retries
 - CDP mode now forces one pooled browser connection, and standard Playwright keeps configured request routing when attached over CDP
 - Live smoke tests run in a dedicated CI job, their launcher invokes Vitest through Node on Windows, and the Juno probe remains observe-only in ordinary CI; a provider-neutral `LIVE_CDP_ENDPOINT` is used only when explicitly requested in a manual workflow dispatch

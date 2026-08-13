@@ -373,6 +373,10 @@ export class PlaywrightBrowserPool {
     // This prevents race conditions when checking pool capacity, creating new browser instances,
     // or selecting an instance from the pool, thus maintaining a consistent state for the pool.
     acquireQueue = new PQueue({ concurrency: 1 });
+    // Every capacity check and browser launch runs through this queue. Holding
+    // the reservation until the initialized instance is added prevents recovery,
+    // acquisition, initialization, and health checks from overfilling the pool.
+    creationQueue = new PQueue({ concurrency: 1 });
     pendingRecoveryInstances = new Set();
     recoveryBarrier = null;
     constructor(config = {}) {
@@ -421,23 +425,32 @@ export class PlaywrightBrowserPool {
         }
     }
     async ensureMinimumInstances() {
-        if (this.isCleaningUp)
-            return;
-        let initializationError;
-        while (this.pool.size < this.maxBrowsers) {
-            try {
-                await this.createBrowserInstance();
+        return this.creationQueue.add(async () => {
+            if (this.isCleaningUp)
+                return;
+            let initializationError;
+            while (!this.isCleaningUp && this.pool.size < this.maxBrowsers) {
+                try {
+                    await this.createBrowserInstanceWithReservedCapacity();
+                }
+                catch (error) {
+                    initializationError = error;
+                    break;
+                }
             }
-            catch (error) {
-                initializationError = error;
-                break;
+            if (this.pool.size === 0 && initializationError) {
+                throw initializationError;
             }
-        }
-        if (this.pool.size === 0 && initializationError) {
-            throw initializationError;
-        }
+        });
     }
-    async createBrowserInstance() {
+    async createBrowserInstanceIfCapacity() {
+        return this.creationQueue.add(async () => {
+            if (this.isCleaningUp || this.pool.size >= this.maxBrowsers)
+                return null;
+            return this.createBrowserInstanceWithReservedCapacity();
+        });
+    }
+    async createBrowserInstanceWithReservedCapacity() {
         if (this.browserDriver === "playwright" && !this.cdpEndpoint) {
             await loadDependencies();
         }
@@ -460,6 +473,10 @@ export class PlaywrightBrowserPool {
         catch (error) {
             await instance.close("initialization failed");
             throw error;
+        }
+        if (this.isCleaningUp) {
+            await instance.close("pool cleanup during initialization");
+            throw new Error("Pool is shutting down.");
         }
         this.pool.add(instance);
         return instance;
@@ -525,10 +542,11 @@ export class PlaywrightBrowserPool {
                     }
                 }
             }
-            // If no suitable existing instance, and pool is not full, try to create a new one
-            if (!bestInstance && this.pool.size < this.maxBrowsers) {
+            // If no suitable existing instance, reserve capacity and create one.
+            // The creation queue rechecks capacity after any overlapping launch.
+            if (!bestInstance) {
                 try {
-                    bestInstance = await this.createBrowserInstance();
+                    bestInstance = await this.createBrowserInstanceIfCapacity();
                 }
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -654,6 +672,7 @@ export class PlaywrightBrowserPool {
         this.acquireQueue.clear();
         await this.acquireQueue.onIdle();
         await this.waitForRecovery();
+        await this.creationQueue.onIdle();
         // Create a copy of the pool to iterate over, as closeAndRemoveInstance modifies the original set.
         const instancesToClose = Array.from(this.pool);
         const closePromises = instancesToClose.map((instance) => this.closeAndRemoveInstance(instance, "pool cleanup"));

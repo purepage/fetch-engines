@@ -23,6 +23,7 @@ export declare class PlaywrightBrowserPool {
     private static readonly DEFAULT_BLOCKED_DOMAINS;
     private static readonly DEFAULT_BLOCKED_RESOURCE_TYPES;
     private readonly acquireQueue;
+    private readonly creationQueue;
     private readonly pendingRecoveryInstances;
     private recoveryBarrier;
     constructor(config?: {
@@ -47,7 +48,8 @@ export declare class PlaywrightBrowserPool {
     initialize(): Promise<void>;
     private scheduleHealthCheck;
     private ensureMinimumInstances;
-    private createBrowserInstance;
+    private createBrowserInstanceIfCapacity;
+    private createBrowserInstanceWithReservedCapacity;
     private handleUnexpectedDisconnect;
     private startRecovery;
     private recoverDisconnectedInstances;
