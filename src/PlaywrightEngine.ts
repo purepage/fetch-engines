@@ -53,6 +53,15 @@ interface RenderedDomSnapshot {
   shellScore: number;
 }
 
+type AutomaticChallengeState = "not-detected" | "cleared" | "unresolved";
+
+interface ChallengeAwareNavigationResult {
+  response: PlaywrightResponse | null;
+  challengeState: AutomaticChallengeState;
+}
+
+class NonRetryableHttpError extends FetchError {}
+
 // Simple in-memory cache with expiration
 interface CacheEntry {
   result: HTMLFetchResult;
@@ -61,9 +70,13 @@ interface CacheEntry {
 
 // Define a type for the fully resolved engine configuration
 // All properties from PlaywrightEngineConfig are required, except for 'proxy' which can be undefined.
-type ResolvedPlaywrightEngineConfig = Required<Omit<PlaywrightEngineConfig, "proxy" | "playwrightLaunchOptions">> & {
+type ResolvedPlaywrightEngineConfig = Required<
+  Omit<PlaywrightEngineConfig, "proxy" | "playwrightLaunchOptions" | "cdpEndpoint" | "cdpConnectionOptions">
+> & {
   proxy: PlaywrightEngineConfig["proxy"]; // Retains original optionality, allowing undefined
   playwrightLaunchOptions: PlaywrightEngineConfig["playwrightLaunchOptions"]; // Retains original optionality
+  cdpEndpoint: PlaywrightEngineConfig["cdpEndpoint"];
+  cdpConnectionOptions: PlaywrightEngineConfig["cdpConnectionOptions"];
 };
 
 /**
@@ -113,6 +126,9 @@ export class PlaywrightEngine implements IEngine {
     challengeWaitMs: 5000,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,
+    cdpEndpoint: undefined,
+    cdpConnectionOptions: undefined,
+    browserDriver: "playwright",
   };
 
   /**
@@ -131,6 +147,9 @@ export class PlaywrightEngine implements IEngine {
    * Initialize the browser pool with improved error handling and mode switching.
    */
   private async initializeBrowserPool(useHeadedMode: boolean = false): Promise<void> {
+    if (this.config.cdpEndpoint) {
+      useHeadedMode = false;
+    }
     if (this.browserPool && this.isUsingHeadedMode === useHeadedMode) {
       return;
     }
@@ -150,7 +169,7 @@ export class PlaywrightEngine implements IEngine {
       }
       this.isUsingHeadedMode = useHeadedMode;
       this.browserPool = new PlaywrightBrowserPool({
-        maxBrowsers: this.config.maxBrowsers,
+        maxBrowsers: this.config.cdpEndpoint ? 1 : this.config.maxBrowsers,
         maxPagesPerContext: this.config.maxPagesPerContext,
         maxBrowserAge: this.config.maxBrowserAge,
         healthCheckInterval: this.config.healthCheckInterval,
@@ -159,6 +178,9 @@ export class PlaywrightEngine implements IEngine {
         blockedResourceTypes: this.config.poolBlockedResourceTypes,
         proxy: this.config.proxy,
         launchOptions: this.config.playwrightLaunchOptions,
+        cdpEndpoint: this.config.cdpEndpoint,
+        cdpConnectionOptions: this.config.cdpConnectionOptions,
+        browserDriver: this.config.browserDriver,
       });
       await this.browserPool.initialize();
     } catch (error) {
@@ -752,6 +774,10 @@ export class PlaywrightEngine implements IEngine {
       this.addToCache(url, result); // Cache successful Playwright result
       return result;
     } catch (error: unknown) {
+      if (error instanceof NonRetryableHttpError) {
+        throw error;
+      }
+
       // Retry logic:
       // a. If it was a fastMode attempt and it failed, retry once with fastMode=false before counting as a main retry.
       if (currentConfig.fastMode && retryAttempt === 0) {
@@ -843,9 +869,9 @@ export class PlaywrightEngine implements IEngine {
       //   await this.simulateHumanBehavior(page); // Potentially move this or make it conditional for SPA
       // }
 
-      let response: PlaywrightResponse | null = null;
+      let navigationResult: ChallengeAwareNavigationResult;
       try {
-        response = await page.goto(url, {
+        navigationResult = await this.navigateWithChallengeRecovery(page, url, {
           waitUntil: isSpaMode ? "networkidle" : "domcontentloaded", // Adjust waitUntil for SPA mode
           timeout: isSpaMode ? 20000 : 12000, // Keep under typical test timeouts
         });
@@ -857,6 +883,7 @@ export class PlaywrightEngine implements IEngine {
           navigationError instanceof Error ? navigationError : undefined
         );
       }
+      const { response, challengeState } = navigationResult;
 
       if (!response) {
         throw new FetchError("Playwright navigation did not return a response.", "ERR_NO_RESPONSE");
@@ -866,7 +893,10 @@ export class PlaywrightEngine implements IEngine {
         // Additional check: if SPA mode and we got an empty-ish page, it might be an error too
         // This is tricky, as a valid SPA might initially be empty.
         // For now, rely on status code and timeouts.
-        throw new FetchError(
+        const ErrorType = this.isOrdinaryChallengeStatusResponse(response, challengeState)
+          ? NonRetryableHttpError
+          : FetchError;
+        throw new ErrorType(
           `HTTP error status received: ${response.status()}`,
           "ERR_HTTP_ERROR",
           undefined,
@@ -879,8 +909,9 @@ export class PlaywrightEngine implements IEngine {
         actualContentTypeHeader.startsWith("text/html") || actualContentTypeHeader.startsWith("application/xhtml+xml");
 
       if (isHtmlDocument) {
-        await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
-        await this.waitForAutomaticChallenge(page);
+        if (challengeState !== "unresolved") {
+          await this.waitForRenderedDomIfNeeded(page, isSpaMode, spaRenderDelayMs);
+        }
       }
 
       const title = await page.title();
@@ -985,39 +1016,61 @@ export class PlaywrightEngine implements IEngine {
    * navigate away. Intentionally does not interact with CAPTCHA widgets or
    * external solving services.
    */
-  private async waitForAutomaticChallenge(page: Page): Promise<void> {
-    if (this.config.challengeWaitMs <= 0 || !isSoftBlockPage(await page.content())) {
-      return;
+  private async waitForAutomaticChallenge(page: Page): Promise<AutomaticChallengeState> {
+    if (!isSoftBlockPage(await page.content())) {
+      return "not-detected";
+    }
+    if (this.config.challengeWaitMs <= 0) {
+      return "unresolved";
     }
 
     console.warn(`PlaywrightEngine: Waiting up to ${this.config.challengeWaitMs}ms for automatic verification.`);
-    try {
-      await page.waitForFunction(
-        () => {
-          const pageText = `${document.title} ${document.body?.innerText || ""}`.toLowerCase();
-          const challengeSelector = [
-            ".cf-challenge",
-            "#challenge-form",
-            ".g-recaptcha",
-            ".h-captcha",
-            "[data-sitekey]",
-            "iframe[src*='captcha']",
-          ].join(",");
-          const hasChallengeWidget = Boolean(document.querySelector(challengeSelector));
-          const hasChallengeText =
-            /checking your browser|verify you.{0,10}(?:are |'re )?(?:not a )?(?:ro)?bot|security check|captcha|just a moment/.test(
-              pageText
-            );
-          return !hasChallengeWidget && !hasChallengeText;
-        },
-        undefined,
-        { timeout: this.config.challengeWaitMs }
-      );
-    } catch {
-      // A real CAPTCHA may require user action. Keep the page result rather
-      // than failing the entire fetch, but do not cache it (see addToCache).
-      console.warn("PlaywrightEngine: Browser verification did not clear before the configured timeout.");
+    // Stay passive while the browser's verification script runs. Repeated DOM
+    // evaluation during the interstitial can itself become an automation signal.
+    await page.waitForTimeout(this.config.challengeWaitMs);
+    if (!isSoftBlockPage(await page.content())) {
+      return "cleared";
     }
+    // A real CAPTCHA may require user action. Keep the page result rather than
+    // attempting to solve or submit it, and do not cache it (see addToCache).
+    console.warn("PlaywrightEngine: Browser verification did not clear before the configured timeout.");
+    return "unresolved";
+  }
+
+  private async navigateWithChallengeRecovery(
+    page: Page,
+    url: string,
+    options: Parameters<Page["goto"]>[1]
+  ): Promise<ChallengeAwareNavigationResult> {
+    let response = await page.goto(url, options);
+    if (!response) {
+      return { response, challengeState: "not-detected" };
+    }
+
+    const contentType = response.headers()["content-type"]?.toLowerCase() || "";
+    const isHtmlDocument = contentType.startsWith("text/html") || contentType.startsWith("application/xhtml+xml");
+    const mayBeAutomaticChallenge = [403, 429, 503].includes(response.status());
+    const shouldInspectForChallenge = isHtmlDocument && (response.ok() || mayBeAutomaticChallenge);
+    const challengeState = shouldInspectForChallenge ? await this.waitForAutomaticChallenge(page) : "not-detected";
+    if (!response.ok() && mayBeAutomaticChallenge && challengeState === "cleared") {
+      // The original Response object remains the challenge response even when
+      // the page later navigates. Revisit once with the clearance cookie so
+      // callers receive the final status and document response.
+      response = await page.goto(url, options);
+    }
+
+    return { response, challengeState };
+  }
+
+  private isOrdinaryChallengeStatusResponse(
+    response: PlaywrightResponse,
+    challengeState: AutomaticChallengeState
+  ): boolean {
+    if (challengeState !== "not-detected" || ![403, 429, 503].includes(response.status())) {
+      return false;
+    }
+    const contentType = response.headers()["content-type"]?.toLowerCase() || "";
+    return contentType.startsWith("text/html") || contentType.startsWith("application/xhtml+xml");
   }
 
   private async applyBlockingRules(page: Page, fastMode: boolean): Promise<void> {
@@ -1252,6 +1305,10 @@ export class PlaywrightEngine implements IEngine {
         currentConfig.headers
       );
     } catch (error: unknown) {
+      if (error instanceof NonRetryableHttpError) {
+        throw error;
+      }
+
       // Handle retry logic
       if (retryAttempt < currentConfig.maxRetries) {
         console.warn(`Content fetch attempt ${retryAttempt + 1} failed for ${url}, retrying...`);
@@ -1351,7 +1408,7 @@ export class PlaywrightEngine implements IEngine {
       }
 
       // Navigate to the page
-      const response = await page.goto(url, {
+      const { response, challengeState } = await this.navigateWithChallengeRecovery(page, url, {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
@@ -1361,12 +1418,10 @@ export class PlaywrightEngine implements IEngine {
       }
 
       if (!response.ok()) {
-        throw new FetchError(
-          `HTTP error! status: ${response.status()}`,
-          "ERR_HTTP_ERROR",
-          undefined,
-          response.status()
-        );
+        const ErrorType = this.isOrdinaryChallengeStatusResponse(response, challengeState)
+          ? NonRetryableHttpError
+          : FetchError;
+        throw new ErrorType(`HTTP error! status: ${response.status()}`, "ERR_HTTP_ERROR", undefined, response.status());
       }
 
       const contentType = response.headers()["content-type"] || "application/octet-stream";
@@ -1375,7 +1430,9 @@ export class PlaywrightEngine implements IEngine {
         normalizedContentType.startsWith("text/html") || normalizedContentType.startsWith("application/xhtml+xml");
 
       if (isHtmlDocument) {
-        await this.waitForRenderedDomIfNeeded(page, false, 0);
+        if (challengeState !== "unresolved") {
+          await this.waitForRenderedDomIfNeeded(page, false, 0);
+        }
       }
 
       const title = await page.title();

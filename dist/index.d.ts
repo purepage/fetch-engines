@@ -1,7 +1,7 @@
 import type { IEngine } from "./IEngine.js";
 import { FetchEngine } from "./FetchEngine.js";
-import type { HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics } from "./types.js";
-export type { IEngine, HTMLFetchResult, ContentFetchResult, ContentFetchOptions, BrowserMetrics };
+export type { IEngine };
+export type { BrowserMetrics, CDPConnectionOptions, ContentFetchOptions, ContentFetchResult, FetchOptions, HTMLFetchResult, PlaywrightBrowserDriver, PlaywrightEngineConfig, } from "./types.js";
 export { FetchEngine };
 export * from "./HybridEngine.js";
 export * from "./StructuredContentEngine.js";

@@ -1,5 +1,18 @@
 import type { Browser as PlaywrightBrowser, BrowserContext, LaunchOptions } from "playwright";
 
+/** Browser automation driver used by PlaywrightEngine. */
+export type PlaywrightBrowserDriver = "playwright" | "patchright";
+
+/** Options used when attaching Playwright to an existing Chromium browser over CDP. */
+export interface CDPConnectionOptions {
+  /** Additional HTTP headers sent while establishing the CDP connection. */
+  headers?: Record<string, string>;
+  /** Delay Playwright operations by this many milliseconds. */
+  slowMo?: number;
+  /** Maximum time in milliseconds to establish the CDP connection. */
+  timeout?: number;
+}
+
 /**
  * Defines the structure for the result of fetching HTML content.
  */
@@ -219,6 +232,26 @@ export interface PlaywrightEngineConfig {
    * @default undefined
    */
   playwrightLaunchOptions?: LaunchOptions;
+  /**
+   * Browser automation driver used for launched browsers and CDP connections.
+   * `patchright` applies lower-level Chromium automation leak patches and is
+   * useful for sites whose automatic verification rejects JavaScript-only
+   * stealth evasions.
+   * @default "playwright"
+   */
+  browserDriver?: PlaywrightBrowserDriver;
+  /**
+   * Attach to an existing Chromium browser over the Chrome DevTools Protocol
+   * instead of launching a Playwright-managed browser.
+   *
+   * The endpoint may be an HTTP URL or WebSocket URL accepted by
+   * `chromium.connectOverCDP()`. CDP mode reuses the browser's default context
+   * so cookies, storage, and its native launch fingerprint are preserved.
+   * @default undefined
+   */
+  cdpEndpoint?: string;
+  /** Optional connection settings for `cdpEndpoint`. */
+  cdpConnectionOptions?: CDPConnectionOptions;
   /** Optional headers to include in the request. */
   headers?: Record<string, string>;
 }

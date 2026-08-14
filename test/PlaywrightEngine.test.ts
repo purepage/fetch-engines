@@ -51,6 +51,7 @@ describe("PlaywrightEngine - Headers", () => {
     challengeWaitMs: 5000,
     playwrightOnlyPatterns: [],
     playwrightLaunchOptions: undefined,
+    browserDriver: "playwright" as const,
     headers: {}, // Default empty headers
   };
 
@@ -188,22 +189,175 @@ describe("PlaywrightEngine - Headers", () => {
   });
 
   describe("automatic verification waits", () => {
-    it("should wait for an automatic challenge to clear without attempting to solve it", async () => {
+    it.each([403, 429, 503])(
+      "should allow a %i automatic challenge to clear before rejecting the navigation",
+      async (status) => {
+        const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
+        const verifiedPage = "<html><head><title>Product</title></head><body>Product content</body></html>";
+        const challengeResponse = {
+          ok: () => false,
+          status: () => status,
+          url: () => MOCK_URL,
+          headers: () => ({ "content-type": "text/html" }),
+        };
+        const verifiedResponse = {
+          ok: () => true,
+          status: () => 200,
+          url: () => MOCK_URL,
+          headers: () => ({ "content-type": "text/html" }),
+        };
+        mockPage.goto.mockResolvedValueOnce(challengeResponse).mockResolvedValueOnce(verifiedResponse);
+        mockPage.content.mockResolvedValueOnce(challengePage).mockResolvedValue(verifiedPage);
+        mockPage.title.mockResolvedValue("Product");
+        engine = new PlaywrightEngine({
+          ...DEFAULT_ENGINE_CONFIG_BASE,
+          challengeWaitMs: 321,
+          defaultFastMode: false,
+        });
+
+        const result = await engine.fetchHTML(MOCK_URL);
+
+        expect(mockPage.waitForTimeout).toHaveBeenCalledWith(321);
+        expect(mockPage.waitForFunction).not.toHaveBeenCalled();
+        expect(mockPage.goto).toHaveBeenCalledTimes(2);
+        expect(result.statusCode).toBe(200);
+        expect(result.content).toBe(verifiedPage);
+        expect(mockPage.waitForTimeout.mock.invocationCallOrder[0]).toBeLessThan(
+          mockPage.evaluate.mock.invocationCallOrder[0]
+        );
+      }
+    );
+
+    it("should wait for a successful automatic challenge before rendered DOM polling", async () => {
       const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
       mockPage.content
         .mockResolvedValueOnce(challengePage)
-        .mockResolvedValue("<html><body>Verified content</body></html>");
+        .mockResolvedValue("<html><body>Product content</body></html>");
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, challengeWaitMs: 321 });
 
       await engine.fetchHTML(MOCK_URL);
 
-      expect(mockPage.waitForFunction).toHaveBeenCalledWith(expect.any(Function), undefined, { timeout: 321 });
+      expect(mockPage.waitForTimeout).toHaveBeenCalledWith(321);
+      expect(mockPage.waitForTimeout).toHaveBeenCalledTimes(1);
+      expect(mockPage.goto).toHaveBeenCalledTimes(1);
+      expect(mockPage.waitForFunction).not.toHaveBeenCalled();
+      expect(mockPage.waitForTimeout.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPage.evaluate.mock.invocationCallOrder[0]
+      );
+    });
+
+    it.each([403, 429, 503])("should reject an ordinary HTML %i without a challenge wait or retry", async (status) => {
+      const forbiddenResponse = {
+        ok: () => false,
+        status: () => status,
+        url: () => MOCK_URL,
+        headers: () => ({ "content-type": "text/html" }),
+      };
+      mockPage.goto.mockResolvedValue(forbiddenResponse);
+      mockPage.content.mockResolvedValue("<html><body>Private resource</body></html>");
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        challengeWaitMs: 321,
+        defaultFastMode: false,
+        maxRetries: 2,
+      });
+
+      await expect(engine.fetchHTML(MOCK_URL)).rejects.toMatchObject({ code: "ERR_HTTP_ERROR", statusCode: status });
+
+      expect(mockPage.waitForTimeout).not.toHaveBeenCalled();
+      expect(mockPage.evaluate).not.toHaveBeenCalled();
+      expect(mockPage.goto).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([403, 429, 503])(
+      "should reject an ordinary HTML %i in fetchContent without a challenge wait or retry",
+      async (status) => {
+        const errorResponse = {
+          ok: () => false,
+          status: () => status,
+          url: () => MOCK_URL,
+          headers: () => ({ "content-type": "text/html" }),
+        };
+        mockPage.goto.mockResolvedValue(errorResponse);
+        mockPage.content.mockResolvedValue("<html><body>Ordinary error</body></html>");
+        engine = new PlaywrightEngine({
+          ...DEFAULT_ENGINE_CONFIG_BASE,
+          challengeWaitMs: 321,
+          defaultFastMode: false,
+          maxRetries: 2,
+        });
+
+        await expect(engine.fetchContent(MOCK_URL, { fastMode: false })).rejects.toMatchObject({
+          code: "ERR_HTTP_ERROR",
+          statusCode: status,
+        });
+
+        expect(mockPage.waitForTimeout).not.toHaveBeenCalled();
+        expect(mockPage.evaluate).not.toHaveBeenCalled();
+        expect(mockPage.goto).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each([403, 429, 503])("should recover a %i automatic challenge in fetchContent", async (status) => {
+      const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
+      const verifiedPage = "<html><head><title>Product</title></head><body>Product content</body></html>";
+      mockPage.goto
+        .mockResolvedValueOnce({
+          ok: () => false,
+          status: () => status,
+          url: () => MOCK_URL,
+          headers: () => ({ "content-type": "text/html" }),
+        })
+        .mockResolvedValueOnce({
+          ok: () => true,
+          status: () => 200,
+          url: () => MOCK_URL,
+          headers: () => ({ "content-type": "text/html" }),
+        });
+      mockPage.content.mockResolvedValueOnce(challengePage).mockResolvedValue(verifiedPage);
+      mockPage.title.mockResolvedValue("Product");
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        challengeWaitMs: 321,
+        defaultFastMode: false,
+      });
+
+      const result = await engine.fetchContent(MOCK_URL, { fastMode: false });
+
+      expect(result.statusCode).toBe(200);
+      expect(result.content).toBe(verifiedPage);
+      expect(mockPage.waitForTimeout).toHaveBeenCalledTimes(1);
+      expect(mockPage.goto).toHaveBeenCalledTimes(2);
+      expect(mockPage.waitForTimeout.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPage.evaluate.mock.invocationCallOrder[0]
+      );
+    });
+
+    it("should wait for a successful automatic challenge before polling in fetchContent", async () => {
+      const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
+      mockPage.content
+        .mockResolvedValueOnce(challengePage)
+        .mockResolvedValue("<html><body>Product content</body></html>");
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        challengeWaitMs: 321,
+        defaultFastMode: false,
+      });
+
+      const result = await engine.fetchContent(MOCK_URL, { fastMode: false });
+
+      expect(result.statusCode).toBe(200);
+      expect(mockPage.waitForTimeout).toHaveBeenCalledWith(321);
+      expect(mockPage.waitForTimeout).toHaveBeenCalledTimes(1);
+      expect(mockPage.goto).toHaveBeenCalledTimes(1);
+      expect(mockPage.waitForTimeout.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPage.evaluate.mock.invocationCallOrder[0]
+      );
     });
 
     it("should not cache an unresolved challenge page", async () => {
       const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
       mockPage.content.mockResolvedValue(challengePage);
-      mockPage.waitForFunction.mockRejectedValue(new Error("challenge remained"));
       engine = new PlaywrightEngine({ ...DEFAULT_ENGINE_CONFIG_BASE, cacheTTL: 10_000, challengeWaitMs: 1 });
 
       await engine.fetchHTML(MOCK_URL);
@@ -215,7 +369,6 @@ describe("PlaywrightEngine - Headers", () => {
     it("should not cache an unresolved challenge page rendered as Markdown", async () => {
       const challengePage = `<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-challenge">Checking your browser</div></body></html>`;
       mockPage.content.mockResolvedValue(challengePage);
-      mockPage.waitForFunction.mockRejectedValue(new Error("challenge remained"));
       engine = new PlaywrightEngine({
         ...DEFAULT_ENGINE_CONFIG_BASE,
         cacheTTL: 10_000,
@@ -227,6 +380,40 @@ describe("PlaywrightEngine - Headers", () => {
       await engine.fetchHTML(MOCK_URL);
 
       expect(mockPage.goto).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("CDP browser connections", () => {
+    it("should pass a CDP endpoint to a single-browser pool", async () => {
+      const cdpEndpoint = "http://127.0.0.1:9222";
+      const cdpConnectionOptions = { headers: { Authorization: "Bearer test" }, timeout: 12_345 };
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        maxBrowsers: 4,
+        cdpEndpoint,
+        cdpConnectionOptions,
+      } as any);
+
+      await engine.fetchHTML(MOCK_URL);
+
+      expect(PlaywrightBrowserPool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cdpEndpoint,
+          cdpConnectionOptions,
+          maxBrowsers: 1,
+        })
+      );
+    });
+
+    it("should pass the selected browser driver to the pool", async () => {
+      engine = new PlaywrightEngine({
+        ...DEFAULT_ENGINE_CONFIG_BASE,
+        browserDriver: "patchright",
+      });
+
+      await engine.fetchHTML(MOCK_URL);
+
+      expect(PlaywrightBrowserPool).toHaveBeenCalledWith(expect.objectContaining({ browserDriver: "patchright" }));
     });
   });
 

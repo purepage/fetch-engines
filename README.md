@@ -171,33 +171,56 @@ Check the inline TypeScript docs or the [`/examples`](./examples) directory for 
 
 Every option from `PlaywrightEngineConfig` (consumed by `HybridEngine`) with defaults:
 
-| Option                     | Default     | Purpose                                                                                            |
-| -------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| `headers`                  | `{}`        | Extra headers merged into every request.                                                           |
-| `concurrentPages`          | `3`         | Maximum Playwright pages processed at once.                                                        |
-| `maxRetries`               | `3`         | Additional retry attempts after the first failure.                                                 |
-| `retryDelay`               | `5000`      | Milliseconds to wait between retries.                                                              |
-| `cacheTTL`                 | `900000`    | Cache lifetime in ms (`0` disables caching).                                                       |
-| `useHttpFallback`          | `true`      | Try a fast HTTP GET before spinning up Playwright.                                                 |
-| `useHeadedModeFallback`    | `false`     | Automatically retry a domain in headed mode after repeated failures.                               |
-| `defaultFastMode`          | `true`      | Block non-critical assets and skip human simulation unless overridden.                             |
-| `simulateHumanBehavior`    | `true`      | When not in fast mode, add delays and scrolling to avoid bot detection.                            |
-| `maxBrowsers`              | `2`         | Highest number of Playwright browser instances kept in the pool.                                   |
-| `maxPagesPerContext`       | `6`         | Pages opened per browser context before recycling it.                                              |
-| `maxBrowserAge`            | `1200000`   | Milliseconds before a browser instance is torn down (20 minutes).                                  |
-| `healthCheckInterval`      | `60000`     | Pool health check frequency in ms.                                                                 |
-| `poolBlockedDomains`       | `[]`        | Domains blocked across every Playwright request (inherit pool defaults if empty).                  |
-| `poolBlockedResourceTypes` | `[]`        | Resource types (e.g. `"image"`) blocked globally.                                                  |
-| `proxy`                    | `undefined` | Per-browser proxy `{ server, username?, password? }`.                                              |
-| `useHeadedMode`            | `false`     | Force every browser to launch with a visible window.                                               |
-| `markdown`                 | `false`     | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal.   |
-| `spaMode`                  | `false`     | Force the more patient render path. Many shell-like pages are auto-detected even when this is off. |
-| `spaRenderDelayMs`         | `0`         | Minimum extra wait budget when `spaMode` is `true`.                                                |
-| `challengeWaitMs`          | `5000`      | Maximum wait for an automatic JavaScript verification page to clear; never solves CAPTCHAs.        |
-| `playwrightOnlyPatterns`   | `[]`        | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.           |
-| `playwrightLaunchOptions`  | `undefined` | Options passed to `browserType.launch` (see Playwright docs).                                      |
+| Option                     | Default      | Purpose                                                                                                 |
+| -------------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
+| `headers`                  | `{}`         | Extra headers merged into every request.                                                                |
+| `concurrentPages`          | `3`          | Maximum Playwright pages processed at once.                                                             |
+| `maxRetries`               | `3`          | Additional retry attempts after the first failure.                                                      |
+| `retryDelay`               | `5000`       | Milliseconds to wait between retries.                                                                   |
+| `cacheTTL`                 | `900000`     | Cache lifetime in ms (`0` disables caching).                                                            |
+| `useHttpFallback`          | `true`       | Try a fast HTTP GET before spinning up Playwright.                                                      |
+| `useHeadedModeFallback`    | `false`      | Automatically retry a domain in headed mode after repeated failures.                                    |
+| `defaultFastMode`          | `true`       | Block non-critical assets and skip human simulation unless overridden.                                  |
+| `simulateHumanBehavior`    | `true`       | When not in fast mode, add delays and scrolling to avoid bot detection.                                 |
+| `maxBrowsers`              | `2`          | Highest number of Playwright browser instances kept in the pool.                                        |
+| `maxPagesPerContext`       | `6`          | Pages opened per browser context before recycling it.                                                   |
+| `maxBrowserAge`            | `1200000`    | Milliseconds before a browser instance is torn down (20 minutes).                                       |
+| `healthCheckInterval`      | `60000`      | Pool health check frequency in ms.                                                                      |
+| `poolBlockedDomains`       | `[]`         | Domains blocked across every Playwright request (inherit pool defaults if empty).                       |
+| `poolBlockedResourceTypes` | `[]`         | Resource types (e.g. `"image"`) blocked globally.                                                       |
+| `proxy`                    | `undefined`  | Per-browser proxy `{ server, username?, password? }`.                                                   |
+| `useHeadedMode`            | `false`      | Force every browser to launch with a visible window.                                                    |
+| `markdown`                 | `false`      | Return Markdown instead of raw HTML. Converts via a Rust-native engine with boilerplate removal.        |
+| `spaMode`                  | `false`      | Force the more patient render path. Many shell-like pages are auto-detected even when this is off.      |
+| `spaRenderDelayMs`         | `0`          | Minimum extra wait budget when `spaMode` is `true`.                                                     |
+| `challengeWaitMs`          | `5000`       | Maximum wait for an automatic JavaScript verification page to clear; never solves CAPTCHAs.             |
+| `playwrightOnlyPatterns`   | `[]`         | URLs matching any string/regex go straight to Playwright, skipping HTTP shell detection.                |
+| `playwrightLaunchOptions`  | `undefined`  | Options passed to the browser launch; Patchright uses them with a persistent context.                   |
+| `browserDriver`            | `playwright` | Browser driver: standard Playwright with JS stealth, or opt-in `patchright` for Chromium-level patches. |
+| `cdpEndpoint`              | `undefined`  | Optional HTTP/WebSocket endpoint for an existing Chromium browser or remote browser provider.           |
+| `cdpConnectionOptions`     | `undefined`  | Optional CDP connection headers, timeout, and `slowMo`.                                                 |
 
 Per-request overrides: `fetchHTML` accepts `fastMode`, `markdown`, `spaMode`, and `headers`, while `fetchContent` supports `fastMode` and `headers`.
+
+For Chromium sites whose automatic verification rejects JavaScript-only stealth, opt into Patchright and keep the challenge pass headed and fully resourced:
+
+```ts
+const juno = new HybridEngine({
+  browserDriver: "patchright",
+  challengeWaitMs: 15_000,
+  defaultFastMode: false,
+  markdown: true,
+  maxBrowsers: 1,
+  playwrightOnlyPatterns: ["juno.co.uk"],
+  useHeadedMode: true,
+  useHttpFallback: false,
+});
+
+const result = await juno.fetchHTML("https://www.juno.co.uk/products/overmono-pure-devotion-vinyl/1156010-01/");
+await juno.cleanup();
+```
+
+`patchright` launches a temporary persistent profile with the browser's native viewport and without custom user-agent or locale injection. It does not solve or submit CAPTCHAs. `cdpEndpoint` can instead attach Hybrid to an existing Chromium session or a managed browser endpoint; CDP mode preserves the endpoint's default context and cookies and uses a single pooled browser connection.
 
 ## Error handling
 
@@ -208,10 +231,10 @@ Failures raise a typed `FetchError` exposing `code`, `statusCode`, and the under
 - Explore the [`examples`](./examples) directory for scripts you can run end-to-end.
 - Ready-to-use TypeScript types ship with the package.
 - `pnpm test` runs the automated suite when you are ready to contribute.
-- `pnpm test:live:smoke` runs the browser-backed live smoke suite, including a markdown fetch check for `https://www.bhp.com/`.
+- `pnpm test:live:smoke` runs the browser-backed live smoke suite, including markdown fetch checks for `https://www.bhp.com/` and the Juno Pure Devotion product page. The Juno probe is observe-only in ordinary CI because a hosted runner's network reputation is outside the library's control. Maintainers can explicitly enable a configured, provider-neutral `LIVE_CDP_ENDPOINT` when manually dispatching the workflow.
 - `pnpm eval:auto-render` runs a live Hybrid-vs-HTTP quality matrix across docs, government, knowledge, marketing, commerce, and access-guarded pages, using a stable gated core plus observe-only sentinels for harder domains.
 - `pnpm test:live:auto-render` runs the same hypothesis as a Vitest live test (`LIVE_NETWORK=1`) in a Node environment so it exercises the real network/browser stack instead of `jsdom`.
-- GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact.
+- GitHub Actions includes a dedicated browser-enabled live eval workflow that runs on `main` changes, nightly on a schedule, and on manual dispatch. It uploads the JSON report as a build artifact. The default workflow requires no paid browser service.
 
 ## Contributing
 

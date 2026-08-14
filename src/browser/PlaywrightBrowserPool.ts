@@ -9,10 +9,13 @@ import {
   LaunchOptions,
   BrowserType as PlaywrightBrowserLauncherType,
 } from "playwright";
-import type { BrowserMetrics } from "../types.js";
+import type { BrowserMetrics, CDPConnectionOptions, PlaywrightBrowserDriver } from "../types.js";
 import UserAgent from "user-agents";
 import { v4 as uuidv4 } from "uuid";
 import PQueue from "p-queue";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Import addExtra from playwright-extra
 import { addExtra } from "playwright-extra";
@@ -42,6 +45,11 @@ async function loadDependencies() {
   }
 }
 
+async function loadPatchrightLauncher(): Promise<AugmentedChromiumLauncher> {
+  const { chromium } = await import("patchright");
+  return chromium as unknown as AugmentedChromiumLauncher;
+}
+
 // Define structure for browser instance managed by this pool -- THIS INTERFACE IS NO LONGER USED AND CAN BE REMOVED
 /*
 interface PlaywrightBrowserInstance {
@@ -62,7 +70,7 @@ class ManagedBrowserInstance {
   public readonly pages: Set<Page> = new Set();
   public readonly metrics: BrowserMetrics;
   public isHealthy: boolean = true;
-  private disconnectedHandler!: () => void;
+  private disconnectedHandler?: () => void;
 
   private readonly useHeadedMode: boolean;
   private readonly blockedDomains: string[];
@@ -70,6 +78,11 @@ class ManagedBrowserInstance {
   private readonly proxyConfig?: { server: string; username?: string; password?: string };
   private readonly onDisconnect: (instanceId: string) => void;
   private readonly launchOptions?: LaunchOptions;
+  private readonly cdpEndpoint?: string;
+  private readonly cdpConnectionOptions?: CDPConnectionOptions;
+  private readonly browserDriver: PlaywrightBrowserDriver;
+  private readonly connectedOverCDP: boolean;
+  private persistentUserDataDir?: string;
 
   constructor(config: {
     useHeadedMode: boolean;
@@ -78,6 +91,9 @@ class ManagedBrowserInstance {
     proxyConfig?: { server: string; username?: string; password?: string };
     onDisconnect: (instanceId: string) => void;
     launchOptions?: LaunchOptions;
+    cdpEndpoint?: string;
+    cdpConnectionOptions?: CDPConnectionOptions;
+    browserDriver: PlaywrightBrowserDriver;
   }) {
     this.id = uuidv4();
     this.useHeadedMode = config.useHeadedMode;
@@ -86,6 +102,10 @@ class ManagedBrowserInstance {
     this.proxyConfig = config.proxyConfig;
     this.onDisconnect = config.onDisconnect;
     this.launchOptions = config.launchOptions;
+    this.cdpEndpoint = config.cdpEndpoint;
+    this.cdpConnectionOptions = config.cdpConnectionOptions;
+    this.browserDriver = config.browserDriver;
+    this.connectedOverCDP = Boolean(config.cdpEndpoint);
 
     const now = new Date();
     this.metrics = {
@@ -100,8 +120,6 @@ class ManagedBrowserInstance {
   }
 
   async initialize(): Promise<void> {
-    await loadDependencies(); // Ensure augmentedLauncher is ready
-
     const defaultLaunchArgs = [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -114,19 +132,26 @@ class ManagedBrowserInstance {
       "--disable-background-networking",
     ];
 
-    // Start with default headless state based on useHeadedMode, and default args
-    // Then merge with provided launchOptions, which can override headless and args.
-    const mergedLaunchOptions: LaunchOptions = {
-      headless: !this.useHeadedMode, // Default based on pool mode
-      args: [...defaultLaunchArgs], // Default args
-      proxy: this.proxyConfig, // Proxy from pool config (can be overridden by this.launchOptions.proxy)
-      ...this.launchOptions, // User-provided options (can override headless, args, proxy)
-    };
+    // Patchright already adjusts Chromium's launch flags, so avoid adding the
+    // standard pool's automation-oriented defaults on that path.
+    const mergedLaunchOptions: LaunchOptions =
+      this.browserDriver === "patchright"
+        ? {
+            headless: !this.useHeadedMode,
+            proxy: this.proxyConfig,
+            ...this.launchOptions,
+          }
+        : {
+            headless: !this.useHeadedMode,
+            args: [...defaultLaunchArgs],
+            proxy: this.proxyConfig,
+            ...this.launchOptions,
+          };
 
     // If user-provided launchOptions include args, ensure they are merged, not just replaced.
     // User args should ideally be additive or replace specific conflicting args intelligently.
     // For simplicity, we'll concatenate and de-duplicate, giving preference to user args for duplicates if any.
-    if (this.launchOptions && this.launchOptions.args) {
+    if (this.browserDriver === "playwright" && this.launchOptions?.args) {
       mergedLaunchOptions.args = Array.from(new Set([...defaultLaunchArgs, ...this.launchOptions.args]));
     }
     // Explicitly set headless from this.launchOptions if provided, otherwise default based on this.useHeadedMode
@@ -134,40 +159,51 @@ class ManagedBrowserInstance {
       mergedLaunchOptions.headless = this.launchOptions.headless;
     }
 
-    this.browser = await augmentedLauncher.launch(mergedLaunchOptions);
-    this.context = await this.browser.newContext({
-      userAgent: new UserAgent().toString(),
-      viewport: {
-        width: 1280 + Math.floor(Math.random() * 120),
-        height: 720 + Math.floor(Math.random() * 80),
-      },
-      javaScriptEnabled: true,
-      ignoreHTTPSErrors: true,
-    });
+    const directLauncher =
+      this.browserDriver === "patchright" ? await loadPatchrightLauncher() : playwrightChromiumLauncher;
 
-    await this.context.route("**/*", async (route: Route) => {
-      const request = route.request();
-      const url = request.url();
-      const resourceType = request.resourceType();
-      try {
-        const hostname = new URL(url).hostname.toLowerCase();
-        if (
-          this.blockedDomains.some((domain) => hostname.includes(domain)) ||
-          this.blockedResourceTypes.includes(resourceType)
-        ) {
-          await route.abort("aborted");
-        } else {
-          await route.continue();
-        }
-      } catch (routeError: unknown) {
-        const message = routeError instanceof Error ? routeError.message : String(routeError);
-        console.debug(
-          `Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${message}. Request continued.`,
-          routeError instanceof Error ? routeError : undefined
-        );
-        await route.continue();
+    if (this.cdpEndpoint) {
+      this.browser = await directLauncher.connectOverCDP(this.cdpEndpoint, this.cdpConnectionOptions);
+      const defaultContext = this.browser.contexts()[0];
+      if (!defaultContext) {
+        throw new Error("The CDP browser did not expose a default context.");
       }
-    });
+      this.context = defaultContext;
+    } else {
+      if (this.browserDriver === "playwright") {
+        await loadDependencies();
+      }
+      const launchDriver = this.browserDriver === "patchright" ? directLauncher : augmentedLauncher;
+      if (this.browserDriver === "patchright") {
+        this.persistentUserDataDir = await mkdtemp(join(tmpdir(), "purepage-patchright-"));
+        const persistentOptions = {
+          ...mergedLaunchOptions,
+          viewport: null,
+          ignoreHTTPSErrors: true,
+        } as Parameters<typeof launchDriver.launchPersistentContext>[1];
+        this.context = await launchDriver.launchPersistentContext(this.persistentUserDataDir, persistentOptions);
+        const persistentBrowser = this.context.browser();
+        if (!persistentBrowser) {
+          throw new Error("The Patchright persistent context did not expose its browser.");
+        }
+        this.browser = persistentBrowser;
+      } else {
+        this.browser = await launchDriver.launch(mergedLaunchOptions);
+        this.context = await this.browser.newContext({
+          userAgent: new UserAgent().toString(),
+          viewport: {
+            width: 1280 + Math.floor(Math.random() * 120),
+            height: 720 + Math.floor(Math.random() * 80),
+          },
+          javaScriptEnabled: true,
+          ignoreHTTPSErrors: true,
+        });
+      }
+    }
+
+    if (this.browserDriver === "playwright") {
+      await this.context.route("**/*", (route: Route) => this.routeRequest(route));
+    }
 
     this.disconnectedHandler = () => {
       if (this.isHealthy) {
@@ -181,6 +217,30 @@ class ManagedBrowserInstance {
     this.isHealthy = true; // Mark as healthy after successful initialization
   }
 
+  private async routeRequest(route: Route): Promise<void> {
+    const request = route.request();
+    const url = request.url();
+    const resourceType = request.resourceType();
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      if (
+        this.blockedDomains.some((domain) => hostname.includes(domain)) ||
+        this.blockedResourceTypes.includes(resourceType)
+      ) {
+        await route.abort("aborted");
+      } else {
+        await route.continue();
+      }
+    } catch (routeError: unknown) {
+      const message = routeError instanceof Error ? routeError.message : String(routeError);
+      console.debug(
+        `Error in ManagedBrowserInstance (${this.id}) route interceptor for URL ${url}: ${message}. Request continued.`,
+        routeError instanceof Error ? routeError : undefined
+      );
+      await route.continue();
+    }
+  }
+
   canCreateMorePages(maxPagesPerContext: number): boolean {
     return this.isHealthy && this.pages.size < maxPagesPerContext;
   }
@@ -190,7 +250,10 @@ class ManagedBrowserInstance {
       throw new Error(`Browser instance ${this.id} is not healthy.`);
     }
     try {
-      const page = await this.context.newPage();
+      const reusableBlankPage = this.connectedOverCDP
+        ? this.context.pages().find((candidate) => candidate.url() === "about:blank" && !this.pages.has(candidate))
+        : undefined;
+      const page = reusableBlankPage || (await this.context.newPage());
       this.pages.add(page);
       this.metrics.pagesCreated++;
       this.metrics.activePages = this.pages.size;
@@ -203,6 +266,7 @@ class ManagedBrowserInstance {
       });
 
       page.on("crash", () => {
+        if (!this.isHealthy) return;
         console.warn(`Page crashed in instance ${this.id}, URL: ${page.url()}`);
         this.metrics.errors++;
         this.pages.delete(page); // Remove from active pages
@@ -225,7 +289,8 @@ class ManagedBrowserInstance {
   }
 
   async releasePage(page: Page): Promise<void> {
-    if (this.pages.has(page) && !page.isClosed()) {
+    if (!this.pages.has(page)) return;
+    if (!page.isClosed()) {
       try {
         await page.close();
       } catch (error: unknown) {
@@ -236,7 +301,9 @@ class ManagedBrowserInstance {
         // Consider if this should mark instance unhealthy immediately
       }
     }
-    // The page.on('close') handler will update metrics.pages and activePages
+    this.pages.delete(page);
+    this.metrics.activePages = this.pages.size;
+    this.metrics.lastUsed = new Date();
   }
 
   checkHealth(now: Date, maxBrowserAgeMs: number, maxIdleTimeMs: number): { shouldRemove: boolean; reason: string } {
@@ -248,10 +315,19 @@ class ManagedBrowserInstance {
       this.metrics.isHealthy = false;
       return { shouldRemove: true, reason: "browser disconnected" };
     }
-    if (maxBrowserAgeMs > 0 && now.getTime() - this.metrics.createdAt.getTime() > maxBrowserAgeMs) {
+    if (
+      !this.connectedOverCDP &&
+      maxBrowserAgeMs > 0 &&
+      now.getTime() - this.metrics.createdAt.getTime() > maxBrowserAgeMs
+    ) {
       return { shouldRemove: true, reason: "max age reached" };
     }
-    if (this.pages.size === 0 && maxIdleTimeMs > 0 && now.getTime() - this.metrics.lastUsed.getTime() > maxIdleTimeMs) {
+    if (
+      !this.connectedOverCDP &&
+      this.pages.size === 0 &&
+      maxIdleTimeMs > 0 &&
+      now.getTime() - this.metrics.lastUsed.getTime() > maxIdleTimeMs
+    ) {
       return { shouldRemove: true, reason: "idle timeout" };
     }
     return { shouldRemove: false, reason: "" };
@@ -262,18 +338,38 @@ class ManagedBrowserInstance {
     this.metrics.isHealthy = false;
     console.log(`Closing browser instance ${this.id}, reason: ${reason || "cleanup"}`);
     if (this.browser) {
-      this.browser.off("disconnected", this.disconnectedHandler); // Important to remove listener
-      try {
-        await this.context.close();
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
+      if (this.disconnectedHandler) {
+        this.browser.off("disconnected", this.disconnectedHandler);
       }
+      await Promise.allSettled(Array.from(this.pages).map((page) => this.releasePage(page)));
+      this.pages.clear();
+      let contextClosed = false;
+      if (!this.connectedOverCDP && this.context) {
+        try {
+          await this.context.close();
+          contextClosed = true;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`Error closing context for instance ${this.id}: ${message}`, error);
+        }
+      }
+      if (!this.persistentUserDataDir || !contextClosed) {
+        try {
+          await this.browser.close();
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
+        }
+      }
+    }
+    if (this.persistentUserDataDir) {
       try {
-        await this.browser.close();
+        await rm(this.persistentUserDataDir, { recursive: true, force: true });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.warn(`Error closing browser for instance ${this.id}: ${message}`, error);
+        console.warn(`Error removing Patchright profile ${this.persistentUserDataDir}: ${message}`);
+      } finally {
+        this.persistentUserDataDir = undefined;
       }
     }
   }
@@ -300,6 +396,9 @@ export class PlaywrightBrowserPool {
     password?: string;
   };
   private readonly launchOptions?: LaunchOptions;
+  private readonly cdpEndpoint?: string;
+  private readonly cdpConnectionOptions?: CDPConnectionOptions;
+  private readonly browserDriver: PlaywrightBrowserDriver;
 
   private static readonly DEFAULT_BLOCKED_DOMAINS: string[] = [
     "doubleclick.net",
@@ -333,6 +432,12 @@ export class PlaywrightBrowserPool {
   // This prevents race conditions when checking pool capacity, creating new browser instances,
   // or selecting an instance from the pool, thus maintaining a consistent state for the pool.
   private readonly acquireQueue: PQueue = new PQueue({ concurrency: 1 });
+  // Every capacity check and browser launch runs through this queue. Holding
+  // the reservation until the initialized instance is added prevents recovery,
+  // acquisition, initialization, and health checks from overfilling the pool.
+  private readonly creationQueue: PQueue = new PQueue({ concurrency: 1 });
+  private readonly pendingRecoveryInstances: Set<ManagedBrowserInstance> = new Set();
+  private recoveryBarrier: Promise<void> | null = null;
 
   constructor(
     config: {
@@ -346,9 +451,12 @@ export class PlaywrightBrowserPool {
       proxy?: { server: string; username?: string; password?: string };
       maxIdleTime?: number;
       launchOptions?: LaunchOptions;
+      cdpEndpoint?: string;
+      cdpConnectionOptions?: CDPConnectionOptions;
+      browserDriver?: PlaywrightBrowserDriver;
     } = {}
   ) {
-    this.maxBrowsers = config.maxBrowsers ?? 2;
+    this.maxBrowsers = config.cdpEndpoint ? 1 : (config.maxBrowsers ?? 2);
     this.maxPagesPerContext = config.maxPagesPerContext ?? 6;
     this.maxBrowserAge = config.maxBrowserAge ?? 20 * 60 * 1000;
     this.healthCheckInterval = config.healthCheckInterval ?? 60 * 1000;
@@ -364,10 +472,15 @@ export class PlaywrightBrowserPool {
         : PlaywrightBrowserPool.DEFAULT_BLOCKED_RESOURCE_TYPES;
     this.proxyConfig = config.proxy;
     this.launchOptions = config.launchOptions;
+    this.cdpEndpoint = config.cdpEndpoint;
+    this.cdpConnectionOptions = config.cdpConnectionOptions;
+    this.browserDriver = config.browserDriver ?? "playwright";
   }
 
   public async initialize(): Promise<void> {
-    await loadDependencies(); // Load dependencies first
+    if (this.browserDriver === "playwright" && !this.cdpEndpoint) {
+      await loadDependencies();
+    }
     if (this.isCleaningUp) return;
     await this.ensureMinimumInstances();
     this.scheduleHealthCheck();
@@ -392,53 +505,117 @@ export class PlaywrightBrowserPool {
   }
 
   private async ensureMinimumInstances(): Promise<void> {
-    if (this.isCleaningUp) return;
-    while (this.pool.size < this.maxBrowsers) {
-      try {
-        await this.createBrowserInstance();
-      } catch {
-        break;
+    return this.creationQueue.add(async () => {
+      if (this.isCleaningUp) return;
+      let initializationError: unknown;
+      while (!this.isCleaningUp && this.pool.size < this.maxBrowsers) {
+        try {
+          await this.createBrowserInstanceWithReservedCapacity();
+        } catch (error: unknown) {
+          initializationError = error;
+          break;
+        }
       }
-    }
+      if (this.pool.size === 0 && initializationError) {
+        throw initializationError;
+      }
+    }) as Promise<void>;
   }
 
-  private async createBrowserInstance(): Promise<ManagedBrowserInstance> {
-    await loadDependencies(); // Ensure dependencies are loaded
+  private async createBrowserInstanceIfCapacity(): Promise<ManagedBrowserInstance | null> {
+    return this.creationQueue.add(async () => {
+      if (this.isCleaningUp || this.pool.size >= this.maxBrowsers) return null;
+      return this.createBrowserInstanceWithReservedCapacity();
+    }) as Promise<ManagedBrowserInstance | null>;
+  }
+
+  private async createBrowserInstanceWithReservedCapacity(): Promise<ManagedBrowserInstance> {
+    if (this.browserDriver === "playwright" && !this.cdpEndpoint) {
+      await loadDependencies();
+    }
     const instance = new ManagedBrowserInstance({
       useHeadedMode: this.useHeadedMode,
       blockedDomains: this.blockedDomains,
       blockedResourceTypes: this.blockedResourceTypes,
       proxyConfig: this.proxyConfig,
       launchOptions: this.launchOptions,
+      cdpEndpoint: this.cdpEndpoint,
+      cdpConnectionOptions: this.cdpConnectionOptions,
+      browserDriver: this.browserDriver,
       onDisconnect: (instanceId) => {
-        // Find the instance by ID and remove it from the pool
-        let instanceToRemove: ManagedBrowserInstance | undefined;
-        for (const inst of this.pool) {
-          if (inst.id === instanceId) {
-            instanceToRemove = inst;
-            break;
-          }
-        }
-        if (instanceToRemove) {
-          this.pool.delete(instanceToRemove);
-          console.warn(`Removed disconnected instance ${instanceId} from pool.`);
-          // Ensure minimum instances are maintained
-          this.ensureMinimumInstances().catch((err) => {
-            console.error(
-              `Error ensuring minimum instances after removing disconnected instance ${instanceId}: ${err.message}`,
-              err
-            );
-          });
-        }
+        this.handleUnexpectedDisconnect(instanceId);
       },
     });
-    await instance.initialize();
+    try {
+      await instance.initialize();
+    } catch (error: unknown) {
+      await instance.close("initialization failed");
+      throw error;
+    }
+    if (this.isCleaningUp) {
+      await instance.close("pool cleanup during initialization");
+      throw new Error("Pool is shutting down.");
+    }
     this.pool.add(instance);
     return instance;
   }
 
+  private handleUnexpectedDisconnect(instanceId: string): void {
+    if (this.isCleaningUp) return;
+
+    const instanceToRemove = [...this.pool].find((instance) => instance.id === instanceId);
+    if (!instanceToRemove) return;
+
+    // Release pool capacity before queued acquisitions get a chance to inspect
+    // it. The recovery barrier below keeps those acquisitions from racing the
+    // asynchronous close and replacement.
+    this.pool.delete(instanceToRemove);
+    this.pendingRecoveryInstances.add(instanceToRemove);
+    console.warn(`Removed disconnected instance ${instanceId} from pool.`);
+    this.startRecovery();
+  }
+
+  private startRecovery(): void {
+    if (this.recoveryBarrier) return;
+
+    const recovery = this.recoverDisconnectedInstances().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error recovering disconnected browser instances: ${message}`, error);
+    });
+    this.recoveryBarrier = recovery;
+
+    void recovery.then(() => {
+      if (this.recoveryBarrier !== recovery) return;
+      this.recoveryBarrier = null;
+      if (this.pendingRecoveryInstances.size > 0) {
+        this.startRecovery();
+      }
+    });
+  }
+
+  private async recoverDisconnectedInstances(): Promise<void> {
+    while (this.pendingRecoveryInstances.size > 0) {
+      const instancesToClose = [...this.pendingRecoveryInstances];
+      this.pendingRecoveryInstances.clear();
+      await Promise.allSettled(
+        instancesToClose.map((instance) => instance.close(`instance ${instance.id} disconnected`))
+      );
+    }
+
+    if (!this.isCleaningUp) {
+      await this.ensureMinimumInstances();
+    }
+  }
+
+  private async waitForRecovery(): Promise<void> {
+    while (this.recoveryBarrier) {
+      await this.recoveryBarrier;
+    }
+  }
+
   public acquirePage(): Promise<Page> {
     return this.acquireQueue.add(async () => {
+      await this.waitForRecovery();
       if (this.isCleaningUp) {
         throw new Error("Pool is shutting down.");
       }
@@ -454,10 +631,11 @@ export class PlaywrightBrowserPool {
         }
       }
 
-      // If no suitable existing instance, and pool is not full, try to create a new one
-      if (!bestInstance && this.pool.size < this.maxBrowsers) {
+      // If no suitable existing instance, reserve capacity and create one.
+      // The creation queue rechecks capacity after any overlapping launch.
+      if (!bestInstance) {
         try {
-          bestInstance = await this.createBrowserInstance();
+          bestInstance = await this.createBrowserInstanceIfCapacity();
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`Failed to create new browser instance during page acquisition: ${message}`, error);
@@ -590,6 +768,8 @@ export class PlaywrightBrowserPool {
     }
     this.acquireQueue.clear();
     await this.acquireQueue.onIdle();
+    await this.waitForRecovery();
+    await this.creationQueue.onIdle();
 
     // Create a copy of the pool to iterate over, as closeAndRemoveInstance modifies the original set.
     const instancesToClose = Array.from(this.pool);

@@ -10,14 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Repository development and CI now require pnpm 11 or newer, and pnpm workspace settings are defined in `pnpm-workspace.yaml` for pnpm 11 compatibility
-- Bumped the package version to `0.13.0`
+- Bumped the package version to `0.14.0`
+- Automatic verification waits are now passive: the engine lets the browser run the interstitial before inspecting the DOM, avoiding polling that can become an automation signal
 
 ### Added
 
 - `HybridEngine` now uses a full, non-fast Playwright pass for detected verification pages, waits up to the configurable `challengeWaitMs` (default: 5000 ms) for automatic JavaScript checks to clear, and never caches an unresolved challenge response. CAPTCHA widgets are not solved or submitted automatically.
+- Added the opt-in `browserDriver: "patchright"` backend for Chromium-level automation leak patches while preserving standard Playwright as the default
+- Added `cdpEndpoint` and `cdpConnectionOptions` so Hybrid can reuse the default context and cookies of an existing or managed Chromium browser
+- Added the exact Juno Pure Devotion product URL to the CI live browser smoke suite
 
 ### Fixed
 
+- Patchright now follows its recommended persistent Chrome-context setup with a native viewport and no fingerprint injection
+- Browser-pool creation is now serialized across initialization, acquisition, health checks, and disconnect recovery so overlapping replacements cannot exceed `maxBrowsers`
+- Successful automatic verification is detected before rendered-DOM polling, while ordinary HTML 403, 429, and 503 responses fail immediately without challenge waits or retries
+- CDP mode now forces one pooled browser connection, and standard Playwright keeps configured request routing when attached over CDP
+- Live smoke tests run in a dedicated CI job, their launcher invokes Vitest through Node on Windows, and the Juno probe remains observe-only in ordinary CI; a provider-neutral `LIVE_CDP_ENDPOINT` is used only when explicitly requested in a manual workflow dispatch
+- Live browser CI scopes optional CDP credentials to the requested probe, installs both Chromium and Chrome, and Patchright cleanup now preserves HTTPS-error compatibility while removing failed persistent profiles before replacement
+- Live HTTP behavior checks now use `httpbingo.org` after `httpbin.org` returned service-wide 503 responses in GitHub Actions
+- Markdown conversion now falls back to the typed JavaScript converter when the native Rust converter panics on malformed real-world DOM, preserving Markdown output for the Juno product page
 - Playwright no longer caches unresolved verification pages when the requested output is Markdown
 - Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
 - Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
@@ -165,7 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (Previous releases - add as needed)
 
-[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/purepage/fetch-engines/compare/v0.13.0...HEAD
 [0.11.0]: https://github.com/purepage/fetch-engines/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/purepage/fetch-engines/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/purepage/fetch-engines/compare/v0.10.1...v0.10.2

@@ -1,4 +1,5 @@
 import * as kreuzbergHtmlToMarkdown from "@kreuzberg/html-to-markdown";
+import { NodeHtmlMarkdown } from "node-html-markdown";
 import { parse, HTMLElement as NHPHTMLElement, Node as NHPNode, TextNode as NHPTextNode } from "node-html-parser";
 
 type KreuzbergConvert = (typeof import("@kreuzberg/html-to-markdown"))["convert"];
@@ -138,8 +139,22 @@ export class MarkdownConverter {
     // Preprocess HTML to clean and extract main content
     const preprocessedHtml = this.preprocessHTML(html, options);
 
-    // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native)
-    let markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" as never });
+    // Convert preprocessed HTML to Markdown using Kreuzberg (Rust-native).
+    // Keep a JavaScript fallback because malformed real-world DOM can trigger
+    // an unrecoverable-looking Rust panic that is surfaced as a catchable error.
+    let markdown: string;
+    try {
+      markdown = kreuzbergConvert(preprocessedHtml, { headingStyle: "Atx" as never });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Native HTML-to-Markdown conversion failed; using JavaScript fallback: ${message}`);
+      markdown = NodeHtmlMarkdown.translate(preprocessedHtml, {
+        bulletMarker: "-",
+        codeBlockStyle: "fenced",
+        keepDataImages: false,
+        useInlineLinks: true,
+      }) as string;
+    }
 
     // Post-process Markdown for cleanup
     markdown = this.postprocessMarkdown(markdown, options);
