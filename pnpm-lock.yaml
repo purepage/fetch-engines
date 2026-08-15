@@ -51,8 +51,8 @@ importers:
         specifier: ^1.1.208
         version: 1.1.496
       uuid:
-        specifier: ^11.1.0
-        version: 11.1.0
+        specifier: ^14.0.0
+        version: 14.0.0
       zod:
         specifier: ^4.1.8
         version: 4.1.8
@@ -1734,8 +1734,8 @@ packages:
   user-agents@1.1.496:
     resolution: {integrity: sha512-fm6JLm/VJ99I6OmFCspOt+KsADpc1lgzQAF+1wFwHEz0b8XbP+q/APSYSUl/bq7rvGM6tMkd+cwBD8WFT11WBw==}
 
-  uuid@11.1.0:
-    resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
+  uuid@14.0.0:
+    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
     hasBin: true
 
   v8-compile-cache-lib@3.0.1:
@@ -3376,7 +3376,7 @@ snapshots:
     dependencies:
       lodash.clonedeep: 4.5.0
 
-  uuid@11.1.0: {}
+  uuid@14.0.0: {}
 
   v8-compile-cache-lib@3.0.1: {}
 
