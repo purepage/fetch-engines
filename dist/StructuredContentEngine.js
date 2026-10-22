@@ -200,7 +200,7 @@ ${result.content}`;
                     }
                     details.push(`Model response:\n${formattedResponse}`);
                 }
-                if (error.finishReason && error.finishReason !== "unknown") {
+                if (error.finishReason && error.finishReason !== "other") {
                     details.push(`Finish reason: ${error.finishReason}`);
                 }
                 if (error.cause) {
@@ -277,11 +277,14 @@ ${result.content}`;
      * Get model-specific configuration options
      */
     getModelConfig(model) {
+        // Retain SDK 5's schema behaviour so existing optional fields remain optional.
+        const providerOptions = { openai: { strictJsonSchema: false } };
         if (model.startsWith("gpt-5")) {
             return {
                 providerOptions: {
                     openai: {
-                        reasoning_effort: "low",
+                        ...providerOptions.openai,
+                        reasoningEffort: "low",
                     },
                 },
             };
@@ -289,9 +292,10 @@ ${result.content}`;
         else if (model.startsWith("gpt-4.1")) {
             return {
                 temperature: 0,
+                providerOptions,
             };
         }
-        return {};
+        return { providerOptions };
     }
     /**
      * Clean up resources

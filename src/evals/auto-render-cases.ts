@@ -1,13 +1,7 @@
 export type AutoRenderEvalCategory = "spa" | "static";
 
 export type AutoRenderEvalArchetype =
-  | "docs"
-  | "government"
-  | "knowledge"
-  | "marketing"
-  | "commerce"
-  | "static-baseline"
-  | "access-guarded";
+  "docs" | "government" | "knowledge" | "marketing" | "commerce" | "static-baseline" | "access-guarded";
 
 export interface AutoRenderEvalCase {
   name: string;

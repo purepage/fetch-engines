@@ -1,6 +1,6 @@
 {
   "name": "@purepageio/fetch-engines",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "type": "module",
   "description": "Production-grade web extraction: clean Markdown, Playwright fallback, soft-block detection, and structured data extraction.",
   "main": "dist/index.js",
@@ -29,11 +29,11 @@
     "ai-extraction": "tsx examples/ai-extraction.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.30",
-    "@ai-sdk/openai-compatible": "^1.0.28",
+    "@ai-sdk/openai": "^3.0.131",
+    "@ai-sdk/openai-compatible": "^2.0.87",
     "@kreuzberg/html-to-markdown": "2.27.2",
-    "ai": "^5.0.44",
-    "axios": "1.14.0",
+    "ai": "^6.0.312",
+    "axios": "1.20.0",
     "node-html-markdown": "2.0.0",
     "node-html-parser": "^7.0.1",
     "p-queue": "^7.4.1",
@@ -48,9 +48,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "@types/axios": "^0.14.0",
     "@types/jsdom": "^21.1.6",
-    "@types/node": "^18.0.0",
+    "@types/node": "^22.0.0",
     "@types/user-agents": "^1.0.4",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
@@ -66,13 +65,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.29.0",
-    "vitest": "^3.1.1"
-  },
-  "overrides": {
-    "axios": "1.14.0"
-  },
-  "resolutions": {
-    "axios": "1.14.0"
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": ">=22.0.0",

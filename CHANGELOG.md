@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Upgrade Axios from `1.14.0` to `1.20.0`, remove the Axios overrides/resolutions and redundant `@types/axios` stub
+- Upgrade to the compatible AI SDK 6 family (`ai` 6.0.312, OpenAI 3.0.131, OpenAI-compatible 2.0.87), using patched `@ai-sdk/provider-utils` 4.0.62 and Undici 6.29.1 instead of the SDK 5 family
+- Upgrade Vitest to 4.1.12 and refresh transitive lockfile dependencies to address current runtime and development dependency advisories without overrides or suppressions
+- Pin repository development to Node.js 22.23.4, the latest Node 22 security release, and align Node type definitions with Node 22
+- Preserve optional Zod fields by retaining non-strict OpenAI JSON schemas, adapt finish-reason handling to SDK 6, and pass the GPT-5 reasoning-effort option using the supported SDK field
+- Bump the package version to `0.14.1` for these fixes. No release is published by this change
+
 ### Changed
 
 - Repository development and CI now require pnpm 11 or newer, and pnpm workspace settings are defined in `pnpm-workspace.yaml` for pnpm 11 compatibility
@@ -31,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live HTTP behavior checks now use `httpbingo.org` after `httpbin.org` returned service-wide 503 responses in GitHub Actions
 - Markdown conversion now falls back to the typed JavaScript converter when the native Rust converter panics on malformed real-world DOM, preserving Markdown output for the Juno product page
 - Playwright no longer caches unresolved verification pages when the requested output is Markdown
-- Pinned `axios` to `1.14.0` in direct dependencies and added `overrides`/`resolutions` guards to prevent transitive installs from resolving to vulnerable versions
 - Added `pnpm.minimumReleaseAge=1440` to block installs of newly published packages that are less than 24 hours old
 - Live browser eval scripts now force Vitest to use a Node environment, avoiding `jsdom`-specific network/preflight behavior in GitHub Actions
 - Marked the DVA pension rates live eval baseline as optional so runner-specific HTTP flakiness does not fail the gated static pass-rate check when Hybrid extraction still succeeds
