@@ -43,28 +43,31 @@ describe("PlaywrightEngine.fetchContent HTTP fallback", () => {
     });
   }
 
-  it("returns HTML text, title, status and redirected URL", async () => {
-    const html = "<html><head><title>Fallback title</title></head><body>Fallback body</body></html>";
-    const finalUrl = "https://example.com/final";
-    useResponse({
-      data: Buffer.from(html),
-      headers: { "content-type": "text/html; charset=utf-8" },
-      finalUrl,
-    });
+  it.each(["text/html; charset=utf-8", "Text/HTML; charset=UTF-8"])(
+    "returns HTML text, title, status and redirected URL for %s",
+    async (contentType) => {
+      const html = "<html><head><title>Fallback title</title></head><body>Fallback body</body></html>";
+      const finalUrl = "https://example.com/final";
+      useResponse({
+        data: Buffer.from(html),
+        headers: { "content-type": contentType },
+        finalUrl,
+      });
 
-    const result = await createEngine().fetchContent(url);
+      const result = await createEngine().fetchContent(url);
 
-    expect(result).toEqual({
-      content: html,
-      contentType: "text/html; charset=utf-8",
-      title: "Fallback title",
-      url: finalUrl,
-      isFromCache: false,
-      statusCode: 200,
-      error: undefined,
-    });
-    expect(PlaywrightBrowserPool).not.toHaveBeenCalled();
-  });
+      expect(result).toEqual({
+        content: html,
+        contentType,
+        title: "Fallback title",
+        url: finalUrl,
+        isFromCache: false,
+        statusCode: 200,
+        error: undefined,
+      });
+      expect(PlaywrightBrowserPool).not.toHaveBeenCalled();
+    }
+  );
 
   it("preserves binary response bytes and MIME type", async () => {
     const bytes = Buffer.from([0, 255, 1, 128, 42]);

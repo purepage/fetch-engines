@@ -163,6 +163,26 @@ describe("StructuredContentEngine with the real AI SDK", () => {
     expect(getRequestBody([requestUrl, requestInit]).model).toBe("provider/model-name");
   });
 
+  it("accepts an omitted optional field from a custom provider in JSON mode", async () => {
+    fetchMock.mockResolvedValueOnce(chatCompletionResponse('{"title":"Compatible title"}'));
+    const schema = z.object({
+      title: z.string().describe("The extracted title"),
+      author: z.string().describe("The author, when present").optional(),
+    });
+
+    const result = await engine.fetchStructuredContent("https://example.com/article", schema, {
+      model: "provider/model-name",
+      apiConfig: {
+        apiKey: "compatible-test-key",
+        baseURL: "https://llm.example.test/v1/",
+      },
+    });
+
+    expect(result.data).toEqual({ title: "Compatible title" });
+    const requestBody = getRequestBody(fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?]);
+    expect(requestBody.response_format).toEqual({ type: "json_object" });
+  });
+
   it("accepts an omitted optional field from the model output", async () => {
     fetchMock.mockResolvedValueOnce(openAIResponsesResponse('{"title":"Optional field omitted"}'));
     const schema = z.object({
