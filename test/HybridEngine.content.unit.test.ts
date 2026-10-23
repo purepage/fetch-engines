@@ -5,19 +5,21 @@ import { vi, describe, it, expect, beforeEach, SpyInstance } from "vitest";
 // Mock PlaywrightEngine to avoid launching browsers
 vi.mock("../src/PlaywrightEngine", () => {
   return {
-    PlaywrightEngine: vi.fn().mockImplementation(() => ({
-      fetchContent: vi.fn().mockResolvedValue({
-        content: "PW",
-        contentType: "text/html",
-        title: "PW",
-        url: "http://pw",
-        isFromCache: false,
-        statusCode: 200,
-        error: undefined,
-      }),
-      cleanup: vi.fn().mockResolvedValue(undefined),
-      getMetrics: vi.fn().mockReturnValue([]),
-    })),
+    PlaywrightEngine: vi.fn().mockImplementation(function () {
+      return {
+        fetchContent: vi.fn().mockResolvedValue({
+          content: "PW",
+          contentType: "text/html",
+          title: "PW",
+          url: "http://pw",
+          isFromCache: false,
+          statusCode: 200,
+          error: undefined,
+        }),
+        cleanup: vi.fn().mockResolvedValue(undefined),
+        getMetrics: vi.fn().mockReturnValue([]),
+      };
+    }),
   };
 });
 

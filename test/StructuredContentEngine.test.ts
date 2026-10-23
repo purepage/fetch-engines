@@ -26,10 +26,12 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 
 // Mock HybridEngine BEFORE importing the module under test
 vi.mock("../src/HybridEngine.js", () => ({
-  HybridEngine: vi.fn().mockImplementation(() => ({
-    fetchHTML: vi.fn(),
-    cleanup: vi.fn(),
-  })),
+  HybridEngine: vi.fn().mockImplementation(function () {
+    return {
+      fetchHTML: vi.fn(),
+      cleanup: vi.fn(),
+    };
+  }),
 }));
 
 import { StructuredContentEngine, fetchStructuredContent } from "../src/StructuredContentEngine.js";
@@ -140,7 +142,7 @@ describe("StructuredContentEngine", () => {
       });
     });
 
-    it("should use gpt-5-mini model with reasoning_effort: low", async () => {
+    it("should use gpt-5-mini model with low reasoning effort", async () => {
       await engine.fetchStructuredContent("https://example.com", testSchema, { model: "gpt-5-mini" });
 
       expect(mockGenerateObject).toHaveBeenCalledWith({
@@ -149,7 +151,8 @@ describe("StructuredContentEngine", () => {
         prompt: expect.stringContaining("You are an expert at extracting structured data"),
         providerOptions: {
           openai: {
-            reasoning_effort: "low",
+            reasoningEffort: "low",
+            strictJsonSchema: false,
           },
         },
       });
@@ -165,10 +168,15 @@ describe("StructuredContentEngine", () => {
         schema: testSchema,
         prompt: expect.stringContaining("You are an expert at extracting structured data"),
         temperature: 0,
+        providerOptions: {
+          openai: {
+            strictJsonSchema: false,
+          },
+        },
       });
     });
 
-    it("should use gpt-5 model with reasoning_effort: low", async () => {
+    it("should use gpt-5 model with low reasoning effort", async () => {
       await engine.fetchStructuredContent("https://example.com", testSchema, {
         model: "gpt-5",
       });
@@ -179,7 +187,8 @@ describe("StructuredContentEngine", () => {
         prompt: expect.stringContaining("You are an expert at extracting structured data"),
         providerOptions: {
           openai: {
-            reasoning_effort: "low",
+            reasoningEffort: "low",
+            strictJsonSchema: false,
           },
         },
       });
@@ -199,7 +208,8 @@ describe("StructuredContentEngine", () => {
         prompt: expect.stringContaining(`Additional context: ${customPrompt}`),
         providerOptions: {
           openai: {
-            reasoning_effort: "low",
+            reasoningEffort: "low",
+            strictJsonSchema: false,
           },
         },
       });
@@ -364,7 +374,9 @@ describe("fetchStructuredContent convenience function", () => {
     const { HybridEngine } = await import("../src/HybridEngine.js");
     const mockHybridEngine = vi.mocked(HybridEngine);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mockHybridEngine.mockImplementation(() => mockInstance as any);
+    mockHybridEngine.mockImplementation(function () {
+      return mockInstance as any;
+    });
 
     const result = await fetchStructuredContent("https://example.com", testSchema, { model: "gpt-4.1-mini" });
 

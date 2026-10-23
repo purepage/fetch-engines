@@ -64,7 +64,9 @@ Choose `fetch-engines` when you want full control over extraction, data residenc
 pnpm add @purepageio/fetch-engines
 ```
 
-Repository development and CI require pnpm 11 or newer.
+Node.js 22 or newer is supported. Repository development uses Node.js 22.23.4 (`nvm use`) and requires pnpm 11 or newer.
+
+Structured extraction uses AI SDK 6 with the OpenAI and OpenAI-compatible providers. Existing Zod schemas, including optional fields, and the public extraction result and token-usage fields remain supported.
 
 If you plan to use `HybridEngine` or `PlaywrightEngine` (which launch a real browser), install the Playwright browsers once:
 

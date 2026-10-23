@@ -1339,16 +1339,17 @@ export class PlaywrightEngine implements IEngine {
         decompress: true,
       });
 
-      const contentType = response.headers["content-type"] || "application/octet-stream";
+      const contentType = String(response.headers["content-type"] || "application/octet-stream");
+      const normalizedContentType = contentType.toLowerCase();
 
       // Determine if content is text-based
       const isTextBased =
-        contentType.startsWith("text/") ||
-        contentType.includes("json") ||
-        contentType.includes("xml") ||
-        contentType.includes("javascript") ||
-        contentType.includes("html") ||
-        contentType.includes("css");
+        normalizedContentType.startsWith("text/") ||
+        normalizedContentType.includes("json") ||
+        normalizedContentType.includes("xml") ||
+        normalizedContentType.includes("javascript") ||
+        normalizedContentType.includes("html") ||
+        normalizedContentType.includes("css");
 
       let content: string | Buffer;
       if (isTextBased) {
@@ -1359,7 +1360,7 @@ export class PlaywrightEngine implements IEngine {
 
       // Extract title only if content is HTML
       let title: string | null = null;
-      if (typeof content === "string" && contentType.includes("html")) {
+      if (typeof content === "string" && normalizedContentType.includes("html")) {
         const titleMatch = content.match(REGEX_TITLE_TAG);
         title = titleMatch ? titleMatch[1].trim() : null;
       }

@@ -11,13 +11,15 @@ vi.mock("axios");
 vi.mock("p-queue", () => {
   // Mock PQueue to execute tasks immediately for testing
   return {
-    default: vi.fn().mockImplementation(() => ({
-      add: vi.fn((task: () => Promise<any>) => task()), // Immediately execute the task
-      onIdle: vi.fn().mockResolvedValue(undefined),
-      clear: vi.fn(),
-      size: 0,
-      pending: 0,
-    })),
+    default: vi.fn().mockImplementation(function () {
+      return {
+        add: vi.fn((task: () => Promise<any>) => task()), // Immediately execute the task
+        onIdle: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn(),
+        size: 0,
+        pending: 0,
+      };
+    }),
   };
 });
 vi.mock("../src/utils/markdown-converter.js");
@@ -117,7 +119,9 @@ describe("PlaywrightEngine - Headers", () => {
       getMetrics: vi.fn().mockReturnValue([]),
       initialize: vi.fn().mockResolvedValue(undefined),
     };
-    (PlaywrightBrowserPool as any as SpyInstance).mockImplementation(() => mockPoolInstance);
+    (PlaywrightBrowserPool as any as SpyInstance).mockImplementation(function () {
+      return mockPoolInstance;
+    });
 
     (axios.get as SpyInstance).mockResolvedValue({
       data: "<html><body>Axios Fallback Content</body></html>",

@@ -68,8 +68,12 @@ describe("HybridEngine - Headers Propagation", () => {
       getMetrics: vi.fn().mockReturnValue([]),
     };
 
-    (FetchEngine as any as SpyInstance).mockImplementation(() => mockFetchEngineInstance);
-    (PlaywrightEngine as any as SpyInstance).mockImplementation(() => mockPlaywrightEngineInstance);
+    (FetchEngine as any as SpyInstance).mockImplementation(function () {
+      return mockFetchEngineInstance;
+    });
+    (PlaywrightEngine as any as SpyInstance).mockImplementation(function () {
+      return mockPlaywrightEngineInstance;
+    });
   });
 
   // --- FetchEngine Propagation Tests ---
