@@ -1,0 +1,27 @@
+src/PlaywrightEngine.ts
+  ai_agent 1343,1347-1352,1363
+CHANGELOG.md
+  s_2ac8bcf2fb281d::t_61e106c9bf37f1 19,33-34
+dist/PlaywrightEngine.js.map
+  ai_agent 1
+dist/PlaywrightEngine.d.ts.map
+  ai_agent 1
+test/StructuredContentEngine.integration.test.ts
+  s_2ac8bcf2fb281d::t_ad09f5f062f291 166-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f5d975a7d1bb28860d5fc7395e8d3b9bdb2084e7",
+  "prompts": {},
+  "sessions": {
+    "s_2ac8bcf2fb281d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a165fc-d51f-7181-a0a1-f6f75e409a17",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "Simon Quick <simon@pollen.com.au>"
+    }
+  }
+}
